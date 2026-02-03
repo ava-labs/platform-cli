@@ -340,3 +340,105 @@ func TestCLIChainCreateMissingArgs(t *testing.T) {
 		t.Logf("stderr: %s", stderr)
 	}
 }
+
+func TestCLISubnetConvertL1MissingArgs(t *testing.T) {
+	_, stderr, err := runCLI(t, "subnet", "convert-l1")
+	if err == nil {
+		t.Error("expected error when missing required args")
+	}
+
+	if !strings.Contains(stderr, "subnet-id") {
+		t.Logf("stderr: %s", stderr)
+	}
+}
+
+// =============================================================================
+// CLI Full L1 Lifecycle Test
+// =============================================================================
+
+func TestCLIL1Lifecycle(t *testing.T) {
+	if os.Getenv("PRIVATE_KEY") == "" && *networkFlag != "local" {
+		t.Skip("PRIVATE_KEY required for Fuji")
+	}
+
+	t.Log("=== L1 Lifecycle CLI Test ===")
+
+	// Step 1: Create subnet
+	t.Log("Step 1: Creating subnet...")
+	subnetOut, stderr, err := runCLI(t, "subnet", "create")
+	if err != nil {
+		t.Fatalf("subnet create failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Parse subnet ID from output
+	var subnetID string
+	for _, line := range strings.Split(subnetOut, "\n") {
+		if strings.HasPrefix(line, "Subnet ID:") {
+			subnetID = strings.TrimSpace(strings.TrimPrefix(line, "Subnet ID:"))
+			break
+		}
+	}
+	if subnetID == "" {
+		t.Fatal("could not parse Subnet ID from output")
+	}
+	t.Logf("  Subnet ID: %s", subnetID)
+
+	// Step 2: Create genesis file
+	genesisFile, err := os.CreateTemp("", "genesis-*.json")
+	if err != nil {
+		t.Fatalf("failed to create temp genesis file: %v", err)
+	}
+	defer os.Remove(genesisFile.Name())
+
+	genesis := `{"config":{"chainId":99998},"alloc":{}}`
+	if _, err := genesisFile.WriteString(genesis); err != nil {
+		t.Fatalf("failed to write genesis: %v", err)
+	}
+	genesisFile.Close()
+
+	// Step 3: Create chain on subnet
+	t.Log("Step 2: Creating chain on subnet...")
+	chainOut, stderr, err := runCLI(t, "chain", "create",
+		"--subnet-id", subnetID,
+		"--genesis", genesisFile.Name(),
+		"--name", "l1testchain")
+	if err != nil {
+		t.Fatalf("chain create failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Parse chain ID from output
+	var chainID string
+	for _, line := range strings.Split(chainOut, "\n") {
+		if strings.HasPrefix(line, "Chain ID:") {
+			chainID = strings.TrimSpace(strings.TrimPrefix(line, "Chain ID:"))
+			break
+		}
+	}
+	if chainID == "" {
+		t.Fatal("could not parse Chain ID from output")
+	}
+	t.Logf("  Chain ID: %s", chainID)
+
+	// Step 4: Convert subnet to L1
+	// Note: On Fuji without validators, this will fail with "must include at least one validator"
+	// This tests the full flow including convert-l1, but skips gracefully when validators unavailable
+	t.Log("Step 3: Converting subnet to L1...")
+	convertOut, stderr, err := runCLI(t, "subnet", "convert-l1",
+		"--subnet-id", subnetID,
+		"--chain-id", chainID)
+	if err != nil {
+		if strings.Contains(stderr, "must include at least one validator") {
+			t.Log("  Skipping conversion - requires validators (expected on Fuji without nodes)")
+			t.Log("=== L1 Lifecycle Partial (subnet + chain created) ===")
+			return
+		}
+		t.Fatalf("subnet convert-l1 failed: %v\nstderr: %s", err, stderr)
+	}
+
+	if !strings.Contains(convertOut, "Convert Subnet to L1 TX:") {
+		t.Error("output missing conversion TX ID")
+	}
+	t.Logf("Output:\n%s", convertOut)
+
+	t.Log("=== L1 Lifecycle Complete ===")
+}
