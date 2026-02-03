@@ -11,14 +11,18 @@ package e2e
 
 import (
 	"context"
+	"crypto/rand"
 	"flag"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
+	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
+	"github.com/ava-labs/avalanchego/utils/units"
+	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
+	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/platform-cli/pkg/crosschain"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
@@ -99,6 +103,36 @@ func getTestFullWallet(t *testing.T) (*wallet.FullWallet, network.Config) {
 	}
 
 	return w, netConfig
+}
+
+// generateMockValidator creates a mock validator with valid BLS credentials.
+// The validator won't be a real node, but has cryptographically valid PoP.
+func generateMockValidator(t *testing.T, balance uint64) *txs.ConvertSubnetToL1Validator {
+	t.Helper()
+
+	// Generate random NodeID (20 bytes)
+	nodeID := make([]byte, ids.NodeIDLen)
+	if _, err := rand.Read(nodeID); err != nil {
+		t.Fatalf("failed to generate node ID: %v", err)
+	}
+
+	// Generate BLS signer and proof of possession
+	blsSigner, err := localsigner.New()
+	if err != nil {
+		t.Fatalf("failed to generate BLS signer: %v", err)
+	}
+
+	pop, err := signer.NewProofOfPossession(blsSigner)
+	if err != nil {
+		t.Fatalf("failed to generate proof of possession: %v", err)
+	}
+
+	return &txs.ConvertSubnetToL1Validator{
+		NodeID:  nodeID,
+		Weight:  units.Schmeckle, // 1 weight unit
+		Balance: balance,
+		Signer:  *pop,
+	}
 }
 
 // =============================================================================
@@ -568,17 +602,18 @@ func TestL1Lifecycle(t *testing.T) {
 
 	time.Sleep(3 * time.Second)
 
-	// 4. Convert subnet to L1
-	// Note: On Fuji without validators, this will fail with "must include at least one validator"
-	// This tests the full flow, but skips gracefully when validators unavailable
+	// 4. Convert subnet to L1 with a mock validator
 	t.Log("Step 3: Converting subnet to L1...")
-	convertTxID, err := pchain.ConvertSubnetToL1(ctx, subnetWallet, subnetID, chainID, nil, nil)
+
+	// Generate mock validator with valid BLS credentials
+	// Balance: 1 AVAX for the validator
+	mockValidator := generateMockValidator(t, 1*units.Avax)
+	validators := []*txs.ConvertSubnetToL1Validator{mockValidator}
+
+	t.Logf("  Mock validator NodeID: %x", mockValidator.NodeID)
+
+	convertTxID, err := pchain.ConvertSubnetToL1(ctx, subnetWallet, subnetID, chainID, nil, validators)
 	if err != nil {
-		if strings.Contains(err.Error(), "must include at least one validator") {
-			t.Log("  Skipping conversion - requires validators (expected on Fuji without nodes)")
-			t.Log("=== L1 Lifecycle Partial (subnet + chain created) ===")
-			return
-		}
 		t.Fatalf("ConvertSubnetToL1 failed: %v", err)
 	}
 	t.Logf("  Convert TX: %s", convertTxID)

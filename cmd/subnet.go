@@ -2,13 +2,16 @@ package cmd
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"strings"
 
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
 	"github.com/ava-labs/avalanchego/utils/units"
+	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
@@ -23,6 +26,7 @@ var (
 	subnetManager      string
 	subnetValidatorIPs string
 	subnetValBalance   float64
+	subnetMockVal      bool
 )
 
 var subnetCmd = &cobra.Command{
@@ -145,10 +149,21 @@ var subnetConvertL1Cmd = &cobra.Command{
 			}
 		}
 
-		// Gather validator info from IPs
-		validators, err := gatherL1Validators(ctx, subnetValidatorIPs, subnetValBalance)
-		if err != nil {
-			return err
+		// Gather validator info from IPs or generate mock
+		var validators []*txs.ConvertSubnetToL1Validator
+		if subnetMockVal {
+			// Generate a mock validator with valid BLS credentials for testing
+			mockVal, err := generateMockValidator(subnetValBalance)
+			if err != nil {
+				return fmt.Errorf("failed to generate mock validator: %w", err)
+			}
+			validators = []*txs.ConvertSubnetToL1Validator{mockVal}
+			fmt.Printf("Using mock validator (NodeID: %x)\n", mockVal.NodeID)
+		} else {
+			validators, err = gatherL1Validators(ctx, subnetValidatorIPs, subnetValBalance)
+			if err != nil {
+				return err
+			}
 		}
 
 		keyBytes, err := loadKey()
@@ -216,6 +231,33 @@ func parseValidatorIPs(ipList string) []string {
 	return ips
 }
 
+// generateMockValidator creates a mock validator with valid BLS credentials for testing.
+func generateMockValidator(balance float64) (*txs.ConvertSubnetToL1Validator, error) {
+	// Generate random NodeID (20 bytes)
+	nodeID := make([]byte, ids.NodeIDLen)
+	if _, err := rand.Read(nodeID); err != nil {
+		return nil, fmt.Errorf("failed to generate node ID: %w", err)
+	}
+
+	// Generate BLS signer and proof of possession
+	blsSigner, err := localsigner.New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate BLS signer: %w", err)
+	}
+
+	pop, err := signer.NewProofOfPossession(blsSigner)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate proof of possession: %w", err)
+	}
+
+	return &txs.ConvertSubnetToL1Validator{
+		NodeID:  nodeID,
+		Weight:  units.Schmeckle,
+		Balance: uint64(balance * float64(units.Avax)),
+		Signer:  *pop,
+	}, nil
+}
+
 func init() {
 	rootCmd.AddCommand(subnetCmd)
 
@@ -233,4 +275,5 @@ func init() {
 	subnetConvertL1Cmd.Flags().StringVar(&subnetManager, "manager", "", "Validator manager address (hex)")
 	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorIPs, "validators", "", "Comma-separated validator IPs")
 	subnetConvertL1Cmd.Flags().Float64Var(&subnetValBalance, "validator-balance", 1.0, "Balance per validator in AVAX")
+	subnetConvertL1Cmd.Flags().BoolVar(&subnetMockVal, "mock-validator", false, "Use a mock validator (for testing)")
 }

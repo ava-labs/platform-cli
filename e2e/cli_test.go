@@ -419,19 +419,13 @@ func TestCLIL1Lifecycle(t *testing.T) {
 	}
 	t.Logf("  Chain ID: %s", chainID)
 
-	// Step 4: Convert subnet to L1
-	// Note: On Fuji without validators, this will fail with "must include at least one validator"
-	// This tests the full flow including convert-l1, but skips gracefully when validators unavailable
+	// Step 4: Convert subnet to L1 using mock validator
 	t.Log("Step 3: Converting subnet to L1...")
 	convertOut, stderr, err := runCLI(t, "subnet", "convert-l1",
 		"--subnet-id", subnetID,
-		"--chain-id", chainID)
+		"--chain-id", chainID,
+		"--mock-validator")
 	if err != nil {
-		if strings.Contains(stderr, "must include at least one validator") {
-			t.Log("  Skipping conversion - requires validators (expected on Fuji without nodes)")
-			t.Log("=== L1 Lifecycle Partial (subnet + chain created) ===")
-			return
-		}
 		t.Fatalf("subnet convert-l1 failed: %v\nstderr: %s", err, stderr)
 	}
 
