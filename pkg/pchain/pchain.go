@@ -9,7 +9,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
-	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
@@ -80,12 +79,12 @@ func Import(ctx context.Context, w *wallet.Wallet, sourceChainID ids.ID) (ids.ID
 
 // AddValidatorConfig holds configuration for adding a primary network validator.
 type AddValidatorConfig struct {
-	NodeID    ids.NodeID
-	Start     time.Time
-	End       time.Time
-	StakeAmt  uint64 // in nAVAX
-	RewardAddr ids.ShortID
-	DelegationFee uint32 // in basis points (10000 = 100%)
+	NodeID        ids.NodeID
+	Start         time.Time
+	End           time.Time
+	StakeAmt      uint64 // in nAVAX (min 2000 AVAX = 2000_000_000_000)
+	RewardAddr    ids.ShortID
+	DelegationFee uint32 // in basis points (10000 = 100%, 200 = 2%)
 }
 
 // AddValidator adds a validator to the primary network (IssueAddValidatorTx).
@@ -116,7 +115,7 @@ type AddDelegatorConfig struct {
 	NodeID     ids.NodeID
 	Start      time.Time
 	End        time.Time
-	StakeAmt   uint64 // in nAVAX
+	StakeAmt   uint64 // in nAVAX (min 25 AVAX = 25_000_000_000)
 	RewardAddr ids.ShortID
 }
 
@@ -138,130 +137,6 @@ func AddDelegator(ctx context.Context, w *wallet.Wallet, cfg AddDelegatorConfig)
 	)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue AddDelegatorTx: %w", err)
-	}
-	return tx.ID(), nil
-}
-
-// =============================================================================
-// Subnet Validators (Legacy Permissioned)
-// =============================================================================
-
-// AddSubnetValidatorConfig holds configuration for adding a subnet validator.
-type AddSubnetValidatorConfig struct {
-	NodeID   ids.NodeID
-	SubnetID ids.ID
-	Start    time.Time
-	End      time.Time
-	Weight   uint64
-}
-
-// AddSubnetValidator adds a validator to a subnet (IssueAddSubnetValidatorTx).
-func AddSubnetValidator(ctx context.Context, w *wallet.Wallet, cfg AddSubnetValidatorConfig) (ids.ID, error) {
-	tx, err := w.PWallet().IssueAddSubnetValidatorTx(
-		&txs.SubnetValidator{
-			Validator: txs.Validator{
-				NodeID: cfg.NodeID,
-				Start:  uint64(cfg.Start.Unix()),
-				End:    uint64(cfg.End.Unix()),
-				Wght:   cfg.Weight,
-			},
-			Subnet: cfg.SubnetID,
-		},
-	)
-	if err != nil {
-		return ids.Empty, fmt.Errorf("failed to issue AddSubnetValidatorTx: %w", err)
-	}
-	return tx.ID(), nil
-}
-
-// RemoveSubnetValidator removes a validator from a subnet (IssueRemoveSubnetValidatorTx).
-func RemoveSubnetValidator(ctx context.Context, w *wallet.Wallet, nodeID ids.NodeID, subnetID ids.ID) (ids.ID, error) {
-	tx, err := w.PWallet().IssueRemoveSubnetValidatorTx(nodeID, subnetID)
-	if err != nil {
-		return ids.Empty, fmt.Errorf("failed to issue RemoveSubnetValidatorTx: %w", err)
-	}
-	return tx.ID(), nil
-}
-
-// =============================================================================
-// Permissionless Staking (Elastic Subnets)
-// =============================================================================
-
-// AddPermissionlessValidatorConfig holds configuration for adding a permissionless validator.
-type AddPermissionlessValidatorConfig struct {
-	NodeID        ids.NodeID
-	SubnetID      ids.ID
-	Start         time.Time
-	End           time.Time
-	StakeAmt      uint64
-	AssetID       ids.ID
-	RewardAddr    ids.ShortID
-	DelegationFee uint32
-	Signer        signer.Signer // BLS signer for primary network, empty for subnets
-}
-
-// AddPermissionlessValidator adds a permissionless validator (IssueAddPermissionlessValidatorTx).
-func AddPermissionlessValidator(ctx context.Context, w *wallet.Wallet, cfg AddPermissionlessValidatorConfig) (ids.ID, error) {
-	rewardsOwner := &secp256k1fx.OutputOwners{
-		Threshold: 1,
-		Addrs:     []ids.ShortID{cfg.RewardAddr},
-	}
-
-	tx, err := w.PWallet().IssueAddPermissionlessValidatorTx(
-		&txs.SubnetValidator{
-			Validator: txs.Validator{
-				NodeID: cfg.NodeID,
-				Start:  uint64(cfg.Start.Unix()),
-				End:    uint64(cfg.End.Unix()),
-				Wght:   cfg.StakeAmt,
-			},
-			Subnet: cfg.SubnetID,
-		},
-		cfg.Signer,
-		cfg.AssetID,
-		rewardsOwner,
-		rewardsOwner,
-		cfg.DelegationFee,
-	)
-	if err != nil {
-		return ids.Empty, fmt.Errorf("failed to issue AddPermissionlessValidatorTx: %w", err)
-	}
-	return tx.ID(), nil
-}
-
-// AddPermissionlessDelegatorConfig holds configuration for adding a permissionless delegator.
-type AddPermissionlessDelegatorConfig struct {
-	NodeID     ids.NodeID
-	SubnetID   ids.ID
-	Start      time.Time
-	End        time.Time
-	StakeAmt   uint64
-	AssetID    ids.ID
-	RewardAddr ids.ShortID
-}
-
-// AddPermissionlessDelegator adds a permissionless delegator (IssueAddPermissionlessDelegatorTx).
-func AddPermissionlessDelegator(ctx context.Context, w *wallet.Wallet, cfg AddPermissionlessDelegatorConfig) (ids.ID, error) {
-	rewardsOwner := &secp256k1fx.OutputOwners{
-		Threshold: 1,
-		Addrs:     []ids.ShortID{cfg.RewardAddr},
-	}
-
-	tx, err := w.PWallet().IssueAddPermissionlessDelegatorTx(
-		&txs.SubnetValidator{
-			Validator: txs.Validator{
-				NodeID: cfg.NodeID,
-				Start:  uint64(cfg.Start.Unix()),
-				End:    uint64(cfg.End.Unix()),
-				Wght:   cfg.StakeAmt,
-			},
-			Subnet: cfg.SubnetID,
-		},
-		cfg.AssetID,
-		rewardsOwner,
-	)
-	if err != nil {
-		return ids.Empty, fmt.Errorf("failed to issue AddPermissionlessDelegatorTx: %w", err)
 	}
 	return tx.ID(), nil
 }
@@ -294,48 +169,6 @@ func TransferSubnetOwnership(ctx context.Context, w *wallet.Wallet, subnetID ids
 	tx, err := w.PWallet().IssueTransferSubnetOwnershipTx(subnetID, owner)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue TransferSubnetOwnershipTx: %w", err)
-	}
-	return tx.ID(), nil
-}
-
-// TransformSubnetConfig holds configuration for transforming a subnet to elastic.
-type TransformSubnetConfig struct {
-	SubnetID               ids.ID
-	AssetID                ids.ID
-	InitialSupply          uint64
-	MaxSupply              uint64
-	MinConsumptionRate     uint64
-	MaxConsumptionRate     uint64
-	MinValidatorStake      uint64
-	MaxValidatorStake      uint64
-	MinStakeDuration       time.Duration
-	MaxStakeDuration       time.Duration
-	MinDelegationFee       uint32
-	MinDelegatorStake      uint64
-	MaxValidatorWeightFactor byte
-	UptimeRequirement      uint32
-}
-
-// TransformSubnet transforms a subnet to elastic (IssueTransformSubnetTx).
-func TransformSubnet(ctx context.Context, w *wallet.Wallet, cfg TransformSubnetConfig) (ids.ID, error) {
-	tx, err := w.PWallet().IssueTransformSubnetTx(
-		cfg.SubnetID,
-		cfg.AssetID,
-		cfg.InitialSupply,
-		cfg.MaxSupply,
-		cfg.MinConsumptionRate,
-		cfg.MaxConsumptionRate,
-		cfg.MinValidatorStake,
-		cfg.MaxValidatorStake,
-		cfg.MinStakeDuration,
-		cfg.MaxStakeDuration,
-		cfg.MinDelegationFee,
-		cfg.MinDelegatorStake,
-		cfg.MaxValidatorWeightFactor,
-		cfg.UptimeRequirement,
-	)
-	if err != nil {
-		return ids.Empty, fmt.Errorf("failed to issue TransformSubnetTx: %w", err)
 	}
 	return tx.ID(), nil
 }

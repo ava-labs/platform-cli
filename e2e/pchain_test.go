@@ -16,7 +16,6 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
-	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/platform-cli/pkg/crosschain"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
@@ -262,7 +261,7 @@ func TestCreateChain(t *testing.T) {
 }
 
 // =============================================================================
-// Validator Tests (Primary Network - requires significant stake)
+// Primary Network Staking Tests (parameter validation only)
 // =============================================================================
 
 func TestAddValidatorParams(t *testing.T) {
@@ -307,78 +306,6 @@ func TestAddDelegatorParams(t *testing.T) {
 	}
 
 	t.Logf("Delegator config valid: NodeID=%s, Stake=%d nAVAX", cfg.NodeID, cfg.StakeAmt)
-}
-
-// =============================================================================
-// Subnet Validator Tests
-// =============================================================================
-
-func TestAddSubnetValidator(t *testing.T) {
-	skipIfDisabled(t)
-
-	ctx := context.Background()
-	w, netConfig := getTestWallet(t)
-
-	// Create subnet first
-	subnetID, err := pchain.CreateSubnet(ctx, w)
-	if err != nil {
-		t.Fatalf("CreateSubnet failed: %v", err)
-	}
-	t.Logf("Created Subnet ID: %s", subnetID)
-
-	time.Sleep(2 * time.Second)
-
-	// Create subnet wallet
-	key, _ := wallet.ToPrivateKey(ewoqPrivateKey)
-	subnetWallet, err := wallet.NewWalletWithSubnet(ctx, key, netConfig, subnetID)
-	if err != nil {
-		t.Fatalf("failed to create subnet wallet: %v", err)
-	}
-
-	// Note: This will fail without a valid primary network validator
-	// Just testing the call mechanics
-	nodeID := ids.GenerateTestNodeID()
-
-	_, err = pchain.AddSubnetValidator(ctx, subnetWallet, pchain.AddSubnetValidatorConfig{
-		NodeID:   nodeID,
-		SubnetID: subnetID,
-		Start:    time.Now().Add(1 * time.Minute),
-		End:      time.Now().Add(24 * time.Hour),
-		Weight:   1,
-	})
-
-	// Expected to fail because nodeID is not a primary network validator
-	if err == nil {
-		t.Log("AddSubnetValidator succeeded (node must be primary network validator)")
-	} else {
-		t.Logf("AddSubnetValidator failed as expected (node not primary validator): %v", err)
-	}
-}
-
-// =============================================================================
-// Permissionless Validator Tests
-// =============================================================================
-
-func TestPermissionlessValidatorParams(t *testing.T) {
-	skipIfDisabled(t)
-
-	cfg := pchain.AddPermissionlessValidatorConfig{
-		NodeID:        ids.GenerateTestNodeID(),
-		SubnetID:      ids.GenerateTestID(),
-		Start:         time.Now().Add(1 * time.Minute),
-		End:           time.Now().Add(14 * 24 * time.Hour),
-		StakeAmt:      1_000_000_000, // 1 AVAX
-		AssetID:       ids.GenerateTestID(),
-		RewardAddr:    ids.GenerateTestShortID(),
-		DelegationFee: 200,
-		Signer:        &signer.Empty{},
-	}
-
-	if cfg.DelegationFee > 10000 {
-		t.Error("delegation fee cannot exceed 100%")
-	}
-
-	t.Logf("Permissionless validator config valid: NodeID=%s", cfg.NodeID)
 }
 
 // =============================================================================

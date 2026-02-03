@@ -64,20 +64,21 @@ platform-cli transfer export --from p --to c --amount <AVAX>
 platform-cli transfer import --from p --to c
 ```
 
-### Validators
+### Primary Network Staking
 
 ```bash
-# Primary network
-platform-cli validator add --node-id <ID> --stake <AVAX> --duration 336h
-platform-cli validator delegate --node-id <ID> --stake <AVAX> --duration 336h
+# Add validator (min 2000 AVAX, min 14 days)
+platform-cli validator add \
+  --node-id NodeID-... \
+  --stake 2000 \
+  --duration 336h \
+  --delegation-fee 0.02
 
-# Subnet validators (permissioned)
-platform-cli validator add-subnet --node-id <ID> --subnet-id <ID> --duration 336h
-platform-cli validator remove-subnet --node-id <ID> --subnet-id <ID>
-
-# Elastic subnet validators (permissionless)
-platform-cli validator add-permissionless --node-id <ID> --subnet-id <ID> --asset-id <ID> --stake <amount>
-platform-cli validator delegate-permissionless --node-id <ID> --subnet-id <ID> --asset-id <ID> --stake <amount>
+# Delegate to validator (min 25 AVAX)
+platform-cli validator delegate \
+  --node-id NodeID-... \
+  --stake 100 \
+  --duration 336h
 ```
 
 ### Subnets
@@ -138,9 +139,6 @@ go test -v ./e2e/... -network=local
 
 # Run e2e tests against Fuji
 go test -v ./e2e/... -network=fuji
-
-# Skip e2e tests
-go test -v ./e2e/... -skip-e2e
 ```
 
 ## P-Chain Operations Reference
@@ -152,10 +150,6 @@ go test -v ./e2e/... -skip-e2e
 | Import | `transfer import` | `IssueImportTx` |
 | Add Validator | `validator add` | `IssueAddValidatorTx` |
 | Add Delegator | `validator delegate` | `IssueAddDelegatorTx` |
-| Add Subnet Validator | `validator add-subnet` | `IssueAddSubnetValidatorTx` |
-| Remove Subnet Validator | `validator remove-subnet` | `IssueRemoveSubnetValidatorTx` |
-| Add Permissionless Validator | `validator add-permissionless` | `IssueAddPermissionlessValidatorTx` |
-| Add Permissionless Delegator | `validator delegate-permissionless` | `IssueAddPermissionlessDelegatorTx` |
 | Create Subnet | `subnet create` | `IssueCreateSubnetTx` |
 | Transfer Subnet Ownership | `subnet transfer-ownership` | `IssueTransferSubnetOwnershipTx` |
 | Convert to L1 | `subnet convert-l1` | `IssueConvertSubnetToL1Tx` |
