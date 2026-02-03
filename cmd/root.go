@@ -16,9 +16,9 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "pchain-cli",
+	Use:   "platform-cli",
 	Short: "Avalanche P-Chain command-line utilities",
-	Long: `pchain-cli provides utilities for working with the Avalanche P-Chain.
+	Long: `platform-cli provides utilities for working with the Avalanche P-Chain.
 
 Commands include:
   wallet  - Wallet operations (balance, address)
@@ -28,13 +28,13 @@ Commands include:
 
 Example usage:
   # Check wallet balance
-  pchain-cli wallet balance --private-key "PrivateKey-..."
+  platform-cli wallet balance --private-key "PrivateKey-..."
 
   # Get node ID and BLS key
-  pchain-cli node info --ip 127.0.0.1
+  platform-cli node info --ip 127.0.0.1
 
   # Create a subnet
-  pchain-cli subnet create --network fuji --private-key "PrivateKey-..."`,
+  platform-cli subnet create --network fuji --private-key "PrivateKey-..."`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
