@@ -1,6 +1,6 @@
 # platform-cli
 
-Command-line utilities for Avalanche P-Chain operations.
+Minimal CLI for Avalanche P-Chain operations.
 
 ## Installation
 
@@ -16,110 +16,151 @@ cd platform-cli
 go build -o platform-cli .
 ```
 
-## Key Management
-
-Keys are stored in `~/.platform-cli/keys.json`. The built-in `ewoq` key is always available for local/test networks.
+## Quick Start
 
 ```bash
-# Generate a new key
+# Generate a key
 platform-cli keys generate mykey
 
-# Generate an encrypted key
-platform-cli keys generate mykey --encrypt
-
-# Import an existing key
-platform-cli keys import mykey --private-key "PrivateKey-..."
-
-# List all keys
-platform-cli keys list
-
-# Set default key
-platform-cli keys default mykey
-
-# Export a key
-platform-cli keys export mykey
-
-# Delete a key
-platform-cli keys delete mykey
-```
-
-## Wallet Operations
-
-```bash
-# Show wallet addresses (uses default key)
-platform-cli wallet address
-
-# Show wallet addresses with specific key
+# Check your address
 platform-cli wallet address --key-name mykey
 
-# Check P-Chain balance
-platform-cli wallet balance --key-name mykey --network fuji
-```
-
-## Cross-Chain Transfers
-
-Transfer AVAX between P-Chain and C-Chain.
-
-```bash
-# Transfer from P-Chain to C-Chain (full transfer)
-platform-cli transfer p-to-c --amount 1.0 --key-name mykey --network fuji
-
-# Transfer from C-Chain to P-Chain (full transfer)
-platform-cli transfer c-to-p --amount 1.0 --key-name mykey --network fuji
-
-# Manual two-step transfer (export then import)
-platform-cli transfer export --from p --to c --amount 1.0 --key-name mykey
-platform-cli transfer import --from p --to c --key-name mykey
-```
-
-## P-Chain Operations
-
-### Subnet Management
-
-```bash
-# Create a new subnet
+# Create a subnet
 platform-cli subnet create --network fuji --key-name mykey
-
-# Convert subnet to L1
-platform-cli subnet convert \
-  --network fuji \
-  --key-name mykey \
-  --subnet-id "..." \
-  --chain-id "..." \
-  --validators "10.0.0.1,10.0.0.2"
 ```
 
-### Chain Management
+## Commands
+
+### Key Management
 
 ```bash
-# Create a new chain on a subnet
-platform-cli chain create \
-  --network fuji \
-  --key-name mykey \
-  --subnet-id "..." \
-  --genesis genesis.json \
-  --name "mychain"
+platform-cli keys generate <name> [--encrypt]
+platform-cli keys import <name> --private-key "PrivateKey-..."
+platform-cli keys list [--show-addresses]
+platform-cli keys export <name> [--format cb58|hex]
+platform-cli keys delete <name> [--force]
+platform-cli keys default [<name>]
 ```
 
-### Node Information
+### Wallet
 
 ```bash
-# Get node ID and BLS key
-platform-cli node info --ip 127.0.0.1
+platform-cli wallet address
+platform-cli wallet balance
 ```
+
+### Transfers
+
+```bash
+# P-Chain to P-Chain
+platform-cli transfer send --to <address> --amount <AVAX>
+
+# Cross-chain (P <-> C)
+platform-cli transfer p-to-c --amount <AVAX>
+platform-cli transfer c-to-p --amount <AVAX>
+
+# Manual export/import
+platform-cli transfer export --from p --to c --amount <AVAX>
+platform-cli transfer import --from p --to c
+```
+
+### Validators
+
+```bash
+# Primary network
+platform-cli validator add --node-id <ID> --stake <AVAX> --duration 336h
+platform-cli validator delegate --node-id <ID> --stake <AVAX> --duration 336h
+
+# Subnet validators (permissioned)
+platform-cli validator add-subnet --node-id <ID> --subnet-id <ID> --duration 336h
+platform-cli validator remove-subnet --node-id <ID> --subnet-id <ID>
+
+# Elastic subnet validators (permissionless)
+platform-cli validator add-permissionless --node-id <ID> --subnet-id <ID> --asset-id <ID> --stake <amount>
+platform-cli validator delegate-permissionless --node-id <ID> --subnet-id <ID> --asset-id <ID> --stake <amount>
+```
+
+### Subnets
+
+```bash
+platform-cli subnet create
+platform-cli subnet transfer-ownership --subnet-id <ID> --new-owner <address>
+platform-cli subnet convert-l1 --subnet-id <ID> --chain-id <ID> [--validators <IPs>]
+```
+
+### L1 Validators
+
+```bash
+platform-cli l1 register-validator --balance <AVAX> --pop <hex> --message <hex>
+platform-cli l1 set-weight --message <hex>
+platform-cli l1 add-balance --validation-id <ID> --amount <AVAX>
+platform-cli l1 disable-validator --validation-id <ID>
+```
+
+### Chains
+
+```bash
+platform-cli chain create --subnet-id <ID> --genesis <file> --name <name>
+```
+
+### Node Info
+
+```bash
+platform-cli node info --ip <IP>
+```
+
+## Networks
+
+| Network | Flag | RPC URL |
+|---------|------|---------|
+| Local | `--network local` | `http://127.0.0.1:9650` |
+| Fuji | `--network fuji` | `https://api.avax-test.network` |
+| Mainnet | `--network mainnet` | `https://api.avax.network` |
 
 ## Key Loading Priority
 
-1. `--private-key` flag (direct key input)
-2. `--key-name` flag (load from keystore)
-3. Default key from keystore (if set)
-4. `AVALANCHE_PRIVATE_KEY` environment variable
+1. `--private-key` flag
+2. `--key-name` flag
+3. Default key from keystore
+4. `AVALANCHE_PRIVATE_KEY` env var
 
-For encrypted keys, set `PLATFORM_CLI_KEY_PASSWORD` environment variable or enter password when prompted.
+For encrypted keys: `PLATFORM_CLI_KEY_PASSWORD` env var or interactive prompt.
 
-## Private Key Formats
+## Built-in Keys
 
-Supported formats:
-- `PrivateKey-ewoqjP7PxY4yr3iLTp...` (Avalanche CB58)
-- `0x56289e99c94b6912bfc12adc...` (Ethereum hex)
-- Raw CB58 or hex strings
+- `ewoq` - Pre-funded test key for local networks
+
+## Testing
+
+```bash
+# Run e2e tests against local network
+go test -v ./e2e/... -network=local
+
+# Run e2e tests against Fuji
+go test -v ./e2e/... -network=fuji
+
+# Skip e2e tests
+go test -v ./e2e/... -skip-e2e
+```
+
+## P-Chain Operations Reference
+
+| Operation | Command | SDK Method |
+|-----------|---------|------------|
+| Send AVAX | `transfer send` | `IssueBaseTx` |
+| Export | `transfer export` | `IssueExportTx` |
+| Import | `transfer import` | `IssueImportTx` |
+| Add Validator | `validator add` | `IssueAddValidatorTx` |
+| Add Delegator | `validator delegate` | `IssueAddDelegatorTx` |
+| Add Subnet Validator | `validator add-subnet` | `IssueAddSubnetValidatorTx` |
+| Remove Subnet Validator | `validator remove-subnet` | `IssueRemoveSubnetValidatorTx` |
+| Add Permissionless Validator | `validator add-permissionless` | `IssueAddPermissionlessValidatorTx` |
+| Add Permissionless Delegator | `validator delegate-permissionless` | `IssueAddPermissionlessDelegatorTx` |
+| Create Subnet | `subnet create` | `IssueCreateSubnetTx` |
+| Transfer Subnet Ownership | `subnet transfer-ownership` | `IssueTransferSubnetOwnershipTx` |
+| Convert to L1 | `subnet convert-l1` | `IssueConvertSubnetToL1Tx` |
+| Register L1 Validator | `l1 register-validator` | `IssueRegisterL1ValidatorTx` |
+| Set L1 Validator Weight | `l1 set-weight` | `IssueSetL1ValidatorWeightTx` |
+| Increase L1 Balance | `l1 add-balance` | `IssueIncreaseL1ValidatorBalanceTx` |
+| Disable L1 Validator | `l1 disable-validator` | `IssueDisableL1ValidatorTx` |
+| Create Chain | `chain create` | `IssueCreateChainTx` |

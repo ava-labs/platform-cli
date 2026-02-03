@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/platform-cli/pkg/crosschain"
 	"github.com/ava-labs/platform-cli/pkg/network"
+	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
 	"github.com/spf13/cobra"
 )
@@ -14,12 +16,61 @@ var (
 	transferAmount float64
 	transferFrom   string
 	transferTo     string
+	transferDest   string
 )
 
 var transferCmd = &cobra.Command{
 	Use:   "transfer",
-	Short: "Cross-chain transfers",
-	Long:  `Cross-chain transfer operations between P-Chain and C-Chain.`,
+	Short: "Transfer AVAX",
+	Long:  `Transfer AVAX on P-Chain or between P-Chain and C-Chain.`,
+}
+
+var transferSendCmd = &cobra.Command{
+	Use:   "send",
+	Short: "Send AVAX on P-Chain",
+	Long:  `Send AVAX to another address on the P-Chain.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+
+		if transferAmount <= 0 {
+			return fmt.Errorf("--amount is required and must be positive")
+		}
+		if transferDest == "" {
+			return fmt.Errorf("--to is required")
+		}
+
+		destAddr, err := ids.ShortFromString(transferDest)
+		if err != nil {
+			return fmt.Errorf("invalid destination address: %w", err)
+		}
+
+		keyBytes, err := loadKey()
+		if err != nil {
+			return err
+		}
+		key, err := wallet.ToPrivateKey(keyBytes)
+		if err != nil {
+			return err
+		}
+
+		netConfig := network.GetConfig(networkName)
+		w, err := wallet.NewWallet(ctx, key, netConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create wallet: %w", err)
+		}
+
+		amountNAVAX := uint64(transferAmount * 1e9)
+
+		fmt.Printf("Sending %.9f AVAX to %s...\n", transferAmount, destAddr)
+
+		txID, err := pchain.Send(ctx, w, destAddr, amountNAVAX)
+		if err != nil {
+			return fmt.Errorf("transfer failed: %w", err)
+		}
+
+		fmt.Printf("TX ID: %s\n", txID)
+		return nil
+	},
 }
 
 var transferPToCCmd = &cobra.Command{
@@ -228,10 +279,15 @@ var transferImportCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(transferCmd)
+	transferCmd.AddCommand(transferSendCmd)
 	transferCmd.AddCommand(transferPToCCmd)
 	transferCmd.AddCommand(transferCToPCmd)
 	transferCmd.AddCommand(transferExportCmd)
 	transferCmd.AddCommand(transferImportCmd)
+
+	// Flags for P-Chain send
+	transferSendCmd.Flags().Float64Var(&transferAmount, "amount", 0, "Amount in AVAX to send")
+	transferSendCmd.Flags().StringVar(&transferDest, "to", "", "Destination P-Chain address")
 
 	// Flags for combined transfer commands
 	transferPToCCmd.Flags().Float64Var(&transferAmount, "amount", 0, "Amount in AVAX to transfer")
