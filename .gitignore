@@ -1,5 +1,7 @@
 # Binaries
 platform-cli
+platform
+e2e.test
 *.exe
 
 # IDE
@@ -10,4 +12,10 @@ platform-cli
 # OS
 .DS_Store
 Thumbs.db
-platform
+
+# AI context (local only)
+CLAUDE.md
+
+# Test artifacts
+coverage.out
+*.test
