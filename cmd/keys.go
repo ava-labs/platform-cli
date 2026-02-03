@@ -27,7 +27,7 @@ var (
 var keysCmd = &cobra.Command{
 	Use:   "keys",
 	Short: "Key management operations",
-	Long: `Manage persistent keys stored in ~/.platform-cli/keys/
+	Long: `Manage persistent keys stored in ~/.platform/keys/
 
 Keys can be stored encrypted (with a password) or unencrypted.
 Encrypted keys use Argon2id for key derivation and AES-256-GCM for encryption.
@@ -49,14 +49,9 @@ If --private-key is not provided, you will be prompted to enter it (hidden input
 If --encrypt is specified, you will be prompted for a password.
 
 Examples:
-  # Import with flag
-  platform-cli keys import --name mykey --private-key "PrivateKey-..."
-
-  # Import with hidden input
-  platform-cli keys import --name mykey
-
-  # Import with encryption
-  platform-cli keys import --name mykey --encrypt`,
+  platform keys import --name mykey --private-key "PrivateKey-..."
+  platform keys import --name mykey
+  platform keys import --name mykey --encrypt`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
@@ -130,11 +125,8 @@ var keysGenerateCmd = &cobra.Command{
 If --encrypt is specified, you will be prompted for a password.
 
 Examples:
-  # Generate unencrypted key
-  platform-cli keys generate --name mykey
-
-  # Generate encrypted key
-  platform-cli keys generate --name mykey --encrypt`,
+  platform keys generate --name mykey
+  platform keys generate --name mykey --encrypt`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
@@ -179,7 +171,7 @@ Examples:
 		}
 
 		fmt.Println()
-		fmt.Println("WARNING: Back up your key! Use 'platform-cli keys export' to view the private key.")
+		fmt.Println("WARNING: Back up your key! Use 'platform keys export' to view the private key.")
 
 		return nil
 	},
@@ -193,8 +185,8 @@ var keysListCmd = &cobra.Command{
 Use --show-addresses to display P-Chain and EVM addresses.
 
 Examples:
-  platform-cli keys list
-  platform-cli keys list --show-addresses`,
+  platform keys list
+  platform keys list --show-addresses`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ks, err := keystore.Load()
 		if err != nil {
@@ -203,7 +195,7 @@ Examples:
 
 		entries := ks.ListKeys()
 		if len(entries) == 0 {
-			fmt.Println("No keys found. Use 'platform-cli keys import' or 'platform-cli keys generate' to add a key.")
+			fmt.Println("No keys found. Use 'platform keys import' or 'platform keys generate' to add a key.")
 			return nil
 		}
 
@@ -263,8 +255,8 @@ WARNING: This will display your private key in plaintext!
 If the key is encrypted, you will be prompted for the password.
 
 Examples:
-  platform-cli keys export --name mykey
-  platform-cli keys export --name mykey --format hex`,
+  platform keys export --name mykey
+  platform keys export --name mykey --format hex`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
@@ -307,8 +299,8 @@ var keysDeleteCmd = &cobra.Command{
 This action is irreversible! Make sure you have a backup of your key.
 
 Examples:
-  platform-cli keys delete --name mykey
-  platform-cli keys delete --name mykey --force`,
+  platform keys delete --name mykey
+  platform keys delete --name mykey --force`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
@@ -358,8 +350,8 @@ When no --name is provided, shows the current default key.
 When --name is provided, sets that key as the default.
 
 Examples:
-  platform-cli keys default
-  platform-cli keys default --name mykey`,
+  platform keys default
+  platform keys default --name mykey`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ks, err := keystore.Load()
 		if err != nil {

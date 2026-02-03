@@ -1,4 +1,4 @@
-# platform-cli
+# platform
 
 Minimal CLI for Avalanche P-Chain operations.
 
@@ -13,20 +13,20 @@ Or build from source:
 ```bash
 git clone https://github.com/ava-labs/platform-cli.git
 cd platform-cli
-go build -o platform-cli .
+go build -o platform .
 ```
 
 ## Quick Start
 
 ```bash
 # Generate a key
-platform-cli keys generate mykey
+platform keys generate mykey
 
 # Check your address
-platform-cli wallet address --key-name mykey
+platform wallet address --key-name mykey
 
 # Create a subnet
-platform-cli subnet create --network fuji --key-name mykey
+platform subnet create --network fuji --key-name mykey
 ```
 
 ## Commands
@@ -34,48 +34,48 @@ platform-cli subnet create --network fuji --key-name mykey
 ### Key Management
 
 ```bash
-platform-cli keys generate <name> [--encrypt]
-platform-cli keys import <name> --private-key "PrivateKey-..."
-platform-cli keys list [--show-addresses]
-platform-cli keys export <name> [--format cb58|hex]
-platform-cli keys delete <name> [--force]
-platform-cli keys default [<name>]
+platform keys generate <name> [--encrypt]
+platform keys import <name> --private-key "PrivateKey-..."
+platform keys list [--show-addresses]
+platform keys export <name> [--format cb58|hex]
+platform keys delete <name> [--force]
+platform keys default [<name>]
 ```
 
 ### Wallet
 
 ```bash
-platform-cli wallet address
-platform-cli wallet balance
+platform wallet address
+platform wallet balance
 ```
 
 ### Transfers
 
 ```bash
 # P-Chain to P-Chain
-platform-cli transfer send --to <address> --amount <AVAX>
+platform transfer send --to <address> --amount <AVAX>
 
 # Cross-chain (P <-> C)
-platform-cli transfer p-to-c --amount <AVAX>
-platform-cli transfer c-to-p --amount <AVAX>
+platform transfer p-to-c --amount <AVAX>
+platform transfer c-to-p --amount <AVAX>
 
 # Manual export/import
-platform-cli transfer export --from p --to c --amount <AVAX>
-platform-cli transfer import --from p --to c
+platform transfer export --from p --to c --amount <AVAX>
+platform transfer import --from p --to c
 ```
 
 ### Primary Network Staking
 
 ```bash
 # Add validator (min 2000 AVAX, min 14 days)
-platform-cli validator add \
+platform validator add \
   --node-id NodeID-... \
   --stake 2000 \
   --duration 336h \
   --delegation-fee 0.02
 
 # Delegate to validator (min 25 AVAX)
-platform-cli validator delegate \
+platform validator delegate \
   --node-id NodeID-... \
   --stake 100 \
   --duration 336h
@@ -84,30 +84,30 @@ platform-cli validator delegate \
 ### Subnets
 
 ```bash
-platform-cli subnet create
-platform-cli subnet transfer-ownership --subnet-id <ID> --new-owner <address>
-platform-cli subnet convert-l1 --subnet-id <ID> --chain-id <ID> [--validators <IPs>]
+platform subnet create
+platform subnet transfer-ownership --subnet-id <ID> --new-owner <address>
+platform subnet convert-l1 --subnet-id <ID> --chain-id <ID> [--validators <IPs>]
 ```
 
 ### L1 Validators
 
 ```bash
-platform-cli l1 register-validator --balance <AVAX> --pop <hex> --message <hex>
-platform-cli l1 set-weight --message <hex>
-platform-cli l1 add-balance --validation-id <ID> --amount <AVAX>
-platform-cli l1 disable-validator --validation-id <ID>
+platform l1 register-validator --balance <AVAX> --pop <hex> --message <hex>
+platform l1 set-weight --message <hex>
+platform l1 add-balance --validation-id <ID> --amount <AVAX>
+platform l1 disable-validator --validation-id <ID>
 ```
 
 ### Chains
 
 ```bash
-platform-cli chain create --subnet-id <ID> --genesis <file> --name <name>
+platform chain create --subnet-id <ID> --genesis <file> --name <name>
 ```
 
 ### Node Info
 
 ```bash
-platform-cli node info --ip <IP>
+platform node info --ip <IP>
 ```
 
 ## Networks

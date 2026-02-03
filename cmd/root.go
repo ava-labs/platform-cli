@@ -18,37 +18,15 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "platform-cli",
-	Short: "Avalanche P-Chain command-line utilities",
-	Long: `platform-cli provides utilities for working with the Avalanche P-Chain.
-
-Commands include:
-  wallet  - Wallet operations (balance, address)
-  subnet  - Subnet management (create)
-  chain   - Chain management (create)
-  node    - Node information (info)
-  keys    - Key management (import, generate, list, export, delete)
-
-Key loading priority:
-  1. --private-key flag (direct key input)
-  2. --key-name flag (load from keystore)
-  3. Default key from keystore (if set)
-  4. AVALANCHE_PRIVATE_KEY environment variable
-
-For encrypted keys, set PLATFORM_CLI_KEY_PASSWORD environment variable.
+	Use:   "platform",
+	Short: "Avalanche P-Chain CLI",
+	Long: `Avalanche P-Chain operations: staking, subnets, transfers, and L1 validators.
 
 Example usage:
-  # Check wallet balance using keystore
-  platform-cli wallet balance --key-name mykey
-
-  # Check wallet balance with direct key
-  platform-cli wallet balance --private-key "PrivateKey-..."
-
-  # Get node ID and BLS key
-  platform-cli node info --ip 127.0.0.1
-
-  # Create a subnet
-  platform-cli subnet create --network fuji --key-name mykey`,
+  platform wallet balance --key-name mykey
+  platform validator add --node-id NodeID-... --stake 2000
+  platform transfer p-to-c --amount 10 --key-name mykey
+  platform subnet create --network fuji --key-name mykey`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	keystoreDir  = ".platform-cli"
+	keystoreDir  = ".platform"
 	keysDir      = "keys"
 	indexFile    = "keys.json"
 	keyExtension = ".key"
@@ -26,7 +26,7 @@ type KeyStore struct {
 	index    *KeyIndex
 }
 
-// DefaultPath returns the default keystore path (~/.platform-cli/keys).
+// DefaultPath returns the default keystore path (~/.platform/keys).
 func DefaultPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
