@@ -21,14 +21,28 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 		}
 	}
 
-	// Add network and key flags
-	fullArgs := append([]string{"--network", *networkFlag}, args...)
+	// For help commands, don't add extra flags
+	isHelpCmd := false
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			isHelpCmd = true
+			break
+		}
+	}
 
-	// Add private key if available
-	if envKey := os.Getenv("PRIVATE_KEY"); envKey != "" {
-		fullArgs = append(fullArgs, "--private-key", envKey)
-	} else if *networkFlag == "local" {
-		fullArgs = append(fullArgs, "--key-name", "ewoq")
+	var fullArgs []string
+	if isHelpCmd {
+		fullArgs = args
+	} else {
+		// Add network flag
+		fullArgs = append([]string{"--network", *networkFlag}, args...)
+
+		// Add private key if available
+		if envKey := os.Getenv("PRIVATE_KEY"); envKey != "" {
+			fullArgs = append(fullArgs, "--private-key", envKey)
+		} else if *networkFlag == "local" {
+			fullArgs = append(fullArgs, "--key-name", "ewoq")
+		}
 	}
 
 	cmd := exec.Command("../platform", fullArgs...)
