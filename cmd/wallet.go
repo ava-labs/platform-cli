@@ -95,15 +95,31 @@ func loadKey() ([]byte, error) {
 	return nil, fmt.Errorf("no private key provided. Use --private-key, --key-name, or set AVALANCHE_PRIVATE_KEY env var")
 }
 
+// ewoqPrivateKey is the well-known ewoq test key used in local/test networks.
+// P-Chain: 6Y3kysjF9jnHnYkdS9yGAuoHyae2eNmeV
+// EVM: 0x8db97C7cEcE249c2b98bDC0226Cc4C2A57BF52FC
+var ewoqPrivateKey = []byte{
+	0x56, 0x28, 0x9e, 0x99, 0xc9, 0x4b, 0x69, 0x12,
+	0xbf, 0xc1, 0x2a, 0xdc, 0x09, 0x3c, 0x9b, 0x51,
+	0x12, 0x4f, 0x0d, 0xc5, 0x4a, 0xc7, 0xa7, 0x66,
+	0xb2, 0xbc, 0x5c, 0xcf, 0x55, 0x8d, 0x80, 0x27,
+}
+
 // loadFromKeystore loads a key from the keystore by name.
+// Special built-in key: "ewoq" returns the well-known test key.
 func loadFromKeystore(name string) ([]byte, error) {
+	// Built-in: ewoq test key
+	if name == "ewoq" {
+		return ewoqPrivateKey, nil
+	}
+
 	ks, err := keystore.Load()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load keystore: %w", err)
 	}
 
 	if !ks.HasKey(name) {
-		return nil, fmt.Errorf("key %q not found in keystore", name)
+		return nil, fmt.Errorf("key %q not found in keystore (built-in: ewoq)", name)
 	}
 
 	// Get password if key is encrypted
