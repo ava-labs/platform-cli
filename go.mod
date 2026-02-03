@@ -7,8 +7,10 @@ toolchain go1.24.12
 require (
 	github.com/ava-labs/avalanchego v1.14.1
 	github.com/ava-labs/ledger-avalanche-go v1.1.0
+	github.com/ava-labs/libevm v1.13.15-0.20251210210615-b8e76562a300
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/crypto v0.45.0
+	golang.org/x/term v0.37.0
 )
 
 require (
@@ -19,7 +21,6 @@ require (
 	github.com/StephenButtolph/canoto v0.17.3 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect
 	github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20251203215505-70148edc6eca // indirect
-	github.com/ava-labs/libevm v1.13.15-0.20251210210615-b8e76562a300 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.5 // indirect
@@ -102,7 +103,6 @@ require (
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
-	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect

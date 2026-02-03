@@ -22,6 +22,13 @@ var Mainnet = Config{
 	RPCURL:    "https://api.avax.network",
 }
 
+// Local network configuration (avalanche-network-runner default)
+var Local = Config{
+	Name:      "local",
+	NetworkID: 1337,
+	RPCURL:    "http://127.0.0.1:9650",
+}
+
 // GetConfig returns the network configuration for the given network name.
 func GetConfig(name string) Config {
 	switch name {
@@ -29,6 +36,8 @@ func GetConfig(name string) Config {
 		return Mainnet
 	case "fuji":
 		return Fuji
+	case "local":
+		return Local
 	default:
 		// Default to Fuji
 		return Fuji
