@@ -134,12 +134,35 @@ For encrypted keys: `PLATFORM_CLI_KEY_PASSWORD` env var or interactive prompt.
 ## Testing
 
 ```bash
-# Run e2e tests against local network
+# Build first
+go build -o platform .
+
+# Run e2e tests against Fuji (requires funded wallet)
+PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji
+
+# Run specific test
+PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji -run TestCreateSubnet
+
+# Run against local network (uses ewoq key)
 go test -v ./e2e/... -network=local
 
-# Run e2e tests against Fuji
-go test -v ./e2e/... -network=fuji
+# Run only help/validation tests (no funds needed)
+go test -v ./e2e/... -run "Help|Params|MissingArgs"
 ```
+
+### Test Categories
+
+| Test | Description | Funds Required |
+|------|-------------|----------------|
+| `TestCLI*Help` | CLI help output | No |
+| `Test*Params` | Parameter validation | No |
+| `Test*MissingArgs` | Error handling | No |
+| `TestWallet*` | Wallet creation | No |
+| `TestPChainSend*` | P-Chain transfers | Yes |
+| `TestCrossChain*` | P<->C transfers | Yes |
+| `TestCreateSubnet*` | Subnet creation | Yes |
+| `TestCreateChain*` | Chain creation | Yes |
+| `TestSubnetLifecycle` | Full subnet flow | Yes |
 
 ## P-Chain Operations Reference
 
