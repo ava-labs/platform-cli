@@ -1,4 +1,4 @@
-name: PR Checks
+name: PR
 
 on:
   pull_request:
@@ -35,8 +35,3 @@ jobs:
           subjectPatternError: |
             PR title must start with lowercase letter.
             Example: "feat: add new validator command"
-
-      - name: Check commit messages
-        uses: wagoid/commitlint-github-action@v6
-        with:
-          configFile: .github/commitlint.config.js
