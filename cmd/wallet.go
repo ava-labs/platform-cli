@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ava-labs/platform-cli/pkg/keystore"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var walletCmd = &cobra.Command{
@@ -69,14 +71,59 @@ var addressCmd = &cobra.Command{
 }
 
 func loadKey() ([]byte, error) {
-	keyStr := privateKey
-	if keyStr == "" {
-		keyStr = os.Getenv("AVALANCHE_PRIVATE_KEY")
+	// Priority 1: Direct private key via flag
+	if privateKey != "" {
+		return wallet.ParsePrivateKey(privateKey)
 	}
-	if keyStr == "" {
-		return nil, fmt.Errorf("no private key provided. Use --private-key or set AVALANCHE_PRIVATE_KEY env var")
+
+	// Priority 2: Key from keystore by name
+	if keyNameGlobal != "" {
+		return loadFromKeystore(keyNameGlobal)
 	}
-	return wallet.ParsePrivateKey(keyStr)
+
+	// Priority 3: Default key from keystore
+	ks, err := keystore.Load()
+	if err == nil && ks.GetDefault() != "" {
+		return loadFromKeystore(ks.GetDefault())
+	}
+
+	// Priority 4: Environment variable
+	if envKey := os.Getenv("AVALANCHE_PRIVATE_KEY"); envKey != "" {
+		return wallet.ParsePrivateKey(envKey)
+	}
+
+	return nil, fmt.Errorf("no private key provided. Use --private-key, --key-name, or set AVALANCHE_PRIVATE_KEY env var")
+}
+
+// loadFromKeystore loads a key from the keystore by name.
+func loadFromKeystore(name string) ([]byte, error) {
+	ks, err := keystore.Load()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load keystore: %w", err)
+	}
+
+	if !ks.HasKey(name) {
+		return nil, fmt.Errorf("key %q not found in keystore", name)
+	}
+
+	// Get password if key is encrypted
+	var password []byte
+	if ks.IsEncrypted(name) {
+		// Try environment variable first
+		if envPwd := os.Getenv("PLATFORM_CLI_KEY_PASSWORD"); envPwd != "" {
+			password = []byte(envPwd)
+		} else {
+			// Prompt for password
+			fmt.Fprintf(os.Stderr, "Key %q is encrypted. Enter password: ", name)
+			password, err = term.ReadPassword(int(os.Stdin.Fd()))
+			fmt.Fprintln(os.Stderr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read password: %w", err)
+			}
+		}
+	}
+
+	return ks.LoadKey(name, password)
 }
 
 func init() {
