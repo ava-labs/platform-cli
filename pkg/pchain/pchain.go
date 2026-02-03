@@ -9,6 +9,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
+	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
@@ -82,12 +83,14 @@ type AddValidatorConfig struct {
 	NodeID        ids.NodeID
 	Start         time.Time
 	End           time.Time
-	StakeAmt      uint64 // in nAVAX (min 2000 AVAX = 2000_000_000_000)
+	StakeAmt      uint64 // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 2000 AVAX)
 	RewardAddr    ids.ShortID
 	DelegationFee uint32 // in basis points (10000 = 100%, 200 = 2%)
 }
 
 // AddValidator adds a validator to the primary network (IssueAddValidatorTx).
+// NOTE: This uses the legacy AddValidatorTx which is deprecated post-Etna.
+// Use AddPermissionlessValidator for post-Etna networks.
 func AddValidator(ctx context.Context, w *wallet.Wallet, cfg AddValidatorConfig) (ids.ID, error) {
 	rewardsOwner := &secp256k1fx.OutputOwners{
 		Threshold: 1,
@@ -110,16 +113,61 @@ func AddValidator(ctx context.Context, w *wallet.Wallet, cfg AddValidatorConfig)
 	return tx.ID(), nil
 }
 
+// AddPermissionlessValidatorConfig holds configuration for adding a permissionless validator.
+type AddPermissionlessValidatorConfig struct {
+	NodeID        ids.NodeID
+	Start         time.Time
+	End           time.Time
+	StakeAmt      uint64      // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 2000 AVAX for primary network)
+	RewardAddr    ids.ShortID
+	DelegationFee uint32      // in parts per million (1_000_000 = 100%)
+	BLSSigner     *signer.ProofOfPossession // BLS proof of possession for the validator (required for primary network)
+}
+
+// AddPermissionlessValidator adds a permissionless validator to the primary network.
+// This is the post-Etna method for staking on the primary network.
+func AddPermissionlessValidator(ctx context.Context, w *wallet.Wallet, cfg AddPermissionlessValidatorConfig) (ids.ID, error) {
+	rewardsOwner := &secp256k1fx.OutputOwners{
+		Threshold: 1,
+		Addrs:     []ids.ShortID{cfg.RewardAddr},
+	}
+
+	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
+
+	tx, err := w.PWallet().IssueAddPermissionlessValidatorTx(
+		&txs.SubnetValidator{
+			Validator: txs.Validator{
+				NodeID: cfg.NodeID,
+				Start:  uint64(cfg.Start.Unix()),
+				End:    uint64(cfg.End.Unix()),
+				Wght:   cfg.StakeAmt,
+			},
+			Subnet: ids.Empty, // Empty = Primary Network
+		},
+		cfg.BLSSigner,
+		avaxAssetID,
+		rewardsOwner,
+		rewardsOwner, // delegation rewards go to same owner
+		cfg.DelegationFee,
+	)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to issue AddPermissionlessValidatorTx: %w", err)
+	}
+	return tx.ID(), nil
+}
+
 // AddDelegatorConfig holds configuration for adding a delegator.
 type AddDelegatorConfig struct {
 	NodeID     ids.NodeID
 	Start      time.Time
 	End        time.Time
-	StakeAmt   uint64 // in nAVAX (min 25 AVAX = 25_000_000_000)
+	StakeAmt   uint64 // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 25 AVAX)
 	RewardAddr ids.ShortID
 }
 
 // AddDelegator adds a delegator to the primary network (IssueAddDelegatorTx).
+// NOTE: This uses the legacy AddDelegatorTx which is deprecated post-Etna.
+// Use AddPermissionlessDelegator for post-Etna networks.
 func AddDelegator(ctx context.Context, w *wallet.Wallet, cfg AddDelegatorConfig) (ids.ID, error) {
 	rewardsOwner := &secp256k1fx.OutputOwners{
 		Threshold: 1,
@@ -137,6 +185,44 @@ func AddDelegator(ctx context.Context, w *wallet.Wallet, cfg AddDelegatorConfig)
 	)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue AddDelegatorTx: %w", err)
+	}
+	return tx.ID(), nil
+}
+
+// AddPermissionlessDelegatorConfig holds configuration for adding a permissionless delegator.
+type AddPermissionlessDelegatorConfig struct {
+	NodeID     ids.NodeID
+	Start      time.Time
+	End        time.Time
+	StakeAmt   uint64      // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 25 AVAX)
+	RewardAddr ids.ShortID
+}
+
+// AddPermissionlessDelegator adds a permissionless delegator to the primary network.
+// This is the post-Etna method for delegating on the primary network.
+func AddPermissionlessDelegator(ctx context.Context, w *wallet.Wallet, cfg AddPermissionlessDelegatorConfig) (ids.ID, error) {
+	rewardsOwner := &secp256k1fx.OutputOwners{
+		Threshold: 1,
+		Addrs:     []ids.ShortID{cfg.RewardAddr},
+	}
+
+	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
+
+	tx, err := w.PWallet().IssueAddPermissionlessDelegatorTx(
+		&txs.SubnetValidator{
+			Validator: txs.Validator{
+				NodeID: cfg.NodeID,
+				Start:  uint64(cfg.Start.Unix()),
+				End:    uint64(cfg.End.Unix()),
+				Wght:   cfg.StakeAmt,
+			},
+			Subnet: ids.Empty, // Empty = Primary Network
+		},
+		avaxAssetID,
+		rewardsOwner,
+	)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to issue AddPermissionlessDelegatorTx: %w", err)
 	}
 	return tx.ID(), nil
 }

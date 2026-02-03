@@ -4,12 +4,21 @@ package crosschain
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
+)
+
+const (
+	// importRetryAttempts is the number of times to retry import after export
+	importRetryAttempts = 5
+	// importRetryDelay is the initial delay between import retries
+	importRetryDelay = 500 * time.Millisecond
 )
 
 // ExportFromPChain exports AVAX from P-Chain to C-Chain.
@@ -115,8 +124,11 @@ func TransferPToC(ctx context.Context, w *wallet.FullWallet, amountNAVAX uint64)
 		return ids.Empty, ids.Empty, fmt.Errorf("export failed: %w", err)
 	}
 
-	// Step 2: Import to C-Chain
-	importTxID, err = ImportToCChain(ctx, w)
+	// Step 2: Import to C-Chain with retry
+	// Atomic UTXOs may not be immediately visible after export
+	importTxID, err = importWithRetry(ctx, func() (ids.ID, error) {
+		return ImportToCChain(ctx, w)
+	})
 	if err != nil {
 		return exportTxID, ids.Empty, fmt.Errorf("import failed: %w", err)
 	}
@@ -134,11 +146,45 @@ func TransferCToP(ctx context.Context, w *wallet.FullWallet, amountNAVAX uint64)
 		return ids.Empty, ids.Empty, fmt.Errorf("export failed: %w", err)
 	}
 
-	// Step 2: Import to P-Chain
-	importTxID, err = ImportToPChain(ctx, w)
+	// Step 2: Import to P-Chain with retry
+	// Atomic UTXOs may not be immediately visible after export
+	importTxID, err = importWithRetry(ctx, func() (ids.ID, error) {
+		return ImportToPChain(ctx, w)
+	})
 	if err != nil {
 		return exportTxID, ids.Empty, fmt.Errorf("import failed: %w", err)
 	}
 
 	return exportTxID, importTxID, nil
+}
+
+// importWithRetry attempts an import operation with retries.
+// This handles the case where atomic UTXOs aren't immediately visible after export.
+func importWithRetry(ctx context.Context, importFn func() (ids.ID, error)) (ids.ID, error) {
+	var lastErr error
+	delay := importRetryDelay
+
+	for attempt := 0; attempt < importRetryAttempts; attempt++ {
+		txID, err := importFn()
+		if err == nil {
+			return txID, nil
+		}
+
+		// Check if the error is a "not found" error indicating UTXOs aren't visible yet
+		if !strings.Contains(err.Error(), "not found") {
+			return ids.Empty, err
+		}
+
+		lastErr = err
+
+		// Wait before retrying (with exponential backoff)
+		select {
+		case <-ctx.Done():
+			return ids.Empty, ctx.Err()
+		case <-time.After(delay):
+			delay *= 2 // exponential backoff
+		}
+	}
+
+	return ids.Empty, fmt.Errorf("import failed after %d attempts: %w", importRetryAttempts, lastErr)
 }
