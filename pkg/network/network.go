@@ -90,12 +90,13 @@ func GetHRP(networkID uint32) string {
 
 // NewCustomConfig creates a config for a custom network (devnet).
 // If networkID is 0, it will be queried from the node.
+// If the node doesn't expose /ext/info, use --network-id flag.
 func NewCustomConfig(ctx context.Context, rpcURL string, networkID uint32) (Config, error) {
 	var err error
 	if networkID == 0 {
 		networkID, err = GetNetworkID(ctx, rpcURL)
 		if err != nil {
-			return Config{}, err
+			return Config{}, fmt.Errorf("%w\n\nUse --network-id to specify the network ID manually:\n  --network-id 1     (mainnet)\n  --network-id 5     (fuji)\n  --network-id 12345 (custom)", err)
 		}
 	}
 

@@ -48,7 +48,7 @@ func init() {
 	rootCmd.PersistentFlags().Uint32Var(&ledgerIndex, "ledger-index", 0, "Ledger address index (BIP44 path: m/44'/9000'/0'/0/{index})")
 	rootCmd.PersistentFlags().StringVar(&keyNameGlobal, "key-name", "", "Name of key to load from keystore")
 	rootCmd.PersistentFlags().StringVar(&customRPCURL, "rpc-url", "", "Custom RPC URL (overrides --network)")
-	rootCmd.PersistentFlags().Uint32Var(&customNetID, "network-id", 0, "Network ID for custom RPC (auto-detected if not set)")
+	rootCmd.PersistentFlags().Uint32Var(&customNetID, "network-id", 0, "Network ID for custom RPC (1=mainnet, 5=fuji, auto-detected if not set)")
 }
 
 // avaxToNAVAX converts AVAX amount to nAVAX with validation.
