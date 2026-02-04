@@ -86,9 +86,12 @@ func (w *Wallet) OwnerAddress() ids.ShortID {
 
 // GetPChainBalance returns the P-Chain balance in nAVAX.
 func (w *Wallet) GetPChainBalance(ctx context.Context) (uint64, error) {
-	// The wallet tracks UTXOs, sum them up for balance
-	// For now, return 0 - proper balance requires P-Chain client
-	return 0, nil
+	balances, err := w.pWallet.Builder().GetBalance()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get balance: %w", err)
+	}
+	avaxAssetID := w.pWallet.Builder().Context().AVAXAssetID
+	return balances[avaxAssetID], nil
 }
 
 // Config returns the network configuration.

@@ -74,15 +74,25 @@ var validatorAddCmd = &cobra.Command{
 			}
 		}
 
+		stakeNAVAX, err := avaxToNAVAX(valStakeAmount)
+		if err != nil {
+			return fmt.Errorf("invalid stake amount: %w", err)
+		}
+
+		delegationFeeBps, err := feeToPercent(valDelegationFee)
+		if err != nil {
+			return fmt.Errorf("invalid delegation fee: %w", err)
+		}
+
 		fmt.Printf("Adding validator %s with %.9f AVAX stake...\n", nodeID, valStakeAmount)
 
 		txID, err := pchain.AddValidator(ctx, w, pchain.AddValidatorConfig{
 			NodeID:        nodeID,
 			Start:         start,
 			End:           end,
-			StakeAmt:      uint64(valStakeAmount * 1e9),
+			StakeAmt:      stakeNAVAX,
 			RewardAddr:    rewardAddr,
-			DelegationFee: uint32(valDelegationFee * 10000),
+			DelegationFee: delegationFeeBps,
 		})
 		if err != nil {
 			return err
@@ -140,13 +150,18 @@ var validatorDelegateCmd = &cobra.Command{
 			}
 		}
 
+		stakeNAVAX, err := avaxToNAVAX(valStakeAmount)
+		if err != nil {
+			return fmt.Errorf("invalid stake amount: %w", err)
+		}
+
 		fmt.Printf("Delegating %.9f AVAX to validator %s...\n", valStakeAmount, nodeID)
 
 		txID, err := pchain.AddDelegator(ctx, w, pchain.AddDelegatorConfig{
 			NodeID:     nodeID,
 			Start:      start,
 			End:        end,
-			StakeAmt:   uint64(valStakeAmount * 1e9),
+			StakeAmt:   stakeNAVAX,
 			RewardAddr: rewardAddr,
 		})
 		if err != nil {

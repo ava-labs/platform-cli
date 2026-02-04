@@ -59,7 +59,10 @@ var transferSendCmd = &cobra.Command{
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
 
-		amountNAVAX := uint64(transferAmount * 1e9)
+		amountNAVAX, err := avaxToNAVAX(transferAmount)
+		if err != nil {
+			return fmt.Errorf("invalid amount: %w", err)
+		}
 
 		fmt.Printf("Sending %.9f AVAX to %s...\n", transferAmount, destAddr)
 
@@ -100,7 +103,10 @@ var transferPToCCmd = &cobra.Command{
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
 
-		amountNAVAX := uint64(transferAmount * 1e9)
+		amountNAVAX, err := avaxToNAVAX(transferAmount)
+		if err != nil {
+			return fmt.Errorf("invalid amount: %w", err)
+		}
 
 		fmt.Printf("Transferring %.9f AVAX from P-Chain to C-Chain...\n", transferAmount)
 		fmt.Printf("P-Chain Address: %s\n", w.PChainAddress())
@@ -145,7 +151,10 @@ var transferCToPCmd = &cobra.Command{
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
 
-		amountNAVAX := uint64(transferAmount * 1e9)
+		amountNAVAX, err := avaxToNAVAX(transferAmount)
+		if err != nil {
+			return fmt.Errorf("invalid amount: %w", err)
+		}
 
 		fmt.Printf("Transferring %.9f AVAX from C-Chain to P-Chain...\n", transferAmount)
 		fmt.Printf("C-Chain Address: %s\n", w.EthAddress().Hex())
@@ -194,7 +203,10 @@ var transferExportCmd = &cobra.Command{
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
 
-		amountNAVAX := uint64(transferAmount * 1e9)
+		amountNAVAX, err := avaxToNAVAX(transferAmount)
+		if err != nil {
+			return fmt.Errorf("invalid amount: %w", err)
+		}
 
 		var txID interface{ String() string }
 

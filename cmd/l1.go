@@ -72,7 +72,12 @@ var l1RegisterValidatorCmd = &cobra.Command{
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
 
-		txID, err := pchain.RegisterL1Validator(ctx, w, uint64(l1Balance*1e9), pop, message)
+		balanceNAVAX, err := avaxToNAVAX(l1Balance)
+		if err != nil {
+			return fmt.Errorf("invalid balance: %w", err)
+		}
+
+		txID, err := pchain.RegisterL1Validator(ctx, w, balanceNAVAX, pop, message)
 		if err != nil {
 			return err
 		}
@@ -154,7 +159,12 @@ var l1AddBalanceCmd = &cobra.Command{
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
 
-		txID, err := pchain.IncreaseL1ValidatorBalance(ctx, w, validationID, uint64(l1Balance*1e9))
+		balanceNAVAX, err := avaxToNAVAX(l1Balance)
+		if err != nil {
+			return fmt.Errorf("invalid balance: %w", err)
+		}
+
+		txID, err := pchain.IncreaseL1ValidatorBalance(ctx, w, validationID, balanceNAVAX)
 		if err != nil {
 			return err
 		}
@@ -223,7 +233,7 @@ func init() {
 
 	// Add balance flags
 	l1AddBalanceCmd.Flags().StringVar(&l1ValidationID, "validation-id", "", "Validation ID")
-	l1AddBalanceCmd.Flags().Float64Var(&l1Balance, "amount", 0, "Amount in AVAX to add")
+	l1AddBalanceCmd.Flags().Float64Var(&l1Balance, "balance", 0, "Balance in AVAX to add")
 
 	// Disable validator flags
 	l1DisableValidatorCmd.Flags().StringVar(&l1ValidationID, "validation-id", "", "Validation ID to disable")
