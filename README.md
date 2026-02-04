@@ -16,6 +16,14 @@ cd platform-cli
 go build -o platform .
 ```
 
+### Build with Ledger Support
+
+To enable Ledger hardware wallet support, build with the `ledger` tag:
+
+```bash
+go build -tags ledger -o platform .
+```
+
 ## Quick Start
 
 ```bash
@@ -28,6 +36,38 @@ platform wallet address --key-name mykey
 # Create a subnet
 platform subnet create --network fuji --key-name mykey
 ```
+
+## Ledger Hardware Wallet
+
+Use `--ledger` flag with any command to sign transactions with your Ledger device.
+
+**Requirements:**
+- Ledger device connected via USB
+- Device unlocked
+- Avalanche app open
+- Ledger Live closed
+
+```bash
+# Check Ledger address
+platform wallet address --ledger
+
+# Check balance
+platform wallet balance --ledger --network fuji
+
+# Send AVAX (requires confirmation on device)
+platform transfer send --ledger --to <address> --amount 1.0
+
+# Cross-chain transfer
+platform transfer p-to-c --ledger --amount 0.5
+
+# Create subnet
+platform subnet create --ledger --network fuji
+
+# Use different address index (default: 0)
+platform wallet address --ledger --ledger-index 2
+```
+
+**Supported Operations:** All P-Chain and cross-chain operations support Ledger signing.
 
 ## Commands
 
@@ -120,10 +160,11 @@ platform node info --ip <IP>
 
 ## Key Loading Priority
 
-1. `--private-key` flag
-2. `--key-name` flag
-3. Default key from keystore
-4. `AVALANCHE_PRIVATE_KEY` env var
+1. `--ledger` flag (hardware wallet)
+2. `--private-key` flag
+3. `--key-name` flag
+4. Default key from keystore
+5. `AVALANCHE_PRIVATE_KEY` env var
 
 For encrypted keys: `PLATFORM_CLI_KEY_PASSWORD` env var or interactive prompt.
 
