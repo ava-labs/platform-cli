@@ -1,7 +1,14 @@
 // Package network provides Avalanche network configuration utilities.
 package network
 
-import "time"
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/ava-labs/avalanchego/api/info"
+	"github.com/ava-labs/avalanchego/utils/constants"
+)
 
 // Config holds network-specific configuration.
 type Config struct {
@@ -64,4 +71,64 @@ func GetConfig(name string) Config {
 func GetNetworkIDAndRPC(name string) (uint32, string) {
 	config := GetConfig(name)
 	return config.NetworkID, config.RPCURL
+}
+
+// GetNetworkID queries the network ID from an RPC endpoint.
+func GetNetworkID(ctx context.Context, rpcURL string) (uint32, error) {
+	client := info.NewClient(rpcURL)
+	networkID, err := client.GetNetworkID(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get network ID from %s: %w", rpcURL, err)
+	}
+	return networkID, nil
+}
+
+// GetHRP returns the Human-Readable Part (HRP) for bech32 addresses based on network ID.
+func GetHRP(networkID uint32) string {
+	return constants.GetHRP(networkID)
+}
+
+// NewCustomConfig creates a config for a custom network (devnet).
+// If networkID is 0, it will be queried from the node.
+func NewCustomConfig(ctx context.Context, rpcURL string, networkID uint32) (Config, error) {
+	var err error
+	if networkID == 0 {
+		networkID, err = GetNetworkID(ctx, rpcURL)
+		if err != nil {
+			return Config{}, err
+		}
+	}
+
+	// Determine reasonable defaults based on network ID
+	var minValidatorStake, minDelegatorStake uint64
+	var minStakeDuration time.Duration
+
+	switch networkID {
+	case constants.MainnetID:
+		// Mainnet parameters
+		minValidatorStake = 2000_000_000_000  // 2000 AVAX
+		minDelegatorStake = 25_000_000_000    // 25 AVAX
+		minStakeDuration = 14 * 24 * time.Hour // 14 days
+	case constants.FujiID:
+		// Fuji parameters
+		minValidatorStake = 1_000_000_000     // 1 AVAX
+		minDelegatorStake = 1_000_000_000     // 1 AVAX
+		minStakeDuration = 24 * time.Hour     // 24 hours
+	default:
+		// Default devnet/local parameters (permissive)
+		minValidatorStake = 1_000_000_000     // 1 AVAX
+		minDelegatorStake = 1_000_000_000     // 1 AVAX
+		minStakeDuration = 24 * time.Hour     // 24 hours
+	}
+
+	hrp := GetHRP(networkID)
+
+	return Config{
+		Name:              fmt.Sprintf("custom-%s", hrp),
+		NetworkID:         networkID,
+		RPCURL:            rpcURL,
+		MinValidatorStake: minValidatorStake,
+		MinDelegatorStake: minDelegatorStake,
+		MinStakeDuration:  minStakeDuration,
+	}, nil
 }

@@ -7,7 +7,6 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
-	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
 )
@@ -58,7 +57,11 @@ var chainCreateCmd = &cobra.Command{
 			}
 		}
 
-		netConfig := network.GetConfig(networkName)
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
 		w, cleanup, err := loadPChainWalletWithSubnet(ctx, netConfig, subnetID)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)

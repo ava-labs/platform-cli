@@ -16,6 +16,8 @@ var (
 	ledgerIndex    uint32 // Ledger address index (BIP44)
 	keyNameGlobal  string // Key name for loading from keystore
 	keyPassword    string // Password for encrypted keys (env var only for security)
+	customRPCURL   string // Custom RPC URL for devnets
+	customNetID    uint32 // Optional network ID for custom RPC (auto-detected if not set)
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -45,6 +47,8 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&useLedger, "ledger", false, "Use Ledger hardware wallet")
 	rootCmd.PersistentFlags().Uint32Var(&ledgerIndex, "ledger-index", 0, "Ledger address index (BIP44 path: m/44'/9000'/0'/0/{index})")
 	rootCmd.PersistentFlags().StringVar(&keyNameGlobal, "key-name", "", "Name of key to load from keystore")
+	rootCmd.PersistentFlags().StringVar(&customRPCURL, "rpc-url", "", "Custom RPC URL (overrides --network)")
+	rootCmd.PersistentFlags().Uint32Var(&customNetID, "network-id", 0, "Network ID for custom RPC (auto-detected if not set)")
 }
 
 // avaxToNAVAX converts AVAX amount to nAVAX with validation.

@@ -8,7 +8,6 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
-	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
 )
@@ -56,7 +55,11 @@ var l1RegisterValidatorCmd = &cobra.Command{
 		var pop [bls.SignatureLen]byte
 		copy(pop[:], popBytes)
 
-		netConfig := network.GetConfig(networkName)
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
 		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
@@ -94,7 +97,11 @@ var l1SetWeightCmd = &cobra.Command{
 			return fmt.Errorf("invalid message: %w", err)
 		}
 
-		netConfig := network.GetConfig(networkName)
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
 		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
@@ -127,7 +134,11 @@ var l1AddBalanceCmd = &cobra.Command{
 			return fmt.Errorf("invalid validation ID: %w", err)
 		}
 
-		netConfig := network.GetConfig(networkName)
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
 		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
@@ -165,7 +176,11 @@ var l1DisableValidatorCmd = &cobra.Command{
 			return fmt.Errorf("invalid validation ID: %w", err)
 		}
 
-		netConfig := network.GetConfig(networkName)
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
 		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)

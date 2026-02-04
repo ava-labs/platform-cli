@@ -6,7 +6,6 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/platform-cli/pkg/crosschain"
-	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
 )
@@ -43,7 +42,11 @@ var transferSendCmd = &cobra.Command{
 			return fmt.Errorf("invalid destination address: %w", err)
 		}
 
-		netConfig := network.GetConfig(networkName)
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
 		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
@@ -78,7 +81,11 @@ var transferPToCCmd = &cobra.Command{
 			return fmt.Errorf("--amount is required and must be positive")
 		}
 
-		netConfig := network.GetConfig(networkName)
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
 		w, cleanup, err := loadFullWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
@@ -117,7 +124,11 @@ var transferCToPCmd = &cobra.Command{
 			return fmt.Errorf("--amount is required and must be positive")
 		}
 
-		netConfig := network.GetConfig(networkName)
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
 		w, cleanup, err := loadFullWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
@@ -160,7 +171,11 @@ var transferExportCmd = &cobra.Command{
 			return fmt.Errorf("--from and --to are required (use 'p' or 'c')")
 		}
 
-		netConfig := network.GetConfig(networkName)
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
 		w, cleanup, err := loadFullWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
@@ -210,7 +225,11 @@ var transferImportCmd = &cobra.Command{
 			return fmt.Errorf("--from and --to are required (use 'p' or 'c')")
 		}
 
-		netConfig := network.GetConfig(networkName)
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
 		w, cleanup, err := loadFullWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)

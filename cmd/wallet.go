@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/platform-cli/pkg/keystore"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
@@ -25,7 +26,11 @@ var balanceCmd = &cobra.Command{
 	Long:  `Display the P-Chain balance for the specified wallet.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
-		netConfig := network.GetConfig(networkName)
+
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
 
 		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
@@ -147,6 +152,22 @@ func loadFromKeystore(name string) ([]byte, error) {
 	}
 
 	return ks.LoadKey(name, password)
+}
+
+// getNetworkConfig returns the network configuration, handling custom RPC URLs.
+// If customRPCURL is set, it creates a custom config (querying network ID if needed).
+// Otherwise, it uses the standard named network config.
+func getNetworkConfig(ctx context.Context) (network.Config, error) {
+	if customRPCURL != "" {
+		config, err := network.NewCustomConfig(ctx, customRPCURL, customNetID)
+		if err != nil {
+			return network.Config{}, err
+		}
+		hrp := constants.GetHRP(config.NetworkID)
+		fmt.Printf("Using custom RPC: %s (network ID: %d, HRP: %s)\n", customRPCURL, config.NetworkID, hrp)
+		return config, nil
+	}
+	return network.GetConfig(networkName), nil
 }
 
 // loadPChainWallet creates a P-Chain wallet from either Ledger or private key.

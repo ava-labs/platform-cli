@@ -158,6 +158,28 @@ platform node info --ip <IP>
 | Fuji | `--network fuji` | `https://api.avax-test.network` |
 | Mainnet | `--network mainnet` | `https://api.avax.network` |
 
+### Custom RPC / Devnets
+
+For devnets or custom networks, use the `--rpc-url` flag:
+
+```bash
+# Connect to a custom devnet (auto-detects network ID)
+platform wallet balance --rpc-url http://my-devnet:9650 --key-name mykey
+
+# Specify network ID explicitly
+platform wallet balance --rpc-url http://my-devnet:9650 --network-id 12345 --key-name mykey
+
+# Works with all commands
+platform subnet create --rpc-url http://my-devnet:9650 --key-name mykey
+platform transfer send --rpc-url http://my-devnet:9650 --to <address> --amount 1.0
+```
+
+When using `--rpc-url`:
+- The network ID is auto-detected from the node (queries `/ext/info` endpoint)
+- Address HRP (Human-Readable Part) is derived from network ID
+- Override detection with `--network-id` if needed
+- Standard networks (1=mainnet, 5=fuji) use their known HRPs (`avax`, `fuji`)
+
 ## Key Loading Priority
 
 1. `--ledger` flag (hardware wallet)
