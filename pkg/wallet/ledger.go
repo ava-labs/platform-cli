@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/crypto/keychain"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/set"
 	ledger "github.com/ava-labs/ledger-avalanche-go"
+	"github.com/ava-labs/libevm/common"
 )
 
 const (
@@ -91,11 +93,6 @@ func (kc *LedgerKeychain) Addresses() set.Set[ids.ShortID] {
 	return kc.addresses
 }
 
-// Get returns nil since Ledger never exposes private keys.
-func (kc *LedgerKeychain) Get(addr ids.ShortID) (*secp256k1.PrivateKey, bool) {
-	return nil, false
-}
-
 // GetAddress returns the primary address of the keychain.
 func (kc *LedgerKeychain) GetAddress() ids.ShortID {
 	return kc.address
@@ -106,13 +103,75 @@ func (kc *LedgerKeychain) GetPublicKey() *secp256k1.PublicKey {
 	return kc.pubKey
 }
 
-// SignHash signs a hash using the Ledger device.
+// Get returns a signer for the given address.
+// Implements keychain.Keychain interface.
+func (kc *LedgerKeychain) Get(addr ids.ShortID) (keychain.Signer, bool) {
+	if !kc.addresses.Contains(addr) {
+		return nil, false
+	}
+	return &LedgerSigner{kc: kc, addr: addr}, true
+}
+
+// EthAddresses returns the set of Ethereum addresses managed by this keychain.
+func (kc *LedgerKeychain) EthAddresses() set.Set[common.Address] {
+	addrs := set.NewSet[common.Address](1)
+	addrs.Add(kc.pubKey.EthAddress())
+	return addrs
+}
+
+// GetEth returns a signer for the given Ethereum address.
+func (kc *LedgerKeychain) GetEth(addr common.Address) (keychain.Signer, bool) {
+	if addr != kc.pubKey.EthAddress() {
+		return nil, false
+	}
+	return &LedgerSigner{kc: kc, addr: kc.address}, true
+}
+
+// LedgerSigner implements keychain.Signer using a Ledger device.
+type LedgerSigner struct {
+	kc   *LedgerKeychain
+	addr ids.ShortID
+}
+
+// SignHash signs a 32-byte hash using the Ledger device.
+// This is used by the SDK when signHash=true.
+func (s *LedgerSigner) SignHash(hash []byte) ([]byte, error) {
+	return s.kc.SignHash(hash)
+}
+
+// Sign signs a message (full transaction) using the Ledger device.
+// The message is hashed before signing.
+func (s *LedgerSigner) Sign(msg []byte) ([]byte, error) {
+	return s.kc.Sign(msg)
+}
+
+// Address returns the address associated with this signer.
+func (s *LedgerSigner) Address() ids.ShortID {
+	return s.addr
+}
+
+// SignHash signs a 32-byte hash using the Ledger device (blind signing).
 func (kc *LedgerKeychain) SignHash(hash []byte) ([]byte, error) {
-	path := fmt.Sprintf("%s/0/%d", ledgerRootPath, kc.index)
+	signerPath := fmt.Sprintf("0/%d", kc.index)
 
 	fmt.Printf("\n  >>> Please confirm the transaction on your Ledger device <<<\n\n")
 
-	sig, err := signHashWithRetry(kc.device, path, hash)
+	sig, err := signHashWithRetry(kc.device, ledgerRootPath, []string{signerPath}, hash)
+	if err != nil {
+		return nil, fmt.Errorf("Ledger signing failed: %w", err)
+	}
+
+	return sig, nil
+}
+
+// Sign signs a full transaction message using the Ledger device.
+// The Ledger will parse and display the transaction details.
+func (kc *LedgerKeychain) Sign(msg []byte) ([]byte, error) {
+	signerPath := fmt.Sprintf("0/%d", kc.index)
+
+	fmt.Printf("\n  >>> Please confirm the transaction on your Ledger device <<<\n\n")
+
+	sig, err := signWithRetry(kc.device, ledgerRootPath, []string{signerPath}, msg)
 	if err != nil {
 		return nil, fmt.Errorf("Ledger signing failed: %w", err)
 	}
@@ -146,7 +205,9 @@ func getPublicKeyWithRetry(device *ledger.LedgerAvalanche, path string) (*ledger
 
 	delay := ledgerRetryDelay
 	for i := 0; i < ledgerMaxRetries; i++ {
-		resp, err = device.GetPubKey(path, false, "avax", "P")
+		// Use empty strings for hrp and chainID to get raw public key
+		// Address derivation is done on our side using secp256k1.PublicKey.Address()
+		resp, err = device.GetPubKey(path, false, "", "")
 		if err == nil {
 			return resp, nil
 		}
@@ -160,16 +221,37 @@ func getPublicKeyWithRetry(device *ledger.LedgerAvalanche, path string) (*ledger
 	return nil, err
 }
 
-func signHashWithRetry(device *ledger.LedgerAvalanche, path string, hash []byte) ([]byte, error) {
+func signHashWithRetry(device *ledger.LedgerAvalanche, rootPath string, signerPaths []string, hash []byte) ([]byte, error) {
 	var err error
 
 	delay := ledgerRetryDelay
 	for i := 0; i < ledgerMaxRetries; i++ {
-		response, signErr := device.SignHash(path, []string{path}, hash)
+		response, signErr := device.SignHash(rootPath, signerPaths, hash)
 		if signErr == nil && response != nil {
-			if sig, ok := response.Signature[path]; ok {
+			// Return the first signature found
+			for _, sig := range response.Signature {
 				return sig, nil
 			}
+		}
+		err = signErr
+
+		if i < ledgerMaxRetries-1 {
+			time.Sleep(delay)
+			delay *= 2
+		}
+	}
+
+	return nil, err
+}
+
+func signWithRetry(device *ledger.LedgerAvalanche, rootPath string, signerPaths []string, msg []byte) ([]byte, error) {
+	var err error
+
+	delay := ledgerRetryDelay
+	for i := 0; i < ledgerMaxRetries; i++ {
+		response, signErr := device.Sign(rootPath, signerPaths, msg, nil)
+		if signErr == nil && response != nil {
+			// Return the first signature found
 			for _, sig := range response.Signature {
 				return sig, nil
 			}

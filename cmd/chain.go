@@ -9,7 +9,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
-	"github.com/ava-labs/platform-cli/pkg/wallet"
 	"github.com/spf13/cobra"
 )
 
@@ -59,20 +58,12 @@ var chainCreateCmd = &cobra.Command{
 			}
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWalletWithSubnet(ctx, key, netConfig, subnetID)
+		w, cleanup, err := loadPChainWalletWithSubnet(ctx, netConfig, subnetID)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		txID, err := pchain.CreateChain(ctx, w, pchain.CreateChainConfig{
 			SubnetID:  subnetID,

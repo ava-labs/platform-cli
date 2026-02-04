@@ -6,8 +6,10 @@ import (
 	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/crypto/keychain"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/set"
+	"github.com/ava-labs/libevm/common"
 )
 
 // LedgerEnabled indicates whether Ledger support is compiled in.
@@ -30,7 +32,7 @@ func (kc *LedgerKeychain) Addresses() set.Set[ids.ShortID] {
 }
 
 // Get returns nil for stub.
-func (kc *LedgerKeychain) Get(addr ids.ShortID) (*secp256k1.PrivateKey, bool) {
+func (kc *LedgerKeychain) Get(addr ids.ShortID) (keychain.Signer, bool) {
 	return nil, false
 }
 
@@ -44,7 +46,22 @@ func (kc *LedgerKeychain) GetPublicKey() *secp256k1.PublicKey {
 	return nil
 }
 
+// EthAddresses returns empty set for stub.
+func (kc *LedgerKeychain) EthAddresses() set.Set[common.Address] {
+	return set.Set[common.Address]{}
+}
+
+// GetEth returns nil for stub.
+func (kc *LedgerKeychain) GetEth(addr common.Address) (keychain.Signer, bool) {
+	return nil, false
+}
+
 // SignHash returns error for stub.
 func (kc *LedgerKeychain) SignHash(hash []byte) ([]byte, error) {
+	return nil, fmt.Errorf("Ledger support not compiled")
+}
+
+// Sign returns error for stub.
+func (kc *LedgerKeychain) Sign(msg []byte) ([]byte, error) {
 	return nil, fmt.Errorf("Ledger support not compiled")
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/crypto/keychain"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/wallet/chain/c"
@@ -17,10 +18,11 @@ import (
 
 // Wallet wraps the avalanchego wallet for P-Chain operations.
 type Wallet struct {
-	key       *secp256k1.PrivateKey
-	keychain  *secp256k1fx.Keychain
+	key       *secp256k1.PrivateKey   // nil for Ledger
+	keychain  *secp256k1fx.Keychain   // nil for Ledger
 	pWallet   pwallet.Wallet
 	config    network.Config
+	address   ids.ShortID             // used when key is nil (Ledger mode)
 }
 
 // NewWallet creates a new wallet for P-Chain operations.
@@ -59,6 +61,36 @@ func NewWalletWithSubnet(ctx context.Context, key *secp256k1.PrivateKey, config 
 	}, nil
 }
 
+// NewWalletFromKeychain creates a wallet from any keychain implementation (e.g., Ledger).
+func NewWalletFromKeychain(ctx context.Context, kc keychain.Keychain, address ids.ShortID, config network.Config) (*Wallet, error) {
+	pWallet, err := primary.MakePWallet(ctx, config.RPCURL, kc, primary.WalletConfig{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create P-Chain wallet: %w", err)
+	}
+
+	return &Wallet{
+		pWallet: pWallet,
+		config:  config,
+		address: address,
+	}, nil
+}
+
+// NewWalletFromKeychainWithSubnet creates a wallet from any keychain with subnet tracking.
+func NewWalletFromKeychainWithSubnet(ctx context.Context, kc keychain.Keychain, address ids.ShortID, config network.Config, subnetID ids.ID) (*Wallet, error) {
+	pWallet, err := primary.MakePWallet(ctx, config.RPCURL, kc, primary.WalletConfig{
+		SubnetIDs: []ids.ID{subnetID},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create P-Chain wallet: %w", err)
+	}
+
+	return &Wallet{
+		pWallet: pWallet,
+		config:  config,
+		address: address,
+	}, nil
+}
+
 // PWallet returns the underlying P-Chain wallet.
 func (w *Wallet) PWallet() pwallet.Wallet {
 	return w.pWallet
@@ -76,12 +108,18 @@ func (w *Wallet) Keychain() *secp256k1fx.Keychain {
 
 // PChainAddress returns the P-Chain address.
 func (w *Wallet) PChainAddress() ids.ShortID {
-	return w.key.Address()
+	if w.key != nil {
+		return w.key.Address()
+	}
+	return w.address
 }
 
 // OwnerAddress returns the owner address for subnet operations.
 func (w *Wallet) OwnerAddress() ids.ShortID {
-	return w.key.Address()
+	if w.key != nil {
+		return w.key.Address()
+	}
+	return w.address
 }
 
 // GetPChainBalance returns the P-Chain balance in nAVAX.
@@ -101,10 +139,12 @@ func (w *Wallet) Config() network.Config {
 
 // FullWallet wraps the avalanchego primary.Wallet for multi-chain operations.
 type FullWallet struct {
-	key      *secp256k1.PrivateKey
-	keychain *secp256k1fx.Keychain
-	wallet   *primary.Wallet
-	config   network.Config
+	key       *secp256k1.PrivateKey   // nil for Ledger
+	keychain  *secp256k1fx.Keychain   // nil for Ledger
+	wallet    *primary.Wallet
+	config    network.Config
+	address   ids.ShortID             // P-Chain address (used when key is nil)
+	ethAddr   common.Address          // C-Chain address (used when key is nil)
 }
 
 // NewFullWallet creates a new wallet for multi-chain operations (P-Chain and C-Chain).
@@ -146,15 +186,43 @@ func (w *FullWallet) Keychain() *secp256k1fx.Keychain {
 
 // PChainAddress returns the P-Chain address.
 func (w *FullWallet) PChainAddress() ids.ShortID {
-	return w.key.Address()
+	if w.key != nil {
+		return w.key.Address()
+	}
+	return w.address
 }
 
 // EthAddress returns the Ethereum/C-Chain address.
 func (w *FullWallet) EthAddress() common.Address {
-	return w.key.PublicKey().EthAddress()
+	if w.key != nil {
+		return w.key.PublicKey().EthAddress()
+	}
+	return w.ethAddr
 }
 
 // Config returns the network configuration.
 func (w *FullWallet) Config() network.Config {
 	return w.config
+}
+
+// FullKeychain combines P-Chain and C-Chain keychain interfaces.
+// Used for keychains like Ledger that implement both.
+type FullKeychain interface {
+	keychain.Keychain
+	c.EthKeychain
+}
+
+// NewFullWalletFromKeychain creates a multi-chain wallet from any keychain implementation.
+func NewFullWalletFromKeychain(ctx context.Context, kc FullKeychain, address ids.ShortID, ethAddr common.Address, config network.Config) (*FullWallet, error) {
+	wallet, err := primary.MakeWallet(ctx, config.RPCURL, kc, kc, primary.WalletConfig{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create multi-chain wallet: %w", err)
+	}
+
+	return &FullWallet{
+		wallet:  wallet,
+		config:  config,
+		address: address,
+		ethAddr: ethAddr,
+	}, nil
 }

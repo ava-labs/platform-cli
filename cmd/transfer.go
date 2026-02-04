@@ -8,7 +8,6 @@ import (
 	"github.com/ava-labs/platform-cli/pkg/crosschain"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
-	"github.com/ava-labs/platform-cli/pkg/wallet"
 	"github.com/spf13/cobra"
 )
 
@@ -44,20 +43,12 @@ var transferSendCmd = &cobra.Command{
 			return fmt.Errorf("invalid destination address: %w", err)
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWallet(ctx, key, netConfig)
+		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		amountNAVAX, err := avaxToNAVAX(transferAmount)
 		if err != nil {
@@ -87,21 +78,12 @@ var transferPToCCmd = &cobra.Command{
 			return fmt.Errorf("--amount is required and must be positive")
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewFullWallet(ctx, key, netConfig)
+		w, cleanup, err := loadFullWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		amountNAVAX, err := avaxToNAVAX(transferAmount)
 		if err != nil {
@@ -135,21 +117,12 @@ var transferCToPCmd = &cobra.Command{
 			return fmt.Errorf("--amount is required and must be positive")
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewFullWallet(ctx, key, netConfig)
+		w, cleanup, err := loadFullWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		amountNAVAX, err := avaxToNAVAX(transferAmount)
 		if err != nil {
@@ -187,21 +160,12 @@ var transferExportCmd = &cobra.Command{
 			return fmt.Errorf("--from and --to are required (use 'p' or 'c')")
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewFullWallet(ctx, key, netConfig)
+		w, cleanup, err := loadFullWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		amountNAVAX, err := avaxToNAVAX(transferAmount)
 		if err != nil {
@@ -246,21 +210,12 @@ var transferImportCmd = &cobra.Command{
 			return fmt.Errorf("--from and --to are required (use 'p' or 'c')")
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewFullWallet(ctx, key, netConfig)
+		w, cleanup, err := loadFullWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		var txID interface{ String() string }
 

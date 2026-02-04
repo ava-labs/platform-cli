@@ -15,7 +15,6 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
-	"github.com/ava-labs/platform-cli/pkg/wallet"
 	"github.com/spf13/cobra"
 )
 
@@ -42,20 +41,12 @@ var subnetCreateCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWallet(ctx, key, netConfig)
+		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		txID, err := pchain.CreateSubnet(ctx, w)
 		if err != nil {
@@ -91,20 +82,12 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 			return fmt.Errorf("invalid new owner address: %w", err)
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWalletWithSubnet(ctx, key, netConfig, sid)
+		w, cleanup, err := loadPChainWalletWithSubnet(ctx, netConfig, sid)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		txID, err := pchain.TransferSubnetOwnership(ctx, w, sid, newOwner)
 		if err != nil {
@@ -166,20 +149,12 @@ var subnetConvertL1Cmd = &cobra.Command{
 			}
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWalletWithSubnet(ctx, key, netConfig, sid)
+		w, cleanup, err := loadPChainWalletWithSubnet(ctx, netConfig, sid)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		txID, err := pchain.ConvertSubnetToL1(ctx, w, sid, cid, managerAddr, validators)
 		if err != nil {

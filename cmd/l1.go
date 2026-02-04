@@ -10,7 +10,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
-	"github.com/ava-labs/platform-cli/pkg/wallet"
 	"github.com/spf13/cobra"
 )
 
@@ -57,20 +56,12 @@ var l1RegisterValidatorCmd = &cobra.Command{
 		var pop [bls.SignatureLen]byte
 		copy(pop[:], popBytes)
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWallet(ctx, key, netConfig)
+		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		balanceNAVAX, err := avaxToNAVAX(l1Balance)
 		if err != nil {
@@ -103,20 +94,12 @@ var l1SetWeightCmd = &cobra.Command{
 			return fmt.Errorf("invalid message: %w", err)
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWallet(ctx, key, netConfig)
+		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		txID, err := pchain.SetL1ValidatorWeight(ctx, w, message)
 		if err != nil {
@@ -144,20 +127,12 @@ var l1AddBalanceCmd = &cobra.Command{
 			return fmt.Errorf("invalid validation ID: %w", err)
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWallet(ctx, key, netConfig)
+		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		balanceNAVAX, err := avaxToNAVAX(l1Balance)
 		if err != nil {
@@ -190,20 +165,12 @@ var l1DisableValidatorCmd = &cobra.Command{
 			return fmt.Errorf("invalid validation ID: %w", err)
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWallet(ctx, key, netConfig)
+		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		txID, err := pchain.DisableL1Validator(ctx, w, validationID)
 		if err != nil {

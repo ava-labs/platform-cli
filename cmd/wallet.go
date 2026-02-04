@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/platform-cli/pkg/keystore"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
@@ -24,22 +25,13 @@ var balanceCmd = &cobra.Command{
 	Long:  `Display the P-Chain balance for the specified wallet.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
-
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWallet(ctx, key, netConfig)
+
+		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		balance, err := w.GetPChainBalance(ctx)
 		if err != nil {
@@ -57,6 +49,21 @@ var addressCmd = &cobra.Command{
 	Short: "Show wallet addresses",
 	Long:  `Display P-Chain and EVM addresses for the specified wallet.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if useLedger {
+			if !wallet.LedgerEnabled {
+				return fmt.Errorf("Ledger support not compiled. Rebuild with: go build -tags ledger")
+			}
+			kc, err := wallet.NewLedgerKeychain(ledgerIndex)
+			if err != nil {
+				return err
+			}
+			defer kc.Close()
+
+			fmt.Printf("P-Chain Address: %s\n", kc.GetAddress())
+			fmt.Printf("EVM Address:     %s\n", kc.GetPublicKey().EthAddress().Hex())
+			return nil
+		}
+
 		key, err := loadKey()
 		if err != nil {
 			return err
@@ -140,6 +147,107 @@ func loadFromKeystore(name string) ([]byte, error) {
 	}
 
 	return ks.LoadKey(name, password)
+}
+
+// loadPChainWallet creates a P-Chain wallet from either Ledger or private key.
+// Returns the wallet and a cleanup function that must be called when done.
+func loadPChainWallet(ctx context.Context, netConfig network.Config) (*wallet.Wallet, func(), error) {
+	if useLedger {
+		if !wallet.LedgerEnabled {
+			return nil, nil, fmt.Errorf("Ledger support not compiled. Rebuild with: go build -tags ledger")
+		}
+		kc, err := wallet.NewLedgerKeychain(ledgerIndex)
+		if err != nil {
+			return nil, nil, err
+		}
+		w, err := wallet.NewWalletFromKeychain(ctx, kc, kc.GetAddress(), netConfig)
+		if err != nil {
+			kc.Close()
+			return nil, nil, err
+		}
+		return w, kc.Close, nil
+	}
+
+	keyBytes, err := loadKey()
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := wallet.ToPrivateKey(keyBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	w, err := wallet.NewWallet(ctx, key, netConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+	return w, func() {}, nil
+}
+
+// loadPChainWalletWithSubnet creates a P-Chain wallet that tracks a subnet.
+func loadPChainWalletWithSubnet(ctx context.Context, netConfig network.Config, subnetID ids.ID) (*wallet.Wallet, func(), error) {
+	if useLedger {
+		if !wallet.LedgerEnabled {
+			return nil, nil, fmt.Errorf("Ledger support not compiled. Rebuild with: go build -tags ledger")
+		}
+		kc, err := wallet.NewLedgerKeychain(ledgerIndex)
+		if err != nil {
+			return nil, nil, err
+		}
+		w, err := wallet.NewWalletFromKeychainWithSubnet(ctx, kc, kc.GetAddress(), netConfig, subnetID)
+		if err != nil {
+			kc.Close()
+			return nil, nil, err
+		}
+		return w, kc.Close, nil
+	}
+
+	keyBytes, err := loadKey()
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := wallet.ToPrivateKey(keyBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	w, err := wallet.NewWalletWithSubnet(ctx, key, netConfig, subnetID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return w, func() {}, nil
+}
+
+// loadFullWallet creates a multi-chain wallet (P-Chain + C-Chain).
+func loadFullWallet(ctx context.Context, netConfig network.Config) (*wallet.FullWallet, func(), error) {
+	if useLedger {
+		if !wallet.LedgerEnabled {
+			return nil, nil, fmt.Errorf("Ledger support not compiled. Rebuild with: go build -tags ledger")
+		}
+		kc, err := wallet.NewLedgerKeychain(ledgerIndex)
+		if err != nil {
+			return nil, nil, err
+		}
+		ethAddr := kc.GetPublicKey().EthAddress()
+		w, err := wallet.NewFullWalletFromKeychain(ctx, kc, kc.GetAddress(), ethAddr, netConfig)
+		if err != nil {
+			kc.Close()
+			return nil, nil, err
+		}
+		return w, kc.Close, nil
+	}
+
+	keyBytes, err := loadKey()
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := wallet.ToPrivateKey(keyBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	w, err := wallet.NewFullWallet(ctx, key, netConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+	return w, func() {}, nil
 }
 
 func init() {

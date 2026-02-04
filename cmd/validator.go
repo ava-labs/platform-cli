@@ -8,7 +8,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
-	"github.com/ava-labs/platform-cli/pkg/wallet"
 	"github.com/spf13/cobra"
 )
 
@@ -51,20 +50,12 @@ var validatorAddCmd = &cobra.Command{
 			return err
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWallet(ctx, key, netConfig)
+		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		rewardAddr := w.PChainAddress()
 		if valRewardAddr != "" {
@@ -127,20 +118,12 @@ var validatorDelegateCmd = &cobra.Command{
 			return err
 		}
 
-		keyBytes, err := loadKey()
-		if err != nil {
-			return err
-		}
-		key, err := wallet.ToPrivateKey(keyBytes)
-		if err != nil {
-			return err
-		}
-
 		netConfig := network.GetConfig(networkName)
-		w, err := wallet.NewWallet(ctx, key, netConfig)
+		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
+		defer cleanup()
 
 		rewardAddr := w.PChainAddress()
 		if valRewardAddr != "" {
