@@ -175,10 +175,10 @@ platform transfer send --rpc-url http://my-devnet:9650 --to <address> --amount 1
 ```
 
 When using `--rpc-url`:
-- The network ID is auto-detected from the node (queries `/ext/info` endpoint)
+- Network ID is auto-detected from the node (queries `/ext/info` endpoint)
+- If auto-detection fails (e.g., public RPCs without `/ext/info`), use `--network-id`
 - Address HRP (Human-Readable Part) is derived from network ID
-- Override detection with `--network-id` if needed
-- Standard networks (1=mainnet, 5=fuji) use their known HRPs (`avax`, `fuji`)
+- Standard networks: `--network-id 1` (mainnet/avax), `--network-id 5` (fuji)
 
 ## Key Loading Priority
 
