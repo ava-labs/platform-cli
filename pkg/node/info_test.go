@@ -1,0 +1,102 @@
+package node
+
+import (
+	"testing"
+)
+
+func TestNormalizeNodeURI(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "just IP",
+			input: "127.0.0.1",
+			want:  "http://127.0.0.1:9650",
+		},
+		{
+			name:  "IP with port",
+			input: "127.0.0.1:9650",
+			want:  "http://127.0.0.1:9650",
+		},
+		{
+			name:  "IP with custom port",
+			input: "192.168.1.1:8080",
+			want:  "http://192.168.1.1:8080",
+		},
+		{
+			name:  "full HTTP URI",
+			input: "http://127.0.0.1:9650",
+			want:  "http://127.0.0.1:9650",
+		},
+		{
+			name:  "full HTTPS URI",
+			input: "https://api.avax.network",
+			want:  "https://api.avax.network",
+		},
+		{
+			name:  "hostname only",
+			input: "mynode.example.com",
+			want:  "http://mynode.example.com:9650",
+		},
+		{
+			name:  "hostname with port",
+			input: "mynode.example.com:9650",
+			want:  "http://mynode.example.com:9650",
+		},
+		{
+			name:  "full URI with path",
+			input: "http://127.0.0.1:9650/ext/info",
+			want:  "http://127.0.0.1:9650/ext/info",
+		},
+		{
+			name:  "localhost",
+			input: "localhost",
+			want:  "http://localhost:9650",
+		},
+		{
+			name:  "localhost with port",
+			input: "localhost:9650",
+			want:  "http://localhost:9650",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeNodeURI(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeNodeURI(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeNodeURI_IPv6(t *testing.T) {
+	// IPv6 addresses with brackets should be handled correctly
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "IPv6 with brackets and port",
+			input: "[::1]:9650",
+			want:  "http://[::1]:9650",
+		},
+		{
+			name:  "IPv6 full URI",
+			input: "http://[::1]:9650",
+			want:  "http://[::1]:9650",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeNodeURI(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeNodeURI(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
