@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -30,7 +29,8 @@ var l1RegisterValidatorCmd = &cobra.Command{
 	Short: "Register a new L1 validator",
 	Long:  `Register a new validator on an L1 blockchain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if l1Message == "" {
 			return fmt.Errorf("--message is required (hex-encoded Warp message)")
@@ -86,7 +86,8 @@ var l1SetWeightCmd = &cobra.Command{
 	Short: "Set L1 validator weight",
 	Long:  `Set the weight of a validator on an L1 blockchain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if l1Message == "" {
 			return fmt.Errorf("--message is required (hex-encoded Warp message)")
@@ -123,7 +124,8 @@ var l1AddBalanceCmd = &cobra.Command{
 	Short: "Increase L1 validator balance",
 	Long:  `Increase the balance of a validator on an L1 blockchain for continuous fees.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if l1ValidationID == "" {
 			return fmt.Errorf("--validation-id is required")
@@ -165,7 +167,8 @@ var l1DisableValidatorCmd = &cobra.Command{
 	Short: "Disable an L1 validator",
 	Long:  `Disable a validator on an L1 blockchain and return remaining funds.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if l1ValidationID == "" {
 			return fmt.Errorf("--validation-id is required")

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -28,7 +27,8 @@ var transferSendCmd = &cobra.Command{
 	Short: "Send AVAX on P-Chain",
 	Long:  `Send AVAX to another address on the P-Chain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if transferAmount <= 0 {
 			return fmt.Errorf("--amount is required and must be positive")
@@ -75,7 +75,8 @@ var transferPToCCmd = &cobra.Command{
 	Short: "Transfer AVAX from P-Chain to C-Chain",
 	Long:  `Transfer AVAX from P-Chain to C-Chain (export + import in one step).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if transferAmount <= 0 {
 			return fmt.Errorf("--amount is required and must be positive")
@@ -118,7 +119,8 @@ var transferCToPCmd = &cobra.Command{
 	Short: "Transfer AVAX from C-Chain to P-Chain",
 	Long:  `Transfer AVAX from C-Chain to P-Chain (export + import in one step).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if transferAmount <= 0 {
 			return fmt.Errorf("--amount is required and must be positive")
@@ -161,7 +163,8 @@ var transferExportCmd = &cobra.Command{
 	Short: "Export AVAX from one chain (step 1 of manual transfer)",
 	Long:  `Export AVAX from P-Chain or C-Chain. Use this for manual two-step transfers.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if transferAmount <= 0 {
 			return fmt.Errorf("--amount is required and must be positive")
@@ -219,7 +222,8 @@ var transferImportCmd = &cobra.Command{
 	Short: "Import AVAX to one chain (step 2 of manual transfer)",
 	Long:  `Import AVAX to P-Chain or C-Chain. Use this after 'transfer export'.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if transferFrom == "" || transferTo == "" {
 			return fmt.Errorf("--from and --to are required (use 'p' or 'c')")

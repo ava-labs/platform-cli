@@ -38,7 +38,8 @@ var subnetCreateCmd = &cobra.Command{
 	Short: "Create a new subnet",
 	Long:  `Create a new subnet on the P-Chain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		netConfig, err := getNetworkConfig(ctx)
 		if err != nil {
@@ -66,7 +67,8 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 	Short: "Transfer subnet ownership",
 	Long:  `Transfer ownership of a subnet to a new address.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if subnetID == "" {
 			return fmt.Errorf("--subnet-id is required")
@@ -111,7 +113,8 @@ var subnetConvertL1Cmd = &cobra.Command{
 	Short: "Convert subnet to L1",
 	Long:  `Convert a permissioned subnet to an L1 blockchain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if subnetID == "" {
 			return fmt.Errorf("--subnet-id is required")
@@ -184,6 +187,12 @@ func gatherL1Validators(ctx context.Context, validatorIPs string, balance float6
 		return nil, nil // No validators is valid
 	}
 
+	// Validate balance to prevent overflow
+	balanceNAVAX, err := avaxToNAVAX(balance)
+	if err != nil {
+		return nil, fmt.Errorf("invalid validator balance: %w", err)
+	}
+
 	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(ips))
 
 	for _, ip := range ips {
@@ -198,7 +207,7 @@ func gatherL1Validators(ctx context.Context, validatorIPs string, balance float6
 		validators = append(validators, &txs.ConvertSubnetToL1Validator{
 			NodeID:  nodeID.Bytes(),
 			Weight:  units.Schmeckle,
-			Balance: uint64(balance * float64(units.Avax)),
+			Balance: balanceNAVAX,
 			Signer:  *nodePoP,
 		})
 	}
@@ -219,6 +228,12 @@ func parseValidatorIPs(ipList string) []string {
 
 // generateMockValidator creates a mock validator with valid BLS credentials for testing.
 func generateMockValidator(balance float64) (*txs.ConvertSubnetToL1Validator, error) {
+	// Validate balance to prevent overflow
+	balanceNAVAX, err := avaxToNAVAX(balance)
+	if err != nil {
+		return nil, fmt.Errorf("invalid validator balance: %w", err)
+	}
+
 	// Generate random NodeID (20 bytes)
 	nodeID := make([]byte, ids.NodeIDLen)
 	if _, err := rand.Read(nodeID); err != nil {
@@ -239,7 +254,7 @@ func generateMockValidator(balance float64) (*txs.ConvertSubnetToL1Validator, er
 	return &txs.ConvertSubnetToL1Validator{
 		NodeID:  nodeID,
 		Weight:  units.Schmeckle,
-		Balance: uint64(balance * float64(units.Avax)),
+		Balance: balanceNAVAX,
 		Signer:  *pop,
 	}, nil
 }

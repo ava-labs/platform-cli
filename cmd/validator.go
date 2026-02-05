@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -30,7 +29,8 @@ var validatorAddCmd = &cobra.Command{
 	Short: "Add a primary network validator",
 	Long:  `Add a validator to the Avalanche primary network.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if valNodeID == "" {
 			return fmt.Errorf("--node-id is required")
@@ -102,7 +102,8 @@ var validatorDelegateCmd = &cobra.Command{
 	Short: "Delegate to a primary network validator",
 	Long:  `Delegate stake to an existing primary network validator.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if valNodeID == "" {
 			return fmt.Errorf("--node-id is required")

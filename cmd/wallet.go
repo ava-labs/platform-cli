@@ -32,7 +32,8 @@ var balanceCmd = &cobra.Command{
 	Short: "Show P-Chain balance",
 	Long:  `Display the P-Chain balance for the specified wallet.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		netConfig, err := getNetworkConfig(ctx)
 		if err != nil {
@@ -131,6 +132,10 @@ var ewoqPrivateKey = []byte{
 func loadFromKeystore(name string) ([]byte, error) {
 	// Built-in: ewoq test key
 	if name == "ewoq" {
+		// SECURITY: Prevent accidental use of ewoq key on mainnet
+		if networkName == "mainnet" {
+			return nil, fmt.Errorf("ewoq test key cannot be used on mainnet - this is a well-known key with no security")
+		}
 		// Return a copy so caller can safely clear it
 		keyCopy := make([]byte, len(ewoqPrivateKey))
 		copy(keyCopy, ewoqPrivateKey)

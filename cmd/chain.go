@@ -1,15 +1,18 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
+	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
 )
+
+// maxGenesisLen is the maximum allowed genesis file size (matches P-Chain limit).
+const maxGenesisLen = units.MiB // 1 MB
 
 var (
 	chainSubnetID    string
@@ -29,7 +32,8 @@ var chainCreateCmd = &cobra.Command{
 	Short: "Create a new chain",
 	Long:  `Create a new blockchain on a subnet.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if chainSubnetID == "" {
 			return fmt.Errorf("--subnet-id is required")
@@ -41,6 +45,15 @@ var chainCreateCmd = &cobra.Command{
 		subnetID, err := ids.FromString(chainSubnetID)
 		if err != nil {
 			return fmt.Errorf("invalid subnet ID: %w", err)
+		}
+
+		// Validate genesis file size before reading to prevent memory issues
+		fileInfo, err := os.Stat(chainGenesisFile)
+		if err != nil {
+			return fmt.Errorf("failed to stat genesis file: %w", err)
+		}
+		if fileInfo.Size() > maxGenesisLen {
+			return fmt.Errorf("genesis file too large: %d bytes (max: %d bytes / 1 MB)", fileInfo.Size(), maxGenesisLen)
 		}
 
 		genesis, err := os.ReadFile(chainGenesisFile)

@@ -1,11 +1,21 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
+)
+
+const (
+	// defaultOperationTimeout is the default timeout for network operations.
+	// Can be overridden via PLATFORM_CLI_TIMEOUT environment variable.
+	defaultOperationTimeout = 2 * time.Minute
 )
 
 var (
@@ -72,4 +82,37 @@ func feeToPercent(fee float64) (uint32, error) {
 		return 0, fmt.Errorf("delegation fee must be between 0 and 1 (got %.4f)", fee)
 	}
 	return uint32(math.Round(fee * 10000)), nil
+}
+
+// getOperationContext returns a context with timeout and signal handling.
+// The context will be cancelled on SIGINT/SIGTERM or when the timeout expires.
+// The returned cancel function must be called to release resources.
+func getOperationContext() (context.Context, context.CancelFunc) {
+	// Determine timeout from environment or use default
+	timeout := defaultOperationTimeout
+	if envTimeout := os.Getenv("PLATFORM_CLI_TIMEOUT"); envTimeout != "" {
+		if d, err := time.ParseDuration(envTimeout); err == nil && d > 0 {
+			timeout = d
+		}
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+
+	// Set up signal handling for graceful cancellation
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		select {
+		case <-sigChan:
+			fmt.Fprintln(os.Stderr, "\nOperation cancelled by user")
+			cancel()
+		case <-ctx.Done():
+			// Context cancelled or timed out, clean up signal handler
+		}
+		signal.Stop(sigChan)
+	}()
+
+	return ctx, cancel
 }

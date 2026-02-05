@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/ava-labs/platform-cli/pkg/node"
@@ -21,7 +20,8 @@ var nodeInfoCmd = &cobra.Command{
 	Short: "Get node information",
 	Long:  `Get node ID and BLS public key from an avalanchego node.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx, cancel := getOperationContext()
+		defer cancel()
 
 		if nodeIP == "" {
 			return fmt.Errorf("--ip is required")
