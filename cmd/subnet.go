@@ -52,11 +52,16 @@ var subnetCreateCmd = &cobra.Command{
 		}
 		defer cleanup()
 
+		fmt.Println("Creating new subnet...")
+		fmt.Printf("Owner: %s\n", w.PChainAddress())
+		fmt.Println("Submitting transaction...")
+
 		txID, err := pchain.CreateSubnet(ctx, w)
 		if err != nil {
 			return err
 		}
 
+		fmt.Println("Subnet created successfully!")
 		fmt.Printf("Subnet ID: %s\n", txID)
 		return nil
 	},
@@ -170,12 +175,19 @@ var subnetConvertL1Cmd = &cobra.Command{
 		}
 		defer cleanup()
 
+		fmt.Println("Converting subnet to L1...")
+		fmt.Printf("  Subnet ID: %s\n", sid)
+		fmt.Printf("  Chain ID: %s\n", cid)
+		fmt.Printf("  Validators: %d\n", len(validators))
+		fmt.Println("Submitting transaction...")
+
 		txID, err := pchain.ConvertSubnetToL1(ctx, w, sid, cid, managerAddr, validators)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("Convert Subnet to L1 TX: %s\n", txID)
+		fmt.Println("Subnet converted to L1 successfully!")
+		fmt.Printf("TX ID: %s\n", txID)
 		return nil
 	},
 }

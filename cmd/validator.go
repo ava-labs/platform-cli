@@ -79,6 +79,10 @@ var validatorAddCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Adding validator %s with %.9f AVAX stake...\n", nodeID, valStakeAmount)
+		fmt.Printf("  Start: %s\n", start.Format("2006-01-02 15:04:05 UTC"))
+		fmt.Printf("  End: %s\n", end.Format("2006-01-02 15:04:05 UTC"))
+		fmt.Printf("  Delegation Fee: %.2f%%\n", valDelegationFee*100)
+		fmt.Println("Submitting transaction...")
 
 		txID, err := pchain.AddValidator(ctx, w, pchain.AddValidatorConfig{
 			NodeID:        nodeID,
@@ -147,6 +151,9 @@ var validatorDelegateCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Delegating %.9f AVAX to validator %s...\n", valStakeAmount, nodeID)
+		fmt.Printf("  Start: %s\n", start.Format("2006-01-02 15:04:05 UTC"))
+		fmt.Printf("  End: %s\n", end.Format("2006-01-02 15:04:05 UTC"))
+		fmt.Println("Submitting transaction...")
 
 		txID, err := pchain.AddDelegator(ctx, w, pchain.AddDelegatorConfig{
 			NodeID:     nodeID,
