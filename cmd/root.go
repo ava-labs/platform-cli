@@ -40,7 +40,12 @@ Example usage:
   platform wallet balance --key-name mykey
   platform validator add --node-id NodeID-... --stake 2000
   platform transfer p-to-c --amount 10 --key-name mykey
-  platform subnet create --network fuji --key-name mykey`,
+  platform subnet create --network fuji --key-name mykey
+
+Environment Variables:
+  AVALANCHE_PRIVATE_KEY      Private key (alternative to --private-key flag)
+  PLATFORM_CLI_KEY_PASSWORD  Password for encrypted keys (safer than prompting in scripts)
+  PLATFORM_CLI_TIMEOUT       Operation timeout duration (e.g., "5m", "30s", default: 2m)`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
