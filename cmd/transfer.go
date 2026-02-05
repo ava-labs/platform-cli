@@ -10,37 +10,16 @@ import (
 )
 
 var (
-	transferAmount      float64
-	transferAmountNAVAX uint64 // Direct nAVAX amount for precision-sensitive operations
-	transferFrom        string
-	transferTo          string
-	transferDest        string
+	transferAmount float64
+	transferFrom   string
+	transferTo     string
+	transferDest   string
 )
 
 var transferCmd = &cobra.Command{
 	Use:   "transfer",
 	Short: "Transfer AVAX",
-	Long: `Transfer AVAX on P-Chain or between P-Chain and C-Chain.
-
-Amount Precision:
-  Use --amount for human-readable AVAX amounts (e.g., --amount 10.5).
-  Use --amount-navax for exact nAVAX amounts when precision matters
-  (1 AVAX = 1,000,000,000 nAVAX).
-
-  Warning: Float amounts may lose precision for values > 9007199254740992 nAVAX (~9M AVAX).
-  For large transfers, use --amount-navax for guaranteed precision.`,
-}
-
-// getTransferAmountNAVAX returns the transfer amount in nAVAX.
-// Prefers --amount-navax if set, otherwise converts --amount from AVAX.
-func getTransferAmountNAVAX() (uint64, error) {
-	if transferAmountNAVAX > 0 {
-		return transferAmountNAVAX, nil
-	}
-	if transferAmount <= 0 {
-		return 0, fmt.Errorf("--amount or --amount-navax is required and must be positive")
-	}
-	return avaxToNAVAX(transferAmount)
+	Long:  `Transfer AVAX on P-Chain or between P-Chain and C-Chain.`,
 }
 
 var transferSendCmd = &cobra.Command{
@@ -51,13 +30,11 @@ var transferSendCmd = &cobra.Command{
 		ctx, cancel := getOperationContext()
 		defer cancel()
 
+		if transferAmount <= 0 {
+			return fmt.Errorf("--amount is required and must be positive")
+		}
 		if transferDest == "" {
 			return fmt.Errorf("--to is required")
-		}
-
-		amountNAVAX, err := getTransferAmountNAVAX()
-		if err != nil {
-			return fmt.Errorf("invalid amount: %w", err)
 		}
 
 		destAddr, err := ids.ShortFromString(transferDest)
@@ -76,7 +53,12 @@ var transferSendCmd = &cobra.Command{
 		}
 		defer cleanup()
 
-		fmt.Printf("Sending %d nAVAX (%.9f AVAX) to %s...\n", amountNAVAX, float64(amountNAVAX)/1e9, destAddr)
+		amountNAVAX, err := avaxToNAVAX(transferAmount)
+		if err != nil {
+			return fmt.Errorf("invalid amount: %w", err)
+		}
+
+		fmt.Printf("Sending %.9f AVAX to %s...\n", transferAmount, destAddr)
 
 		txID, err := pchain.Send(ctx, w, destAddr, amountNAVAX)
 		if err != nil {
@@ -96,9 +78,8 @@ var transferPToCCmd = &cobra.Command{
 		ctx, cancel := getOperationContext()
 		defer cancel()
 
-		amountNAVAX, err := getTransferAmountNAVAX()
-		if err != nil {
-			return fmt.Errorf("invalid amount: %w", err)
+		if transferAmount <= 0 {
+			return fmt.Errorf("--amount is required and must be positive")
 		}
 
 		netConfig, err := getNetworkConfig(ctx)
@@ -112,10 +93,14 @@ var transferPToCCmd = &cobra.Command{
 		}
 		defer cleanup()
 
-		fmt.Printf("Transferring %d nAVAX (%.9f AVAX) from P-Chain to C-Chain...\n", amountNAVAX, float64(amountNAVAX)/1e9)
+		amountNAVAX, err := avaxToNAVAX(transferAmount)
+		if err != nil {
+			return fmt.Errorf("invalid amount: %w", err)
+		}
+
+		fmt.Printf("Transferring %.9f AVAX from P-Chain to C-Chain...\n", transferAmount)
 		fmt.Printf("P-Chain Address: %s\n", w.PChainAddress())
 		fmt.Printf("C-Chain Address: %s\n", w.EthAddress().Hex())
-		fmt.Println("Step 1/2: Exporting from P-Chain...")
 
 		exportTxID, importTxID, err := crosschain.TransferPToC(ctx, w, amountNAVAX)
 		if err != nil {
@@ -123,7 +108,6 @@ var transferPToCCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Export TX ID: %s\n", exportTxID)
-		fmt.Println("Step 2/2: Importing to C-Chain...")
 		fmt.Printf("Import TX ID: %s\n", importTxID)
 		fmt.Println("Transfer complete!")
 		return nil
@@ -138,9 +122,8 @@ var transferCToPCmd = &cobra.Command{
 		ctx, cancel := getOperationContext()
 		defer cancel()
 
-		amountNAVAX, err := getTransferAmountNAVAX()
-		if err != nil {
-			return fmt.Errorf("invalid amount: %w", err)
+		if transferAmount <= 0 {
+			return fmt.Errorf("--amount is required and must be positive")
 		}
 
 		netConfig, err := getNetworkConfig(ctx)
@@ -154,10 +137,14 @@ var transferCToPCmd = &cobra.Command{
 		}
 		defer cleanup()
 
-		fmt.Printf("Transferring %d nAVAX (%.9f AVAX) from C-Chain to P-Chain...\n", amountNAVAX, float64(amountNAVAX)/1e9)
+		amountNAVAX, err := avaxToNAVAX(transferAmount)
+		if err != nil {
+			return fmt.Errorf("invalid amount: %w", err)
+		}
+
+		fmt.Printf("Transferring %.9f AVAX from C-Chain to P-Chain...\n", transferAmount)
 		fmt.Printf("C-Chain Address: %s\n", w.EthAddress().Hex())
 		fmt.Printf("P-Chain Address: %s\n", w.PChainAddress())
-		fmt.Println("Step 1/2: Exporting from C-Chain...")
 
 		exportTxID, importTxID, err := crosschain.TransferCToP(ctx, w, amountNAVAX)
 		if err != nil {
@@ -165,7 +152,6 @@ var transferCToPCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Export TX ID: %s\n", exportTxID)
-		fmt.Println("Step 2/2: Importing to P-Chain...")
 		fmt.Printf("Import TX ID: %s\n", importTxID)
 		fmt.Println("Transfer complete!")
 		return nil
@@ -180,9 +166,8 @@ var transferExportCmd = &cobra.Command{
 		ctx, cancel := getOperationContext()
 		defer cancel()
 
-		amountNAVAX, err := getTransferAmountNAVAX()
-		if err != nil {
-			return fmt.Errorf("invalid amount: %w", err)
+		if transferAmount <= 0 {
+			return fmt.Errorf("--amount is required and must be positive")
 		}
 
 		if transferFrom == "" || transferTo == "" {
@@ -200,18 +185,23 @@ var transferExportCmd = &cobra.Command{
 		}
 		defer cleanup()
 
+		amountNAVAX, err := avaxToNAVAX(transferAmount)
+		if err != nil {
+			return fmt.Errorf("invalid amount: %w", err)
+		}
+
 		var txID interface{ String() string }
 
 		switch {
 		case transferFrom == "p" && transferTo == "c":
-			fmt.Printf("Exporting %d nAVAX (%.9f AVAX) from P-Chain to C-Chain...\n", amountNAVAX, float64(amountNAVAX)/1e9)
+			fmt.Printf("Exporting %.9f AVAX from P-Chain to C-Chain...\n", transferAmount)
 			id, err := crosschain.ExportFromPChain(ctx, w, amountNAVAX)
 			if err != nil {
 				return fmt.Errorf("export failed: %w", err)
 			}
 			txID = id
 		case transferFrom == "c" && transferTo == "p":
-			fmt.Printf("Exporting %d nAVAX (%.9f AVAX) from C-Chain to P-Chain...\n", amountNAVAX, float64(amountNAVAX)/1e9)
+			fmt.Printf("Exporting %.9f AVAX from C-Chain to P-Chain...\n", transferAmount)
 			id, err := crosschain.ExportFromCChain(ctx, w, amountNAVAX)
 			if err != nil {
 				return fmt.Errorf("export failed: %w", err)
@@ -287,18 +277,14 @@ func init() {
 
 	// Flags for P-Chain send
 	transferSendCmd.Flags().Float64Var(&transferAmount, "amount", 0, "Amount in AVAX to send")
-	transferSendCmd.Flags().Uint64Var(&transferAmountNAVAX, "amount-navax", 0, "Amount in nAVAX (for precision-sensitive transfers)")
 	transferSendCmd.Flags().StringVar(&transferDest, "to", "", "Destination P-Chain address")
 
 	// Flags for combined transfer commands
 	transferPToCCmd.Flags().Float64Var(&transferAmount, "amount", 0, "Amount in AVAX to transfer")
-	transferPToCCmd.Flags().Uint64Var(&transferAmountNAVAX, "amount-navax", 0, "Amount in nAVAX (for precision-sensitive transfers)")
 	transferCToPCmd.Flags().Float64Var(&transferAmount, "amount", 0, "Amount in AVAX to transfer")
-	transferCToPCmd.Flags().Uint64Var(&transferAmountNAVAX, "amount-navax", 0, "Amount in nAVAX (for precision-sensitive transfers)")
 
 	// Flags for manual export command
 	transferExportCmd.Flags().Float64Var(&transferAmount, "amount", 0, "Amount in AVAX to export")
-	transferExportCmd.Flags().Uint64Var(&transferAmountNAVAX, "amount-navax", 0, "Amount in nAVAX (for precision-sensitive transfers)")
 	transferExportCmd.Flags().StringVar(&transferFrom, "from", "", "Source chain: 'p' or 'c'")
 	transferExportCmd.Flags().StringVar(&transferTo, "to", "", "Destination chain: 'p' or 'c'")
 
