@@ -154,19 +154,21 @@ platform node info --ip <IP>
 
 | Network | Flag | RPC URL |
 |---------|------|---------|
-| Local | `--network local` | `http://127.0.0.1:9650` |
 | Fuji | `--network fuji` | `https://api.avax-test.network` |
 | Mainnet | `--network mainnet` | `https://api.avax.network` |
 
-### Custom RPC / Devnets
+### Local / Custom RPC / Devnets
 
-For devnets or custom networks, use the `--rpc-url` flag:
+For local networks, devnets, or custom networks, use the `--rpc-url` flag:
 
 ```bash
+# Connect to local network (avalanche-network-runner)
+platform wallet balance --rpc-url http://127.0.0.1:9650 --key-name ewoq
+
 # Connect to a custom devnet (auto-detects network ID)
 platform wallet balance --rpc-url http://my-devnet:9650 --key-name mykey
 
-# Specify network ID explicitly
+# Specify network ID explicitly if auto-detection fails
 platform wallet balance --rpc-url http://my-devnet:9650 --network-id 12345 --key-name mykey
 
 # Works with all commands
@@ -206,7 +208,7 @@ PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji
 # Run specific test
 PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji -run TestCreateSubnet
 
-# Run against local network (uses ewoq key)
+# Run against local network (uses ewoq key, connects to http://127.0.0.1:9650)
 go test -v ./e2e/... -network=local
 
 # Run only help/validation tests (no funds needed)

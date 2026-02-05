@@ -158,6 +158,28 @@ func TransferCToP(ctx context.Context, w *wallet.FullWallet, amountNAVAX uint64)
 	return exportTxID, importTxID, nil
 }
 
+// isRetryableImportError checks if an import error is retryable.
+// These errors typically indicate UTXOs aren't visible yet after export.
+func isRetryableImportError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	// Common patterns for transient UTXO visibility issues
+	retryablePatterns := []string{
+		"not found",
+		"no utxos",
+		"insufficient funds", // May occur if UTXOs haven't propagated
+		"missing utxo",
+	}
+	for _, pattern := range retryablePatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
 // importWithRetry attempts an import operation with retries.
 // This handles the case where atomic UTXOs aren't immediately visible after export.
 func importWithRetry(ctx context.Context, importFn func() (ids.ID, error)) (ids.ID, error) {
@@ -170,8 +192,8 @@ func importWithRetry(ctx context.Context, importFn func() (ids.ID, error)) (ids.
 			return txID, nil
 		}
 
-		// Check if the error is a "not found" error indicating UTXOs aren't visible yet
-		if !strings.Contains(err.Error(), "not found") {
+		// Only retry on transient UTXO visibility errors
+		if !isRetryableImportError(err) {
 			return ids.Empty, err
 		}
 

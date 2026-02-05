@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/ava-labs/avalanchego/api/info"
 )
@@ -16,9 +17,25 @@ type NodeInfo struct {
 	BLSProofOfPossession string
 }
 
+// normalizeNodeURI converts a node address to a full URI.
+// Accepts: "127.0.0.1", "127.0.0.1:9650", "http://127.0.0.1:9650"
+func normalizeNodeURI(addr string) string {
+	// Already a full URI
+	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
+		return addr
+	}
+	// Has port but no scheme
+	if strings.Contains(addr, ":") {
+		return "http://" + addr
+	}
+	// Just IP/hostname, add default port
+	return fmt.Sprintf("http://%s:9650", addr)
+}
+
 // GetNodeInfo queries an avalanchego node for its node ID and BLS key.
-func GetNodeInfo(ctx context.Context, ip string) (*NodeInfo, error) {
-	uri := fmt.Sprintf("http://%s:9650", ip)
+// Accepts IP, IP:port, or full URI (e.g., "127.0.0.1", "127.0.0.1:9650", "http://127.0.0.1:9650").
+func GetNodeInfo(ctx context.Context, addr string) (*NodeInfo, error) {
+	uri := normalizeNodeURI(addr)
 	infoClient := info.NewClient(uri)
 
 	nodeID, nodePoP, err := infoClient.GetNodeID(ctx)

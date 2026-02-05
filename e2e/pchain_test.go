@@ -4,7 +4,7 @@
 //
 //	PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji
 //
-// Run against local network (uses ewoq key):
+// Run against local network (uses ewoq key, connects to http://127.0.0.1:9650):
 //
 //	go test -v ./e2e/... -network=local
 package e2e
@@ -34,6 +34,7 @@ import (
 
 var (
 	networkFlag = flag.String("network", "fuji", "Network to test against: local, fuji")
+	localRPCURL = "http://127.0.0.1:9650" // Default local network RPC URL
 )
 
 // ewoqPrivateKey is the well-known ewoq test key used in local/test networks.
@@ -80,13 +81,27 @@ func getTestWallet(t *testing.T) (*wallet.Wallet, network.Config) {
 		t.Fatalf("failed to parse key: %v", err)
 	}
 
-	netConfig := network.GetConfig(*networkFlag)
+	netConfig := getNetworkConfig(t, ctx)
 	w, err := wallet.NewWallet(ctx, key, netConfig)
 	if err != nil {
 		t.Fatalf("failed to create wallet: %v", err)
 	}
 
 	return w, netConfig
+}
+
+// getNetworkConfig returns the network config for tests.
+// For "local", uses --rpc-url with NewCustomConfig.
+func getNetworkConfig(t *testing.T, ctx context.Context) network.Config {
+	t.Helper()
+	if *networkFlag == "local" {
+		cfg, err := network.NewCustomConfig(ctx, localRPCURL, 0)
+		if err != nil {
+			t.Fatalf("failed to get local network config: %v", err)
+		}
+		return cfg
+	}
+	return network.GetConfig(*networkFlag)
 }
 
 func getTestFullWallet(t *testing.T) (*wallet.FullWallet, network.Config) {
@@ -99,7 +114,7 @@ func getTestFullWallet(t *testing.T) (*wallet.FullWallet, network.Config) {
 		t.Fatalf("failed to parse key: %v", err)
 	}
 
-	netConfig := network.GetConfig(*networkFlag)
+	netConfig := getNetworkConfig(t, ctx)
 	w, err := wallet.NewFullWallet(ctx, key, netConfig)
 	if err != nil {
 		t.Fatalf("failed to create full wallet: %v", err)

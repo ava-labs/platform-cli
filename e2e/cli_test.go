@@ -34,8 +34,13 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 	if isHelpCmd {
 		fullArgs = args
 	} else {
-		// Add network flag
-		fullArgs = append([]string{"--network", *networkFlag}, args...)
+		// Add network/RPC flag
+		if *networkFlag == "local" {
+			// Use --rpc-url for local network instead of --network local
+			fullArgs = append([]string{"--rpc-url", "http://127.0.0.1:9650"}, args...)
+		} else {
+			fullArgs = append([]string{"--network", *networkFlag}, args...)
+		}
 
 		// Add private key if available
 		if envKey := os.Getenv("PRIVATE_KEY"); envKey != "" {

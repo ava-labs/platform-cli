@@ -42,25 +42,14 @@ var Mainnet = Config{
 	MinStakeDuration:  14 * 24 * time.Hour, // 14 days
 }
 
-// Local network configuration (avalanche-network-runner default)
-var Local = Config{
-	Name:              "local",
-	NetworkID:         1337,
-	RPCURL:            "http://127.0.0.1:9650",
-	MinValidatorStake: 1_000_000_000,      // 1 AVAX
-	MinDelegatorStake: 1_000_000_000,      // 1 AVAX
-	MinStakeDuration:  24 * time.Hour,     // 24 hours
-}
-
 // GetConfig returns the network configuration for the given network name.
+// For local/custom networks, use --rpc-url instead.
 func GetConfig(name string) Config {
 	switch name {
 	case "mainnet":
 		return Mainnet
 	case "fuji":
 		return Fuji
-	case "local":
-		return Local
 	default:
 		// Default to Fuji
 		return Fuji

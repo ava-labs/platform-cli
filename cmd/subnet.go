@@ -181,9 +181,9 @@ var subnetConvertL1Cmd = &cobra.Command{
 }
 
 // gatherL1Validators queries validator nodes and builds conversion validators.
-func gatherL1Validators(ctx context.Context, validatorIPs string, balance float64) ([]*txs.ConvertSubnetToL1Validator, error) {
-	ips := parseValidatorIPs(validatorIPs)
-	if len(ips) == 0 {
+func gatherL1Validators(ctx context.Context, validatorAddrs string, balance float64) ([]*txs.ConvertSubnetToL1Validator, error) {
+	addrs := parseValidatorAddrs(validatorAddrs)
+	if len(addrs) == 0 {
 		return nil, nil // No validators is valid
 	}
 
@@ -193,10 +193,10 @@ func gatherL1Validators(ctx context.Context, validatorIPs string, balance float6
 		return nil, fmt.Errorf("invalid validator balance: %w", err)
 	}
 
-	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(ips))
+	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(addrs))
 
-	for _, ip := range ips {
-		uri := fmt.Sprintf("http://%s:9650", ip)
+	for _, addr := range addrs {
+		uri := normalizeNodeURI(addr)
 		infoClient := info.NewClient(uri)
 
 		nodeID, nodePoP, err := infoClient.GetNodeID(ctx)
@@ -215,15 +215,31 @@ func gatherL1Validators(ctx context.Context, validatorIPs string, balance float6
 	return validators, nil
 }
 
-func parseValidatorIPs(ipList string) []string {
-	var ips []string
-	for _, ip := range strings.Split(ipList, ",") {
-		ip = strings.TrimSpace(ip)
-		if ip != "" {
-			ips = append(ips, ip)
+// parseValidatorAddrs splits a comma-separated list of validator addresses.
+func parseValidatorAddrs(addrList string) []string {
+	var addrs []string
+	for _, addr := range strings.Split(addrList, ",") {
+		addr = strings.TrimSpace(addr)
+		if addr != "" {
+			addrs = append(addrs, addr)
 		}
 	}
-	return ips
+	return addrs
+}
+
+// normalizeNodeURI converts a node address to a full URI.
+// Accepts: "127.0.0.1", "127.0.0.1:9650", "http://127.0.0.1:9650"
+func normalizeNodeURI(addr string) string {
+	// Already a full URI
+	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
+		return addr
+	}
+	// Has port but no scheme
+	if strings.Contains(addr, ":") {
+		return "http://" + addr
+	}
+	// Just IP/hostname, add default port
+	return fmt.Sprintf("http://%s:9650", addr)
 }
 
 // generateMockValidator creates a mock validator with valid BLS credentials for testing.
