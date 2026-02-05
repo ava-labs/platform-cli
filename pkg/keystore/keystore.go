@@ -13,6 +13,13 @@ import (
 	"github.com/ava-labs/platform-cli/pkg/wallet"
 )
 
+// clearKeyBytes securely zeros a byte slice to prevent sensitive data from lingering in memory.
+func clearKeyBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+}
+
 const (
 	keystoreDir  = ".platform"
 	keysDir      = "keys"
@@ -163,6 +170,7 @@ func (ks *KeyStore) ImportKey(name string, keyBytes []byte, password []byte) err
 
 // GenerateKey generates a new random key with the given name.
 // If password is provided, the key will be encrypted.
+// Note: The returned key bytes should be cleared by the caller when no longer needed.
 func (ks *KeyStore) GenerateKey(name string, password []byte) ([]byte, error) {
 	// Generate random key bytes
 	keyBytes := make([]byte, secp256k1.PrivateKeyLen)
@@ -172,6 +180,8 @@ func (ks *KeyStore) GenerateKey(name string, password []byte) ([]byte, error) {
 
 	// Import it (which validates and stores it)
 	if err := ks.ImportKey(name, keyBytes, password); err != nil {
+		// Clear key bytes on error before returning
+		clearKeyBytes(keyBytes)
 		return nil, err
 	}
 
@@ -179,6 +189,7 @@ func (ks *KeyStore) GenerateKey(name string, password []byte) ([]byte, error) {
 }
 
 // LoadKey loads a key by name. If the key is encrypted, password must be provided.
+// Note: The returned key bytes should be cleared by the caller when no longer needed.
 func (ks *KeyStore) LoadKey(name string, password []byte) ([]byte, error) {
 	entry, exists := ks.index.Keys[name]
 	if !exists {
@@ -287,6 +298,8 @@ func (ks *KeyStore) ExportKey(name string, password []byte, format string) (stri
 	if err != nil {
 		return "", err
 	}
+	// Clear key bytes after encoding
+	defer clearKeyBytes(keyBytes)
 
 	switch format {
 	case "cb58", "":

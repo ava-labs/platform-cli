@@ -10,6 +10,13 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
+// clearBytes securely zeros a byte slice to prevent sensitive data from lingering in memory.
+func clearBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+}
+
 const (
 	// Argon2id parameters - these are the OWASP recommended values
 	argon2Time    = 3          // Number of iterations
@@ -56,6 +63,8 @@ func Encrypt(plaintext []byte, password []byte) (salt, nonce, ciphertext string,
 
 	// Derive key
 	key := DeriveKey(password, saltBytes)
+	// Clear derived key when done
+	defer clearBytes(key)
 
 	// Create AES cipher
 	block, err := aes.NewCipher(key)
@@ -88,6 +97,7 @@ func Encrypt(plaintext []byte, password []byte) (salt, nonce, ciphertext string,
 
 // Decrypt decrypts ciphertext using AES-256-GCM with the given password.
 // Salt, nonce, and ciphertext should be base64 encoded.
+// Note: The returned plaintext should be cleared by the caller when no longer needed.
 func Decrypt(saltB64, nonceB64, ciphertextB64 string, password []byte) ([]byte, error) {
 	// Decode base64
 	salt, err := base64.StdEncoding.DecodeString(saltB64)
@@ -107,6 +117,8 @@ func Decrypt(saltB64, nonceB64, ciphertextB64 string, password []byte) ([]byte, 
 
 	// Derive key
 	key := DeriveKey(password, salt)
+	// Clear derived key when done
+	defer clearBytes(key)
 
 	// Create AES cipher
 	block, err := aes.NewCipher(key)

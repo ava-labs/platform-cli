@@ -14,6 +14,13 @@ import (
 	"golang.org/x/term"
 )
 
+// clearBytesWallet securely zeros a byte slice to prevent sensitive data from lingering in memory.
+func clearBytesWallet(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+}
+
 var walletCmd = &cobra.Command{
 	Use:   "wallet",
 	Short: "Wallet operations",
@@ -73,6 +80,7 @@ var addressCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer clearBytesWallet(key)
 
 		pAddr, evmAddr := wallet.DeriveAddresses(key)
 
@@ -119,10 +127,14 @@ var ewoqPrivateKey = []byte{
 
 // loadFromKeystore loads a key from the keystore by name.
 // Special built-in key: "ewoq" returns the well-known test key.
+// Note: The returned key bytes should be cleared by the caller when no longer needed.
 func loadFromKeystore(name string) ([]byte, error) {
 	// Built-in: ewoq test key
 	if name == "ewoq" {
-		return ewoqPrivateKey, nil
+		// Return a copy so caller can safely clear it
+		keyCopy := make([]byte, len(ewoqPrivateKey))
+		copy(keyCopy, ewoqPrivateKey)
+		return keyCopy, nil
 	}
 
 	ks, err := keystore.Load()
@@ -149,6 +161,8 @@ func loadFromKeystore(name string) ([]byte, error) {
 				return nil, fmt.Errorf("failed to read password: %w", err)
 			}
 		}
+		// Clear password after use
+		defer clearBytesWallet(password)
 	}
 
 	return ks.LoadKey(name, password)
@@ -193,6 +207,9 @@ func loadPChainWallet(ctx context.Context, netConfig network.Config) (*wallet.Wa
 	if err != nil {
 		return nil, nil, err
 	}
+	// Clear key bytes after wallet creation
+	defer clearBytesWallet(keyBytes)
+
 	key, err := wallet.ToPrivateKey(keyBytes)
 	if err != nil {
 		return nil, nil, err
@@ -226,6 +243,9 @@ func loadPChainWalletWithSubnet(ctx context.Context, netConfig network.Config, s
 	if err != nil {
 		return nil, nil, err
 	}
+	// Clear key bytes after wallet creation
+	defer clearBytesWallet(keyBytes)
+
 	key, err := wallet.ToPrivateKey(keyBytes)
 	if err != nil {
 		return nil, nil, err
@@ -260,6 +280,9 @@ func loadFullWallet(ctx context.Context, netConfig network.Config) (*wallet.Full
 	if err != nil {
 		return nil, nil, err
 	}
+	// Clear key bytes after wallet creation
+	defer clearBytesWallet(keyBytes)
+
 	key, err := wallet.ToPrivateKey(keyBytes)
 	if err != nil {
 		return nil, nil, err

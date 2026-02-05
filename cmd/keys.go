@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"crypto/subtle"
 	"fmt"
 	"os"
 	"sort"
@@ -13,6 +14,13 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
+
+// clearBytes securely zeros a byte slice to prevent sensitive data from lingering in memory.
+func clearBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+}
 
 var (
 	// keys flags
@@ -75,18 +83,21 @@ Examples:
 		if keyStr == "" {
 			// Prompt for key (hidden input)
 			fmt.Print("Enter private key: ")
-			keyBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+			inputBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 			fmt.Println()
 			if err != nil {
 				return fmt.Errorf("failed to read private key: %w", err)
 			}
-			keyStr = string(keyBytes)
+			keyStr = string(inputBytes)
+			clearBytes(inputBytes)
 		}
 
 		keyBytes, err := wallet.ParsePrivateKey(keyStr)
 		if err != nil {
 			return fmt.Errorf("invalid private key: %w", err)
 		}
+		// Clear key bytes when done
+		defer clearBytes(keyBytes)
 
 		// Get password if encrypting
 		var password []byte
@@ -95,6 +106,7 @@ Examples:
 			if err != nil {
 				return err
 			}
+			defer clearBytes(password)
 		}
 
 		// Import the key
@@ -149,6 +161,7 @@ Examples:
 			if err != nil {
 				return err
 			}
+			defer clearBytes(password)
 		}
 
 		// Generate the key
@@ -156,6 +169,8 @@ Examples:
 		if err != nil {
 			return err
 		}
+		// Clear key bytes when done (important: derive addresses before clearing)
+		defer clearBytes(keyBytes)
 
 		entry, _ := ks.GetKey(keyName)
 		pAddr, evmAddr := wallet.DeriveAddresses(keyBytes)
@@ -278,6 +293,7 @@ Examples:
 			if err != nil {
 				return err
 			}
+			defer clearBytes(password)
 		}
 
 		// Export the key
@@ -380,6 +396,7 @@ Examples:
 }
 
 // promptPassword prompts for a password. If confirm is true, asks for confirmation.
+// The returned password must be cleared by the caller when no longer needed.
 func promptPassword(confirm bool) ([]byte, error) {
 	fmt.Print("Enter password: ")
 	password, err := term.ReadPassword(int(os.Stdin.Fd()))
@@ -389,20 +406,26 @@ func promptPassword(confirm bool) ([]byte, error) {
 	}
 
 	if len(password) < 8 {
+		clearBytes(password)
 		return nil, fmt.Errorf("password must be at least 8 characters")
 	}
 
 	if confirm {
 		fmt.Print("Confirm password: ")
-		confirm, err := term.ReadPassword(int(os.Stdin.Fd()))
+		confirmPwd, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Println()
 		if err != nil {
+			clearBytes(password)
 			return nil, fmt.Errorf("failed to read password confirmation: %w", err)
 		}
 
-		if string(password) != string(confirm) {
+		// Use constant-time comparison to prevent timing attacks
+		if subtle.ConstantTimeCompare(password, confirmPwd) != 1 {
+			clearBytes(password)
+			clearBytes(confirmPwd)
 			return nil, fmt.Errorf("passwords do not match")
 		}
+		clearBytes(confirmPwd)
 	}
 
 	return password, nil
