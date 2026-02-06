@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"encoding/hex"
 	"fmt"
-	"strings"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
@@ -42,17 +40,14 @@ var l1RegisterValidatorCmd = &cobra.Command{
 			return fmt.Errorf("--balance is required and must be positive")
 		}
 
-		message, err := hex.DecodeString(strings.TrimPrefix(l1Message, "0x"))
+		message, err := decodeHex(l1Message)
 		if err != nil {
 			return fmt.Errorf("invalid message: %w", err)
 		}
 
-		popBytes, err := hex.DecodeString(strings.TrimPrefix(l1PoP, "0x"))
+		popBytes, err := decodeHexExactLength(l1PoP, bls.SignatureLen)
 		if err != nil {
 			return fmt.Errorf("invalid PoP: %w", err)
-		}
-		if len(popBytes) != bls.SignatureLen {
-			return fmt.Errorf("invalid PoP length: expected %d bytes, got %d", bls.SignatureLen, len(popBytes))
 		}
 
 		var pop [bls.SignatureLen]byte
@@ -96,7 +91,7 @@ var l1SetWeightCmd = &cobra.Command{
 			return fmt.Errorf("--message is required (hex-encoded Warp message)")
 		}
 
-		message, err := hex.DecodeString(strings.TrimPrefix(l1Message, "0x"))
+		message, err := decodeHex(l1Message)
 		if err != nil {
 			return fmt.Errorf("invalid message: %w", err)
 		}

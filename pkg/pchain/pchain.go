@@ -23,18 +23,18 @@ import (
 // Send sends AVAX on the P-Chain (IssueBaseTx).
 func Send(ctx context.Context, w *wallet.Wallet, to ids.ShortID, amountNAVAX uint64) (ids.ID, error) {
 	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
-	return issueSendTx(w.PWallet().IssueBaseTx, avaxAssetID, to, amountNAVAX)
+	return issueSendTx(w.PWallet().IssueBaseTx, avaxAssetID, to, amountNAVAX, common.WithContext(ctx))
 }
 
 // Export exports AVAX from P-Chain to another chain (IssueExportTx).
 func Export(ctx context.Context, w *wallet.Wallet, destChainID ids.ID, amountNAVAX uint64) (ids.ID, error) {
 	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
-	return issueExportTx(w.PWallet().IssueExportTx, destChainID, avaxAssetID, w.PChainAddress(), amountNAVAX)
+	return issueExportTx(w.PWallet().IssueExportTx, destChainID, avaxAssetID, w.PChainAddress(), amountNAVAX, common.WithContext(ctx))
 }
 
 // Import imports AVAX to P-Chain from another chain (IssueImportTx).
 func Import(ctx context.Context, w *wallet.Wallet, sourceChainID ids.ID) (ids.ID, error) {
-	return issueImportTx(w.PWallet().IssueImportTx, sourceChainID, w.PChainAddress())
+	return issueImportTx(w.PWallet().IssueImportTx, sourceChainID, w.PChainAddress(), common.WithContext(ctx))
 }
 
 func issueSendTx(
@@ -42,6 +42,7 @@ func issueSendTx(
 	avaxAssetID ids.ID,
 	to ids.ShortID,
 	amountNAVAX uint64,
+	options ...common.Option,
 ) (ids.ID, error) {
 	tx, err := issueBaseTx([]*avax.TransferableOutput{{
 		Asset: avax.Asset{ID: avaxAssetID},
@@ -52,7 +53,7 @@ func issueSendTx(
 				Addrs:     []ids.ShortID{to},
 			},
 		},
-	}})
+	}}, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue BaseTx: %w", err)
 	}
@@ -65,6 +66,7 @@ func issueExportTx(
 	avaxAssetID ids.ID,
 	ownerAddr ids.ShortID,
 	amountNAVAX uint64,
+	options ...common.Option,
 ) (ids.ID, error) {
 	owner := secp256k1fx.OutputOwners{
 		Threshold: 1,
@@ -77,7 +79,7 @@ func issueExportTx(
 			Amt:          amountNAVAX,
 			OutputOwners: owner,
 		},
-	}})
+	}}, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue ExportTx: %w", err)
 	}
@@ -88,13 +90,14 @@ func issueImportTx(
 	issueImportTxFn func(chainID ids.ID, to *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error),
 	sourceChainID ids.ID,
 	ownerAddr ids.ShortID,
+	options ...common.Option,
 ) (ids.ID, error) {
 	owner := secp256k1fx.OutputOwners{
 		Threshold: 1,
 		Addrs:     []ids.ShortID{ownerAddr},
 	}
 
-	tx, err := issueImportTxFn(sourceChainID, &owner)
+	tx, err := issueImportTxFn(sourceChainID, &owner, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue ImportTx: %w", err)
 	}
@@ -133,6 +136,7 @@ func AddValidator(ctx context.Context, w *wallet.Wallet, cfg AddValidatorConfig)
 		},
 		rewardsOwner,
 		cfg.DelegationFee,
+		common.WithContext(ctx),
 	)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue AddValidatorTx: %w", err)
@@ -159,6 +163,7 @@ func AddPermissionlessValidator(ctx context.Context, w *wallet.Wallet, cfg AddPe
 		w.PWallet().IssueAddPermissionlessValidatorTx,
 		avaxAssetID,
 		cfg,
+		common.WithContext(ctx),
 	)
 }
 
@@ -174,6 +179,7 @@ func issueAddPermissionlessValidatorTx(
 	) (*txs.Tx, error),
 	avaxAssetID ids.ID,
 	cfg AddPermissionlessValidatorConfig,
+	options ...common.Option,
 ) (ids.ID, error) {
 	rewardsOwner := &secp256k1fx.OutputOwners{
 		Threshold: 1,
@@ -195,6 +201,7 @@ func issueAddPermissionlessValidatorTx(
 		rewardsOwner,
 		rewardsOwner, // delegation rewards go to same owner
 		cfg.DelegationFee,
+		options...,
 	)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue AddPermissionlessValidatorTx: %w", err)
@@ -228,6 +235,7 @@ func AddDelegator(ctx context.Context, w *wallet.Wallet, cfg AddDelegatorConfig)
 			Wght:   cfg.StakeAmt,
 		},
 		rewardsOwner,
+		common.WithContext(ctx),
 	)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue AddDelegatorTx: %w", err)
@@ -252,6 +260,7 @@ func AddPermissionlessDelegator(ctx context.Context, w *wallet.Wallet, cfg AddPe
 		w.PWallet().IssueAddPermissionlessDelegatorTx,
 		avaxAssetID,
 		cfg,
+		common.WithContext(ctx),
 	)
 }
 
@@ -264,6 +273,7 @@ func issueAddPermissionlessDelegatorTx(
 	) (*txs.Tx, error),
 	avaxAssetID ids.ID,
 	cfg AddPermissionlessDelegatorConfig,
+	options ...common.Option,
 ) (ids.ID, error) {
 	rewardsOwner := &secp256k1fx.OutputOwners{
 		Threshold: 1,
@@ -282,6 +292,7 @@ func issueAddPermissionlessDelegatorTx(
 		},
 		avaxAssetID,
 		rewardsOwner,
+		options...,
 	)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue AddPermissionlessDelegatorTx: %w", err)
@@ -295,19 +306,20 @@ func issueAddPermissionlessDelegatorTx(
 
 // CreateSubnet creates a new subnet (IssueCreateSubnetTx).
 func CreateSubnet(ctx context.Context, w *wallet.Wallet) (ids.ID, error) {
-	return issueCreateSubnetTx(w.PWallet().IssueCreateSubnetTx, w.PChainAddress())
+	return issueCreateSubnetTx(w.PWallet().IssueCreateSubnetTx, w.PChainAddress(), common.WithContext(ctx))
 }
 
 func issueCreateSubnetTx(
 	issueTxFn func(owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error),
 	ownerAddr ids.ShortID,
+	options ...common.Option,
 ) (ids.ID, error) {
 	owner := &secp256k1fx.OutputOwners{
 		Threshold: 1,
 		Addrs:     []ids.ShortID{ownerAddr},
 	}
 
-	tx, err := issueTxFn(owner)
+	tx, err := issueTxFn(owner, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue CreateSubnetTx: %w", err)
 	}
@@ -316,20 +328,21 @@ func issueCreateSubnetTx(
 
 // TransferSubnetOwnership transfers subnet ownership (IssueTransferSubnetOwnershipTx).
 func TransferSubnetOwnership(ctx context.Context, w *wallet.Wallet, subnetID ids.ID, newOwner ids.ShortID) (ids.ID, error) {
-	return issueTransferSubnetOwnershipTx(w.PWallet().IssueTransferSubnetOwnershipTx, subnetID, newOwner)
+	return issueTransferSubnetOwnershipTx(w.PWallet().IssueTransferSubnetOwnershipTx, subnetID, newOwner, common.WithContext(ctx))
 }
 
 func issueTransferSubnetOwnershipTx(
 	issueTxFn func(subnetID ids.ID, owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error),
 	subnetID ids.ID,
 	newOwner ids.ShortID,
+	options ...common.Option,
 ) (ids.ID, error) {
 	owner := &secp256k1fx.OutputOwners{
 		Threshold: 1,
 		Addrs:     []ids.ShortID{newOwner},
 	}
 
-	tx, err := issueTxFn(subnetID, owner)
+	tx, err := issueTxFn(subnetID, owner, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue TransferSubnetOwnershipTx: %w", err)
 	}
@@ -338,7 +351,7 @@ func issueTransferSubnetOwnershipTx(
 
 // ConvertSubnetToL1 converts a subnet to L1 (IssueConvertSubnetToL1Tx).
 func ConvertSubnetToL1(ctx context.Context, w *wallet.Wallet, subnetID, chainID ids.ID, managerAddr []byte, validators []*txs.ConvertSubnetToL1Validator) (ids.ID, error) {
-	return issueConvertSubnetToL1Tx(w.PWallet().IssueConvertSubnetToL1Tx, subnetID, chainID, managerAddr, validators)
+	return issueConvertSubnetToL1Tx(w.PWallet().IssueConvertSubnetToL1Tx, subnetID, chainID, managerAddr, validators, common.WithContext(ctx))
 }
 
 func issueConvertSubnetToL1Tx(
@@ -347,8 +360,9 @@ func issueConvertSubnetToL1Tx(
 	chainID ids.ID,
 	managerAddr []byte,
 	validators []*txs.ConvertSubnetToL1Validator,
+	options ...common.Option,
 ) (ids.ID, error) {
-	tx, err := issueTxFn(subnetID, chainID, managerAddr, validators)
+	tx, err := issueTxFn(subnetID, chainID, managerAddr, validators, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue ConvertSubnetToL1Tx: %w", err)
 	}
@@ -361,7 +375,7 @@ func issueConvertSubnetToL1Tx(
 
 // RegisterL1Validator registers a new L1 validator (IssueRegisterL1ValidatorTx).
 func RegisterL1Validator(ctx context.Context, w *wallet.Wallet, balance uint64, pop [bls.SignatureLen]byte, message []byte) (ids.ID, error) {
-	tx, err := w.PWallet().IssueRegisterL1ValidatorTx(balance, pop, message)
+	tx, err := w.PWallet().IssueRegisterL1ValidatorTx(balance, pop, message, common.WithContext(ctx))
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue RegisterL1ValidatorTx: %w", err)
 	}
@@ -370,7 +384,7 @@ func RegisterL1Validator(ctx context.Context, w *wallet.Wallet, balance uint64, 
 
 // SetL1ValidatorWeight sets the weight of an L1 validator (IssueSetL1ValidatorWeightTx).
 func SetL1ValidatorWeight(ctx context.Context, w *wallet.Wallet, message []byte) (ids.ID, error) {
-	tx, err := w.PWallet().IssueSetL1ValidatorWeightTx(message)
+	tx, err := w.PWallet().IssueSetL1ValidatorWeightTx(message, common.WithContext(ctx))
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue SetL1ValidatorWeightTx: %w", err)
 	}
@@ -379,7 +393,7 @@ func SetL1ValidatorWeight(ctx context.Context, w *wallet.Wallet, message []byte)
 
 // IncreaseL1ValidatorBalance increases the balance of an L1 validator (IssueIncreaseL1ValidatorBalanceTx).
 func IncreaseL1ValidatorBalance(ctx context.Context, w *wallet.Wallet, validationID ids.ID, amount uint64) (ids.ID, error) {
-	tx, err := w.PWallet().IssueIncreaseL1ValidatorBalanceTx(validationID, amount)
+	tx, err := w.PWallet().IssueIncreaseL1ValidatorBalanceTx(validationID, amount, common.WithContext(ctx))
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue IncreaseL1ValidatorBalanceTx: %w", err)
 	}
@@ -388,7 +402,7 @@ func IncreaseL1ValidatorBalance(ctx context.Context, w *wallet.Wallet, validatio
 
 // DisableL1Validator disables an L1 validator (IssueDisableL1ValidatorTx).
 func DisableL1Validator(ctx context.Context, w *wallet.Wallet, validationID ids.ID) (ids.ID, error) {
-	tx, err := w.PWallet().IssueDisableL1ValidatorTx(validationID)
+	tx, err := w.PWallet().IssueDisableL1ValidatorTx(validationID, common.WithContext(ctx))
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue DisableL1ValidatorTx: %w", err)
 	}
@@ -410,7 +424,7 @@ type CreateChainConfig struct {
 
 // CreateChain creates a new chain on a subnet (IssueCreateChainTx).
 func CreateChain(ctx context.Context, w *wallet.Wallet, cfg CreateChainConfig) (ids.ID, error) {
-	return issueCreateChainTx(w.PWallet().IssueCreateChainTx, cfg)
+	return issueCreateChainTx(w.PWallet().IssueCreateChainTx, cfg, common.WithContext(ctx))
 }
 
 func issueCreateChainTx(
@@ -423,6 +437,7 @@ func issueCreateChainTx(
 		options ...common.Option,
 	) (*txs.Tx, error),
 	cfg CreateChainConfig,
+	options ...common.Option,
 ) (ids.ID, error) {
 	tx, err := issueTxFn(
 		cfg.SubnetID,
@@ -430,6 +445,7 @@ func issueCreateChainTx(
 		cfg.VMID,
 		cfg.FxIDs,
 		cfg.ChainName,
+		options...,
 	)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue CreateChainTx: %w", err)

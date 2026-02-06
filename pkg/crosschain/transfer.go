@@ -11,6 +11,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
+	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
 )
 
@@ -44,7 +45,7 @@ func ExportFromPChain(ctx context.Context, w *wallet.FullWallet, amountNAVAX uin
 			Amt:          amountNAVAX,
 			OutputOwners: owner,
 		},
-	}})
+	}}, common.WithContext(ctx))
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue P-Chain export tx: %w", err)
 	}
@@ -59,7 +60,7 @@ func ImportToCChain(ctx context.Context, w *wallet.FullWallet) (ids.ID, error) {
 	ethAddr := w.EthAddress()
 
 	// Issue the import transaction
-	importTx, err := cWallet.IssueImportTx(constants.PlatformChainID, ethAddr)
+	importTx, err := cWallet.IssueImportTx(constants.PlatformChainID, ethAddr, common.WithContext(ctx))
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue C-Chain import tx: %w", err)
 	}
@@ -82,7 +83,7 @@ func ExportFromCChain(ctx context.Context, w *wallet.FullWallet, amountNAVAX uin
 	exportTx, err := cWallet.IssueExportTx(constants.PlatformChainID, []*secp256k1fx.TransferOutput{{
 		Amt:          amountNAVAX,
 		OutputOwners: owner,
-	}})
+	}}, common.WithContext(ctx))
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue C-Chain export tx: %w", err)
 	}
@@ -106,7 +107,7 @@ func ImportToPChain(ctx context.Context, w *wallet.FullWallet) (ids.ID, error) {
 	}
 
 	// Issue the import transaction
-	importTx, err := pWallet.IssueImportTx(cChainID, &owner)
+	importTx, err := pWallet.IssueImportTx(cChainID, &owner, common.WithContext(ctx))
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue P-Chain import tx: %w", err)
 	}

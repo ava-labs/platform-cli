@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
+	ethcommon "github.com/ava-labs/libevm/common"
 	nodeutil "github.com/ava-labs/platform-cli/pkg/node"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
@@ -164,8 +164,7 @@ var subnetConvertL1Cmd = &cobra.Command{
 
 		var managerAddr []byte
 		if subnetManager != "" {
-			addrStr := strings.TrimPrefix(subnetManager, "0x")
-			managerAddr, err = hex.DecodeString(addrStr)
+			managerAddr, err = decodeHexExactLength(subnetManager, ethcommon.AddressLength)
 			if err != nil {
 				return fmt.Errorf("invalid manager address: %w", err)
 			}

@@ -99,8 +99,8 @@ var validatorAddCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Adding validator %s with %.9f AVAX stake...\n", nodeID, valStakeAmount)
-		fmt.Printf("  Start: %s\n", start.Format("2006-01-02 15:04:05 UTC"))
-		fmt.Printf("  End: %s\n", end.Format("2006-01-02 15:04:05 UTC"))
+		fmt.Printf("  Start: %s\n", start.UTC().Format("2006-01-02 15:04:05 MST"))
+		fmt.Printf("  End: %s\n", end.UTC().Format("2006-01-02 15:04:05 MST"))
 		fmt.Printf("  Delegation Fee: %.2f%%\n", valDelegationFee*100)
 		if nodeURI != "" {
 			fmt.Printf("  Node Endpoint: %s\n", nodeURI)
@@ -183,8 +183,8 @@ var validatorDelegateCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Delegating %.9f AVAX to validator %s...\n", valStakeAmount, nodeID)
-		fmt.Printf("  Start: %s\n", start.Format("2006-01-02 15:04:05 UTC"))
-		fmt.Printf("  End: %s\n", end.Format("2006-01-02 15:04:05 UTC"))
+		fmt.Printf("  Start: %s\n", start.UTC().Format("2006-01-02 15:04:05 MST"))
+		fmt.Printf("  End: %s\n", end.UTC().Format("2006-01-02 15:04:05 MST"))
 		fmt.Println("Submitting transaction...")
 
 		txID, err := pchain.AddPermissionlessDelegator(ctx, w, pchain.AddPermissionlessDelegatorConfig{

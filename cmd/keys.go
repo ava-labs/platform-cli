@@ -24,11 +24,11 @@ func clearBytes(b []byte) {
 
 var (
 	// keys flags
-	keyName       string
-	keyEncrypt    bool
-	keyFormat     string
-	keyForce      bool
-	showAddrs     bool
+	keyName    string
+	keyEncrypt bool
+	keyFormat  string
+	keyForce   bool
+	showAddrs  bool
 )
 
 var keysCmd = &cobra.Command{
@@ -297,9 +297,14 @@ Examples:
 		// Get password if encrypted
 		var password []byte
 		if ks.IsEncrypted(keyName) {
-			password, err = promptPassword(false)
-			if err != nil {
-				return err
+			// Support non-interactive usage in scripts/CI.
+			if envPwd := os.Getenv("PLATFORM_CLI_KEY_PASSWORD"); envPwd != "" {
+				password = []byte(envPwd)
+			} else {
+				password, err = promptPassword(false)
+				if err != nil {
+					return err
+				}
 			}
 			defer clearBytes(password)
 		}

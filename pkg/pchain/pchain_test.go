@@ -1,6 +1,7 @@
 package pchain
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -13,6 +14,8 @@ import (
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 )
+
+type testContextKey string
 
 func TestIssueSendTx(t *testing.T) {
 	assetID := ids.GenerateTestID()
@@ -55,6 +58,26 @@ func TestIssueSendTx(t *testing.T) {
 	}
 	if len(out.OutputOwners.Addrs) != 1 || out.OutputOwners.Addrs[0] != dest {
 		t.Fatalf("issueSendTx() owner addrs = %#v, want [%s]", out.OutputOwners.Addrs, dest)
+	}
+}
+
+func TestIssueSendTxPassesOptions(t *testing.T) {
+	ctx := context.WithValue(context.Background(), testContextKey("key"), "value")
+	_, err := issueSendTx(
+		func(_ []*avax.TransferableOutput, opts ...common.Option) (*txs.Tx, error) {
+			gotCtx := common.NewOptions(opts).Context()
+			if gotCtx.Value(testContextKey("key")) != "value" {
+				t.Fatalf("issueSendTx() context option not propagated")
+			}
+			return &txs.Tx{TxID: ids.GenerateTestID()}, nil
+		},
+		ids.GenerateTestID(),
+		ids.GenerateTestShortID(),
+		1,
+		common.WithContext(ctx),
+	)
+	if err != nil {
+		t.Fatalf("issueSendTx() returned error: %v", err)
 	}
 }
 
