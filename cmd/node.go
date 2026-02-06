@@ -27,7 +27,7 @@ var nodeInfoCmd = &cobra.Command{
 			return fmt.Errorf("--ip is required")
 		}
 
-		info, err := node.GetNodeInfo(ctx, nodeIP)
+		info, err := node.GetNodeInfoWithInsecureHTTP(ctx, nodeIP, allowInsecureHTTP)
 		if err != nil {
 			return fmt.Errorf("failed to get node info: %w", err)
 		}

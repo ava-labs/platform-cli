@@ -343,7 +343,7 @@ func parseValidatorAddrs(addrList string) []string {
 }
 
 func normalizeNodeURI(addr string) (string, error) {
-	return nodeutil.NormalizeNodeURI(addr)
+	return nodeutil.NormalizeNodeURIWithInsecureHTTP(addr, allowInsecureHTTP)
 }
 
 // generateMockValidator creates a mock validator with valid BLS credentials for testing.

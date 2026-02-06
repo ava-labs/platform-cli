@@ -2,6 +2,7 @@ package keystore
 
 import (
 	"bytes"
+	"encoding/base64"
 	"testing"
 )
 
@@ -161,6 +162,18 @@ func TestDecryptInvalidBase64(t *testing.T) {
 	_, err = Decrypt("dGVzdA==", "dGVzdA==", "not-valid-base64!!!", password)
 	if err == nil {
 		t.Error("Decrypt() with invalid ciphertext should fail")
+	}
+}
+
+func TestDecryptInvalidNonceLength(t *testing.T) {
+	password := []byte("password")
+	salt := base64.StdEncoding.EncodeToString(make([]byte, saltSize))
+	nonce := base64.StdEncoding.EncodeToString(make([]byte, 1))
+	ciphertext := base64.StdEncoding.EncodeToString(make([]byte, 16))
+
+	_, err := Decrypt(salt, nonce, ciphertext, password)
+	if err == nil {
+		t.Fatal("Decrypt() with invalid nonce length should fail")
 	}
 }
 

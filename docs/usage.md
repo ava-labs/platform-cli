@@ -106,6 +106,9 @@ platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock
 - `--chain-id` is the chain where the validator manager contract is deployed.
   In many setups, this is the same as the new L1 chain ID.
 - `--validators` accepts comma-separated node addresses (`IP`, `host:port`, or base `http(s)://host:port` URI).
+  Non-local shorthand addresses default to `https://`.
+- Plain `http://` for non-local validator/node endpoints is blocked by default.
+  Use `--allow-insecure-http` only on trusted networks.
 - For each validator address, the CLI auto-queries `/ext/info` and reads:
   - `NodeID`
   - BLS public key + proof of possession (PoP)
@@ -132,7 +135,7 @@ platform chain create --subnet-id <ID> --genesis <file> --name <name>
 ### Node Info
 
 ```bash
-platform node info --ip <IP>
+platform node info --ip <IP-or-URI> [--allow-insecure-http]
 ```
 
 ## Key Loading Priority

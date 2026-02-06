@@ -19,10 +19,10 @@ func clearBytes(b []byte) {
 
 const (
 	// Argon2id parameters - these are the OWASP recommended values
-	argon2Time    = 3          // Number of iterations
-	argon2Memory  = 64 * 1024  // Memory in KiB (64 MiB)
-	argon2Threads = 4          // Number of threads
-	argon2KeyLen  = 32         // Output key length (256 bits for AES-256)
+	argon2Time    = 3         // Number of iterations
+	argon2Memory  = 64 * 1024 // Memory in KiB (64 MiB)
+	argon2Threads = 4         // Number of threads
+	argon2KeyLen  = 32        // Output key length (256 bits for AES-256)
 
 	// Salt and nonce sizes
 	saltSize  = 16 // 128 bits
@@ -104,10 +104,16 @@ func Decrypt(saltB64, nonceB64, ciphertextB64 string, password []byte) ([]byte, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode salt: %w", err)
 	}
+	if len(salt) != saltSize {
+		return nil, fmt.Errorf("invalid salt length: expected %d bytes, got %d", saltSize, len(salt))
+	}
 
 	nonce, err := base64.StdEncoding.DecodeString(nonceB64)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode nonce: %w", err)
+	}
+	if len(nonce) != nonceSize {
+		return nil, fmt.Errorf("invalid nonce length: expected %d bytes, got %d", nonceSize, len(nonce))
 	}
 
 	ciphertext, err := base64.StdEncoding.DecodeString(ciphertextB64)
