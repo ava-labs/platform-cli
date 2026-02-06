@@ -91,8 +91,20 @@ platform validator delegate \
 ```bash
 platform subnet create
 platform subnet transfer-ownership --subnet-id <ID> --new-owner <address>
-platform subnet convert-l1 --subnet-id <ID> --chain-id <ID> [--validators <IPs>]
+platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--manager <hex>]
+platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--contract-address <hex>]
+platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock-validator
 ```
+
+`convert-l1` notes:
+- `--manager` / `--contract-address` is the validator manager contract address (hex).
+- `--chain-id` is the chain where the validator manager contract is deployed.
+  In many setups, this is the same as the new L1 chain ID.
+- `--validators` accepts comma-separated node addresses (`IP`, `host:port`, or full `http(s)://...` URI).
+- For each validator address, the CLI auto-queries `/ext/info` and reads:
+  - `NodeID`
+  - BLS public key + proof of possession (PoP)
+- You do not manually pass BLS/PoP for `subnet convert-l1`.
 
 ### L1 Validators
 

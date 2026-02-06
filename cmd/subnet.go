@@ -127,6 +127,9 @@ var subnetConvertL1Cmd = &cobra.Command{
 		if subnetChainID == "" {
 			return fmt.Errorf("--chain-id is required")
 		}
+		if !subnetMockVal && strings.TrimSpace(subnetValidatorIPs) == "" {
+			return fmt.Errorf("at least one validator is required: provide --validators or use --mock-validator for testing")
+		}
 
 		sid, err := ids.FromString(subnetID)
 		if err != nil {
@@ -207,19 +210,22 @@ func gatherL1Validators(ctx context.Context, validatorAddrs string, balance floa
 
 	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(addrs))
 
-	for _, addr := range addrs {
-		uri := normalizeNodeURI(addr)
-		infoClient := info.NewClient(uri)
+		for _, addr := range addrs {
+			uri := normalizeNodeURI(addr)
+			infoClient := info.NewClient(uri)
 
-		nodeID, nodePoP, err := infoClient.GetNodeID(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get node info from %s: %w", uri, err)
-		}
+			nodeID, nodePoP, err := infoClient.GetNodeID(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get node info from %s: %w", uri, err)
+			}
+			if nodePoP == nil {
+				return nil, fmt.Errorf("node %s did not return BLS proof of possession from /ext/info", uri)
+			}
 
-		validators = append(validators, &txs.ConvertSubnetToL1Validator{
-			NodeID:  nodeID.Bytes(),
-			Weight:  units.Schmeckle,
-			Balance: balanceNAVAX,
+			validators = append(validators, &txs.ConvertSubnetToL1Validator{
+				NodeID:  nodeID.Bytes(),
+				Weight:  units.Schmeckle,
+				Balance: balanceNAVAX,
 			Signer:  *nodePoP,
 		})
 	}
@@ -300,9 +306,10 @@ func init() {
 
 	// Convert L1 flags
 	subnetConvertL1Cmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID to convert")
-	subnetConvertL1Cmd.Flags().StringVar(&subnetChainID, "chain-id", "", "Chain ID for the L1")
-	subnetConvertL1Cmd.Flags().StringVar(&subnetManager, "manager", "", "Validator manager address (hex)")
-	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorIPs, "validators", "", "Comma-separated validator IPs")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetChainID, "chain-id", "", "Chain ID where the validator manager contract lives (often the L1 chain ID)")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetManager, "manager", "", "Validator manager contract address (hex)")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetManager, "contract-address", "", "Alias for --manager")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorIPs, "validators", "", "Comma-separated validator node addresses (IP, host:port, or URI)")
 	subnetConvertL1Cmd.Flags().Float64Var(&subnetValBalance, "validator-balance", 1.0, "Balance per validator in AVAX")
 	subnetConvertL1Cmd.Flags().BoolVar(&subnetMockVal, "mock-validator", false, "Use a mock validator (for testing)")
 }
