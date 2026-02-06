@@ -1,6 +1,7 @@
 # Binaries
 platform-cli
 platform
+platform-ledger
 e2e.test
 *.exe
 

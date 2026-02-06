@@ -199,6 +199,10 @@ func importWithRetry(ctx context.Context, importFn func() (ids.ID, error)) (ids.
 
 		lastErr = err
 
+		if attempt == importRetryAttempts-1 {
+			break
+		}
+
 		// Wait before retrying (with exponential backoff)
 		select {
 		case <-ctx.Done():

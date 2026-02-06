@@ -1,12 +1,12 @@
 // Package e2e provides end-to-end tests for P-Chain operations.
 //
-// Run against Fuji (requires funded wallet):
+// Run against Fuji (requires funded wallet and explicit opt-in):
 //
-//	PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji
+//	RUN_E2E_NETWORK_TESTS=1 PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji
 //
 // Run against local network (uses ewoq key, connects to http://127.0.0.1:9650):
 //
-//	go test -v ./e2e/... -network=local
+//	RUN_E2E_NETWORK_TESTS=1 go test -v ./e2e/... -network=local
 package e2e
 
 import (
@@ -47,17 +47,28 @@ var ewoqPrivateKey = []byte{
 
 func TestMain(m *testing.M) {
 	flag.Parse()
-	os.Exit(m.Run())
+
+	binPath, cleanup, err := buildCLIBinaryForE2E()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to set up e2e CLI binary: %v\n", err)
+		os.Exit(1)
+	}
+	cliBinaryPath = binPath
+
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
 }
 
 func getPrivateKeyBytes(t *testing.T) []byte {
 	t.Helper()
+	requireNetworkE2ETestsEnabled(t)
 
 	// Check for env var first (for Fuji tests)
-	if envKey := os.Getenv("PRIVATE_KEY"); envKey != "" {
+	if envKey := os.Getenv(envPrivateKey); envKey != "" {
 		keyBytes, err := wallet.ParsePrivateKey(envKey)
 		if err != nil {
-			t.Fatalf("failed to parse PRIVATE_KEY: %v", err)
+			t.Fatalf("failed to parse %s: %v", envPrivateKey, err)
 		}
 		return keyBytes
 	}
@@ -67,7 +78,7 @@ func getPrivateKeyBytes(t *testing.T) []byte {
 		return ewoqPrivateKey
 	}
 
-	t.Skip("PRIVATE_KEY env var required for Fuji tests")
+	t.Skipf("%s env var required for Fuji tests", envPrivateKey)
 	return nil
 }
 

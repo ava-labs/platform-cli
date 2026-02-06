@@ -132,15 +132,19 @@ var subnetConvertL1Cmd = &cobra.Command{
 		if subnetChainID == "" {
 			return fmt.Errorf("--chain-id is required")
 		}
-		hasValidatorIPs := strings.TrimSpace(subnetValidatorIPs) != ""
+		validatorAddrs := parseValidatorAddrs(subnetValidatorIPs)
+		hasValidatorIPs := len(validatorAddrs) > 0
 		hasManualValidators := strings.TrimSpace(subnetValidatorIDs) != "" ||
 			strings.TrimSpace(subnetValidatorBLS) != "" ||
 			strings.TrimSpace(subnetValidatorPoP) != ""
+		hasValidatorFlag := strings.TrimSpace(subnetValidatorIPs) != ""
 		switch {
 		case subnetMockVal && hasValidatorIPs:
 			return fmt.Errorf("--mock-validator cannot be used with --validators")
 		case subnetMockVal && hasManualValidators:
 			return fmt.Errorf("--mock-validator cannot be used with manual validator flags")
+		case hasValidatorFlag && !hasValidatorIPs:
+			return fmt.Errorf("--validators must include at least one non-empty validator address")
 		case hasValidatorIPs && hasManualValidators:
 			return fmt.Errorf("use either --validators (auto-discovery) or manual validator flags, not both")
 		case !subnetMockVal && !hasValidatorIPs && !hasManualValidators:
@@ -187,7 +191,7 @@ var subnetConvertL1Cmd = &cobra.Command{
 				return err
 			}
 		} else {
-			validators, err = gatherL1Validators(ctx, subnetValidatorIPs, subnetValBalance)
+			validators, err = gatherL1Validators(ctx, validatorAddrs, subnetValBalance)
 			if err != nil {
 				return err
 			}
@@ -225,10 +229,9 @@ var subnetConvertL1Cmd = &cobra.Command{
 }
 
 // gatherL1Validators queries validator nodes and builds conversion validators.
-func gatherL1Validators(ctx context.Context, validatorAddrs string, balance float64) ([]*txs.ConvertSubnetToL1Validator, error) {
-	addrs := parseValidatorAddrs(validatorAddrs)
-	if len(addrs) == 0 {
-		return nil, nil // No validators is valid
+func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance float64) ([]*txs.ConvertSubnetToL1Validator, error) {
+	if len(validatorAddrs) == 0 {
+		return nil, fmt.Errorf("no validator addresses provided")
 	}
 
 	// Validate balance to prevent overflow
@@ -237,8 +240,8 @@ func gatherL1Validators(ctx context.Context, validatorAddrs string, balance floa
 		return nil, fmt.Errorf("invalid validator balance: %w", err)
 	}
 
-	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(addrs))
-	for _, addr := range addrs {
+	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(validatorAddrs))
+	for _, addr := range validatorAddrs {
 		uri := normalizeNodeURI(addr)
 		infoClient := info.NewClient(uri)
 

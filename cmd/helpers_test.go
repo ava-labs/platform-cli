@@ -206,6 +206,11 @@ func TestParseValidatorAddrs(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf("parseValidatorAddrs(\"\") = %#v, want empty slice", got)
 	}
+
+	got = parseValidatorAddrs(" , ,  , ")
+	if len(got) != 0 {
+		t.Fatalf("parseValidatorAddrs(\" , ,  , \") = %#v, want empty slice", got)
+	}
 }
 
 func TestNormalizeNodeURI(t *testing.T) {

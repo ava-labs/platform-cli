@@ -16,14 +16,17 @@ go test -race -coverprofile=coverage.out ./...
 # Build first
 go build -o platform .
 
+# Network e2e tests are opt-in to avoid accidental live transactions
+# Set RUN_E2E_NETWORK_TESTS=1 when you intentionally want to run them
+
 # Fuji (requires funded wallet)
-PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji
+RUN_E2E_NETWORK_TESTS=1 PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji
 
 # Specific Fuji test
-PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji -run TestCreateSubnet
+RUN_E2E_NETWORK_TESTS=1 PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji -run TestCreateSubnet
 
 # Local network (uses ewoq key, RPC http://127.0.0.1:9650)
-go test -v ./e2e/... -network=local
+RUN_E2E_NETWORK_TESTS=1 go test -v ./e2e/... -network=local
 
 # Help/validation-only subset (no funds needed)
 go test -v ./e2e/... -run "Help|Params|MissingArgs"

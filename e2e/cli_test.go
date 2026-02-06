@@ -12,15 +12,6 @@ import (
 func runCLI(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
-	// Build the CLI if it doesn't exist
-	if _, err := os.Stat("../platform"); os.IsNotExist(err) {
-		cmd := exec.Command("go", "build", "-o", "platform", ".")
-		cmd.Dir = ".."
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("failed to build CLI: %v\n%s", err, out)
-		}
-	}
-
 	// For help commands, don't add extra flags
 	isHelpCmd := false
 	for _, arg := range args {
@@ -43,14 +34,19 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 		}
 
 		// Add private key if available
-		if envKey := os.Getenv("PRIVATE_KEY"); envKey != "" {
+		if envKey := os.Getenv(envPrivateKey); envKey != "" {
 			fullArgs = append(fullArgs, "--private-key", envKey)
 		} else if *networkFlag == "local" {
 			fullArgs = append(fullArgs, "--key-name", "ewoq")
 		}
 	}
 
-	cmd := exec.Command("../platform", fullArgs...)
+	binPath := cliBinaryPath
+	if binPath == "" {
+		// Fallback for direct execution without TestMain setup.
+		binPath = "../platform"
+	}
+	cmd := exec.Command(binPath, fullArgs...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -58,6 +54,12 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 
 	err := cmd.Run()
 	return stdout.String(), stderr.String(), err
+}
+
+func requireStateChangingCLITest(t *testing.T) {
+	t.Helper()
+	requireNetworkE2ETestsEnabled(t)
+	requireNetworkKeyForE2E(t)
 }
 
 // =============================================================================
@@ -163,8 +165,8 @@ func TestCLIL1Help(t *testing.T) {
 // =============================================================================
 
 func TestCLIWalletAddress(t *testing.T) {
-	if os.Getenv("PRIVATE_KEY") == "" && *networkFlag != "local" {
-		t.Skip("PRIVATE_KEY required for Fuji")
+	if os.Getenv(envPrivateKey) == "" && *networkFlag != "local" {
+		t.Skipf("%s required for Fuji", envPrivateKey)
 	}
 
 	stdout, stderr, err := runCLI(t, "wallet", "address")
@@ -187,9 +189,7 @@ func TestCLIWalletAddress(t *testing.T) {
 // =============================================================================
 
 func TestCLITransferSend(t *testing.T) {
-	if os.Getenv("PRIVATE_KEY") == "" && *networkFlag != "local" {
-		t.Skip("PRIVATE_KEY required for Fuji")
-	}
+	requireStateChangingCLITest(t)
 
 	// First get our address
 	addrOut, _, err := runCLI(t, "wallet", "address")
@@ -225,9 +225,7 @@ func TestCLITransferSend(t *testing.T) {
 }
 
 func TestCLITransferPToC(t *testing.T) {
-	if os.Getenv("PRIVATE_KEY") == "" && *networkFlag != "local" {
-		t.Skip("PRIVATE_KEY required for Fuji")
-	}
+	requireStateChangingCLITest(t)
 
 	stdout, stderr, err := runCLI(t, "transfer", "p-to-c", "--amount", "0.01")
 	if err != nil {
@@ -242,9 +240,7 @@ func TestCLITransferPToC(t *testing.T) {
 }
 
 func TestCLITransferCToP(t *testing.T) {
-	if os.Getenv("PRIVATE_KEY") == "" && *networkFlag != "local" {
-		t.Skip("PRIVATE_KEY required for Fuji")
-	}
+	requireStateChangingCLITest(t)
 
 	stdout, stderr, err := runCLI(t, "transfer", "c-to-p", "--amount", "0.01")
 	if err != nil {
@@ -263,9 +259,7 @@ func TestCLITransferCToP(t *testing.T) {
 // =============================================================================
 
 func TestCLISubnetCreate(t *testing.T) {
-	if os.Getenv("PRIVATE_KEY") == "" && *networkFlag != "local" {
-		t.Skip("PRIVATE_KEY required for Fuji")
-	}
+	requireStateChangingCLITest(t)
 
 	stdout, stderr, err := runCLI(t, "subnet", "create")
 	if err != nil {
@@ -357,14 +351,28 @@ func TestCLISubnetConvertL1MissingArgs(t *testing.T) {
 	}
 }
 
+func TestCLISubnetConvertL1EmptyValidators(t *testing.T) {
+	_, stderr, err := runCLI(t,
+		"subnet", "convert-l1",
+		"--subnet-id", "2ebCneQ9z9v56N6sryhU6P8L3s1f6BDoed6ox2q6iM8Qv7w6s",
+		"--chain-id", "2ebCneQ9z9v56N6sryhU6P8L3s1f6BDoed6ox2q6iM8Qv7w6s",
+		"--validators", ", , ,",
+	)
+	if err == nil {
+		t.Error("expected error when --validators has no valid addresses")
+	}
+
+	if !strings.Contains(stderr, "--validators must include at least one non-empty validator address") {
+		t.Logf("stderr: %s", stderr)
+	}
+}
+
 // =============================================================================
 // CLI Full L1 Lifecycle Test
 // =============================================================================
 
 func TestCLIL1Lifecycle(t *testing.T) {
-	if os.Getenv("PRIVATE_KEY") == "" && *networkFlag != "local" {
-		t.Skip("PRIVATE_KEY required for Fuji")
-	}
+	requireStateChangingCLITest(t)
 
 	t.Log("=== L1 Lifecycle CLI Test ===")
 
