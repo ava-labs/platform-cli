@@ -31,8 +31,10 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "platform",
-	Short: "Avalanche P-Chain CLI",
+	Use:           "platform",
+	Short:         "Avalanche P-Chain CLI",
+	SilenceErrors: true,
+	SilenceUsage:  true,
 	Long: `Avalanche P-Chain operations: staking, subnets, transfers, and L1 validators.
 
 Example usage:
