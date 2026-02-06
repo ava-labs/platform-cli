@@ -46,6 +46,16 @@ func TestIsRetryableImportError(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "rate limited status code",
+			err:  errors.New("received status code: 429"),
+			want: true,
+		},
+		{
+			name: "rate limited message",
+			err:  errors.New("too many requests"),
+			want: true,
+		},
+		{
 			name: "unrelated error",
 			err:  errors.New("connection refused"),
 			want: false,
