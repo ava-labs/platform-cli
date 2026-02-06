@@ -29,7 +29,6 @@ var (
 	keyFormat     string
 	keyForce      bool
 	showAddrs     bool
-	keySetDefault bool
 )
 
 var keysCmd = &cobra.Command{

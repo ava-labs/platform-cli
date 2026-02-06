@@ -25,7 +25,6 @@ var (
 	useLedger     bool
 	ledgerIndex   uint32 // Ledger address index (BIP44)
 	keyNameGlobal string // Key name for loading from keystore
-	keyPassword   string // Password for encrypted keys (env var only for security)
 	customRPCURL  string // Custom RPC URL for devnets
 	customNetID   uint32 // Optional network ID for custom RPC (auto-detected if not set)
 )

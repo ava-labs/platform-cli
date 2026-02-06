@@ -65,7 +65,7 @@ var addressCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if useLedger {
 			if !wallet.LedgerEnabled {
-				return fmt.Errorf("Ledger support not compiled. Rebuild with: go build -tags ledger")
+				return fmt.Errorf("ledger support not compiled. Rebuild with: go build -tags ledger")
 			}
 			kc, err := wallet.NewLedgerKeychain(ledgerIndex)
 			if err != nil {
@@ -195,7 +195,7 @@ func getNetworkConfig(ctx context.Context) (network.Config, error) {
 func loadPChainWallet(ctx context.Context, netConfig network.Config) (*wallet.Wallet, func(), error) {
 	if useLedger {
 		if !wallet.LedgerEnabled {
-			return nil, nil, fmt.Errorf("Ledger support not compiled. Rebuild with: go build -tags ledger")
+			return nil, nil, fmt.Errorf("ledger support not compiled. Rebuild with: go build -tags ledger")
 		}
 		kc, err := wallet.NewLedgerKeychain(ledgerIndex)
 		if err != nil {
@@ -234,7 +234,7 @@ func loadPChainWallet(ctx context.Context, netConfig network.Config) (*wallet.Wa
 func loadPChainWalletWithSubnet(ctx context.Context, netConfig network.Config, subnetID ids.ID) (*wallet.Wallet, func(), error) {
 	if useLedger {
 		if !wallet.LedgerEnabled {
-			return nil, nil, fmt.Errorf("Ledger support not compiled. Rebuild with: go build -tags ledger")
+			return nil, nil, fmt.Errorf("ledger support not compiled. Rebuild with: go build -tags ledger")
 		}
 		kc, err := wallet.NewLedgerKeychain(ledgerIndex)
 		if err != nil {
@@ -273,7 +273,7 @@ func loadPChainWalletWithSubnet(ctx context.Context, netConfig network.Config, s
 func loadFullWallet(ctx context.Context, netConfig network.Config) (*wallet.FullWallet, func(), error) {
 	if useLedger {
 		if !wallet.LedgerEnabled {
-			return nil, nil, fmt.Errorf("Ledger support not compiled. Rebuild with: go build -tags ledger")
+			return nil, nil, fmt.Errorf("ledger support not compiled. Rebuild with: go build -tags ledger")
 		}
 		kc, err := wallet.NewLedgerKeychain(ledgerIndex)
 		if err != nil {

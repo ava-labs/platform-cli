@@ -20,7 +20,7 @@ type LedgerKeychain struct{}
 
 // NewLedgerKeychain returns an error when Ledger support is not compiled.
 func NewLedgerKeychain(addressIndex uint32) (*LedgerKeychain, error) {
-	return nil, fmt.Errorf("Ledger support not compiled. Rebuild with: go build -tags ledger")
+	return nil, fmt.Errorf("ledger support not compiled. Rebuild with: go build -tags ledger")
 }
 
 // Close is a no-op for the stub.
@@ -58,10 +58,10 @@ func (kc *LedgerKeychain) GetEth(addr common.Address) (keychain.Signer, bool) {
 
 // SignHash returns error for stub.
 func (kc *LedgerKeychain) SignHash(hash []byte) ([]byte, error) {
-	return nil, fmt.Errorf("Ledger support not compiled")
+	return nil, fmt.Errorf("ledger support not compiled")
 }
 
 // Sign returns error for stub.
 func (kc *LedgerKeychain) Sign(msg []byte) ([]byte, error) {
-	return nil, fmt.Errorf("Ledger support not compiled")
+	return nil, fmt.Errorf("ledger support not compiled")
 }
