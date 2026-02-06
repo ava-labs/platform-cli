@@ -1,3 +1,5 @@
+//go:build clie2e || networke2e
+
 package e2e
 
 import (

@@ -32,6 +32,9 @@ jobs:
       - name: Run staticcheck
         run: staticcheck ./...
 
+      - name: Run staticcheck (tagged e2e)
+        run: staticcheck -tags=clie2e,networke2e ./e2e/...
+
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
