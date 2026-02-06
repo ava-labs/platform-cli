@@ -438,7 +438,7 @@ func TestCLIL1Lifecycle(t *testing.T) {
 		t.Fatalf("subnet convert-l1 failed: %v\nstderr: %s", err, stderr)
 	}
 
-	if !strings.Contains(convertOut, "Convert Subnet to L1 TX:") {
+	if !strings.Contains(convertOut, "TX ID:") {
 		t.Error("output missing conversion TX ID")
 	}
 	t.Logf("Output:\n%s", convertOut)

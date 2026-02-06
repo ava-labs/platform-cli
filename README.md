@@ -28,7 +28,7 @@ go build -tags ledger -o platform .
 
 ```bash
 # Generate a key
-platform keys generate mykey
+platform keys generate --name mykey
 
 # Check your address
 platform wallet address --key-name mykey
@@ -74,12 +74,12 @@ platform wallet address --ledger --ledger-index 2
 ### Key Management
 
 ```bash
-platform keys generate <name> [--encrypt]
-platform keys import <name> --private-key "PrivateKey-..."
+platform keys generate --name <name> [--encrypt]
+platform keys import --name <name> --private-key "PrivateKey-..."
 platform keys list [--show-addresses]
-platform keys export <name> [--format cb58|hex]
-platform keys delete <name> [--force]
-platform keys default [<name>]
+platform keys export --name <name> [--format cb58|hex]
+platform keys delete --name <name> [--force]
+platform keys default [--name <name>]
 ```
 
 ### Wallet
@@ -134,7 +134,7 @@ platform subnet convert-l1 --subnet-id <ID> --chain-id <ID> [--validators <IPs>]
 ```bash
 platform l1 register-validator --balance <AVAX> --pop <hex> --message <hex>
 platform l1 set-weight --message <hex>
-platform l1 add-balance --validation-id <ID> --amount <AVAX>
+platform l1 add-balance --validation-id <ID> --balance <AVAX>
 platform l1 disable-validator --validation-id <ID>
 ```
 
@@ -236,8 +236,8 @@ go test -v ./e2e/... -run "Help|Params|MissingArgs"
 | Send AVAX | `transfer send` | `IssueBaseTx` |
 | Export | `transfer export` | `IssueExportTx` |
 | Import | `transfer import` | `IssueImportTx` |
-| Add Validator | `validator add` | `IssueAddValidatorTx` |
-| Add Delegator | `validator delegate` | `IssueAddDelegatorTx` |
+| Add Validator | `validator add` | `IssueAddPermissionlessValidatorTx` |
+| Add Delegator | `validator delegate` | `IssueAddPermissionlessDelegatorTx` |
 | Create Subnet | `subnet create` | `IssueCreateSubnetTx` |
 | Transfer Subnet Ownership | `subnet transfer-ownership` | `IssueTransferSubnetOwnershipTx` |
 | Convert to L1 | `subnet convert-l1` | `IssueConvertSubnetToL1Tx` |

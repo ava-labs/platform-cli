@@ -90,7 +90,7 @@ func setupTestNetwork(t *testing.T) (*testNetwork, func()) {
 
 // getNetworkConfig returns a network config for the tmpnet.
 func (tn *testNetwork) getNetworkConfig() network.Config {
-	networkID, _ := tn.network.GetNetworkID()
+	networkID := tn.network.GetNetworkID()
 	return network.Config{
 		Name:      "tmpnet",
 		NetworkID: networkID,
@@ -288,15 +288,10 @@ func TestIntegration_ExportImport(t *testing.T) {
 	}
 
 	// Get the C-Chain ID from the network
-	cChainID := ids.Empty
-	networkID, err := tn.network.GetNetworkID()
-	if err == nil {
-		// C-Chain ID is well-known
-		cChainID, _ = ids.FromString("2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5")
-	}
-
-	if cChainID == ids.Empty {
-		t.Skip("Could not determine C-Chain ID, skipping export test")
+	networkID := tn.network.GetNetworkID()
+	cChainID, err := ids.FromString("2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5")
+	if err != nil {
+		t.Fatalf("failed to parse C-Chain ID: %v", err)
 	}
 
 	// Export to C-Chain
