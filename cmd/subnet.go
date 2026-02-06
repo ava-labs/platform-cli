@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/ava-labs/avalanchego/api/info"
@@ -23,6 +25,9 @@ var (
 	subnetChainID      string
 	subnetManager      string
 	subnetValidatorIPs string
+	subnetValidatorIDs string
+	subnetValidatorBLS string
+	subnetValidatorPoP string
 	subnetValBalance   float64
 	subnetMockVal      bool
 )
@@ -127,8 +132,19 @@ var subnetConvertL1Cmd = &cobra.Command{
 		if subnetChainID == "" {
 			return fmt.Errorf("--chain-id is required")
 		}
-		if !subnetMockVal && strings.TrimSpace(subnetValidatorIPs) == "" {
-			return fmt.Errorf("at least one validator is required: provide --validators or use --mock-validator for testing")
+		hasValidatorIPs := strings.TrimSpace(subnetValidatorIPs) != ""
+		hasManualValidators := strings.TrimSpace(subnetValidatorIDs) != "" ||
+			strings.TrimSpace(subnetValidatorBLS) != "" ||
+			strings.TrimSpace(subnetValidatorPoP) != ""
+		switch {
+		case subnetMockVal && hasValidatorIPs:
+			return fmt.Errorf("--mock-validator cannot be used with --validators")
+		case subnetMockVal && hasManualValidators:
+			return fmt.Errorf("--mock-validator cannot be used with manual validator flags")
+		case hasValidatorIPs && hasManualValidators:
+			return fmt.Errorf("use either --validators (auto-discovery) or manual validator flags, not both")
+		case !subnetMockVal && !hasValidatorIPs && !hasManualValidators:
+			return fmt.Errorf("at least one validator is required: provide --validators, manual validator flags, or use --mock-validator for testing")
 		}
 
 		sid, err := ids.FromString(subnetID)
@@ -160,11 +176,24 @@ var subnetConvertL1Cmd = &cobra.Command{
 			}
 			validators = []*txs.ConvertSubnetToL1Validator{mockVal}
 			fmt.Printf("Using mock validator (NodeID: %x)\n", mockVal.NodeID)
+		} else if hasManualValidators {
+			validators, err = buildManualL1Validators(
+				subnetValidatorIDs,
+				subnetValidatorBLS,
+				subnetValidatorPoP,
+				subnetValBalance,
+			)
+			if err != nil {
+				return err
+			}
 		} else {
 			validators, err = gatherL1Validators(ctx, subnetValidatorIPs, subnetValBalance)
 			if err != nil {
 				return err
 			}
+		}
+		if err := sortAndValidateL1Validators(validators); err != nil {
+			return err
 		}
 
 		netConfig, err := getNetworkConfig(ctx)
@@ -209,28 +238,90 @@ func gatherL1Validators(ctx context.Context, validatorAddrs string, balance floa
 	}
 
 	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(addrs))
+	for _, addr := range addrs {
+		uri := normalizeNodeURI(addr)
+		infoClient := info.NewClient(uri)
 
-		for _, addr := range addrs {
-			uri := normalizeNodeURI(addr)
-			infoClient := info.NewClient(uri)
+		nodeID, nodePoP, err := infoClient.GetNodeID(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get node info from %s: %w", uri, err)
+		}
+		if nodePoP == nil {
+			return nil, fmt.Errorf("node %s did not return BLS proof of possession from /ext/info", uri)
+		}
 
-			nodeID, nodePoP, err := infoClient.GetNodeID(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get node info from %s: %w", uri, err)
-			}
-			if nodePoP == nil {
-				return nil, fmt.Errorf("node %s did not return BLS proof of possession from /ext/info", uri)
-			}
-
-			validators = append(validators, &txs.ConvertSubnetToL1Validator{
-				NodeID:  nodeID.Bytes(),
-				Weight:  units.Schmeckle,
-				Balance: balanceNAVAX,
+		validators = append(validators, &txs.ConvertSubnetToL1Validator{
+			NodeID:  nodeID.Bytes(),
+			Weight:  units.Schmeckle,
+			Balance: balanceNAVAX,
 			Signer:  *nodePoP,
 		})
 	}
 
 	return validators, nil
+}
+
+// buildManualL1Validators builds conversion validators from manually provided data.
+// All inputs are comma-separated lists and must be aligned by index.
+func buildManualL1Validators(nodeIDs, blsPubKeys, blsPoPs string, balance float64) ([]*txs.ConvertSubnetToL1Validator, error) {
+	if strings.TrimSpace(nodeIDs) == "" || strings.TrimSpace(blsPubKeys) == "" || strings.TrimSpace(blsPoPs) == "" {
+		return nil, fmt.Errorf("manual validator mode requires --validator-node-ids, --validator-bls-public-keys, and --validator-bls-pops")
+	}
+
+	idsList := parseValidatorAddrs(nodeIDs)
+	blsList := parseValidatorAddrs(blsPubKeys)
+	popList := parseValidatorAddrs(blsPoPs)
+	if len(idsList) == 0 {
+		return nil, fmt.Errorf("no validator node IDs provided")
+	}
+	if len(idsList) != len(blsList) || len(idsList) != len(popList) {
+		return nil, fmt.Errorf(
+			"manual validator lists must have matching lengths (node-ids=%d, bls-public-keys=%d, bls-pops=%d)",
+			len(idsList), len(blsList), len(popList),
+		)
+	}
+
+	balanceNAVAX, err := avaxToNAVAX(balance)
+	if err != nil {
+		return nil, fmt.Errorf("invalid validator balance: %w", err)
+	}
+
+	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(idsList))
+	for i := range idsList {
+		nodeID, err := ids.NodeIDFromString(idsList[i])
+		if err != nil {
+			return nil, fmt.Errorf("invalid validator node ID at index %d: %w", i, err)
+		}
+		pop, err := parseManualPoP(blsList[i], popList[i])
+		if err != nil {
+			return nil, fmt.Errorf("invalid validator BLS data at index %d: %w", i, err)
+		}
+
+		validators = append(validators, &txs.ConvertSubnetToL1Validator{
+			NodeID:  nodeID.Bytes(),
+			Weight:  units.Schmeckle,
+			Balance: balanceNAVAX,
+			Signer:  *pop,
+		})
+	}
+
+	return validators, nil
+}
+
+// sortAndValidateL1Validators sorts validators by NodeID bytes and rejects duplicates.
+func sortAndValidateL1Validators(validators []*txs.ConvertSubnetToL1Validator) error {
+	sort.Slice(validators, func(i, j int) bool {
+		return bytes.Compare(validators[i].NodeID, validators[j].NodeID) < 0
+	})
+	for i := 1; i < len(validators); i++ {
+		if bytes.Equal(validators[i-1].NodeID, validators[i].NodeID) {
+			if nodeID, err := ids.ToNodeID(validators[i].NodeID); err == nil {
+				return fmt.Errorf("duplicate validator node ID: %s", nodeID)
+			}
+			return fmt.Errorf("duplicate validator node ID bytes: %x", validators[i].NodeID)
+		}
+	}
+	return nil
 }
 
 // parseValidatorAddrs splits a comma-separated list of validator addresses.
@@ -309,7 +400,10 @@ func init() {
 	subnetConvertL1Cmd.Flags().StringVar(&subnetChainID, "chain-id", "", "Chain ID where the validator manager contract lives (often the L1 chain ID)")
 	subnetConvertL1Cmd.Flags().StringVar(&subnetManager, "manager", "", "Validator manager contract address (hex)")
 	subnetConvertL1Cmd.Flags().StringVar(&subnetManager, "contract-address", "", "Alias for --manager")
-	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorIPs, "validators", "", "Comma-separated validator node addresses (IP, host:port, or URI)")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorIPs, "validators", "", "Comma-separated validator node addresses (auto-fetches NodeID + BLS PoP from /ext/info)")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorIDs, "validator-node-ids", "", "Manual mode: comma-separated validator NodeIDs (must align with --validator-bls-public-keys and --validator-bls-pops)")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorBLS, "validator-bls-public-keys", "", "Manual mode: comma-separated validator BLS public keys (hex)")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorPoP, "validator-bls-pops", "", "Manual mode: comma-separated validator BLS proofs of possession (hex)")
 	subnetConvertL1Cmd.Flags().Float64Var(&subnetValBalance, "validator-balance", 1.0, "Balance per validator in AVAX")
 	subnetConvertL1Cmd.Flags().BoolVar(&subnetMockVal, "mock-validator", false, "Use a mock validator (for testing)")
 }

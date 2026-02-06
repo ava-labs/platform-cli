@@ -1,10 +1,17 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/hex"
 	"math"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
+	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
+	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 )
 
 func TestAvaxToNAVAX(t *testing.T) {
@@ -259,5 +266,95 @@ func TestIsEwoqKey(t *testing.T) {
 
 	if isEwoqKey([]byte{1, 2, 3}) {
 		t.Fatal("isEwoqKey() expected false for wrong length")
+	}
+}
+
+func TestBuildManualL1Validators(t *testing.T) {
+	blsSigner, err := localsigner.New()
+	if err != nil {
+		t.Fatalf("localsigner.New() error = %v", err)
+	}
+	pop, err := signer.NewProofOfPossession(blsSigner)
+	if err != nil {
+		t.Fatalf("signer.NewProofOfPossession() error = %v", err)
+	}
+
+	nodeID := ids.GenerateTestNodeID()
+	pubHex := hex.EncodeToString(pop.PublicKey[:])
+	popHex := hex.EncodeToString(pop.ProofOfPossession[:])
+
+	validators, err := buildManualL1Validators(
+		nodeID.String(),
+		pubHex,
+		popHex,
+		1.5,
+	)
+	if err != nil {
+		t.Fatalf("buildManualL1Validators() error = %v", err)
+	}
+	if len(validators) != 1 {
+		t.Fatalf("buildManualL1Validators() validators length = %d, want 1", len(validators))
+	}
+	if !bytes.Equal(validators[0].NodeID, nodeID.Bytes()) {
+		t.Fatalf("validator NodeID mismatch: got %x, want %x", validators[0].NodeID, nodeID.Bytes())
+	}
+	if validators[0].Balance != 1_500_000_000 {
+		t.Fatalf("validator balance = %d, want 1500000000", validators[0].Balance)
+	}
+}
+
+func TestBuildManualL1Validators_MismatchLengths(t *testing.T) {
+	_, err := buildManualL1Validators(
+		"NodeID-1,NodeID-2",
+		"deadbeef",
+		"beadfeed",
+		1,
+	)
+	if err == nil {
+		t.Fatal("buildManualL1Validators() expected error for mismatched list lengths")
+	}
+}
+
+func TestBuildManualL1Validators_InvalidNodeID(t *testing.T) {
+	blsSigner, err := localsigner.New()
+	if err != nil {
+		t.Fatalf("localsigner.New() error = %v", err)
+	}
+	pop, err := signer.NewProofOfPossession(blsSigner)
+	if err != nil {
+		t.Fatalf("signer.NewProofOfPossession() error = %v", err)
+	}
+
+	pubHex := hex.EncodeToString(pop.PublicKey[:])
+	popHex := hex.EncodeToString(pop.ProofOfPossession[:])
+
+	_, err = buildManualL1Validators("NodeID-not-real", pubHex, popHex, 1)
+	if err == nil {
+		t.Fatal("buildManualL1Validators() expected error for invalid NodeID")
+	}
+}
+
+func TestSortAndValidateL1Validators_SortsByNodeID(t *testing.T) {
+	v1 := &txs.ConvertSubnetToL1Validator{NodeID: []byte{0x02}, Weight: 1}
+	v2 := &txs.ConvertSubnetToL1Validator{NodeID: []byte{0x01}, Weight: 1}
+	validators := []*txs.ConvertSubnetToL1Validator{v1, v2}
+
+	if err := sortAndValidateL1Validators(validators); err != nil {
+		t.Fatalf("sortAndValidateL1Validators() error = %v", err)
+	}
+	if !bytes.Equal(validators[0].NodeID, []byte{0x01}) || !bytes.Equal(validators[1].NodeID, []byte{0x02}) {
+		t.Fatalf("validators not sorted by NodeID bytes: got [%x, %x]", validators[0].NodeID, validators[1].NodeID)
+	}
+}
+
+func TestSortAndValidateL1Validators_DuplicateNodeID(t *testing.T) {
+	validators := []*txs.ConvertSubnetToL1Validator{
+		{NodeID: []byte{0x01}, Weight: 1},
+		{NodeID: []byte{0x01}, Weight: 1},
+	}
+
+	err := sortAndValidateL1Validators(validators)
+	if err == nil {
+		t.Fatal("sortAndValidateL1Validators() expected duplicate NodeID error")
 	}
 }

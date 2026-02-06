@@ -93,6 +93,11 @@ platform subnet create
 platform subnet transfer-ownership --subnet-id <ID> --new-owner <address>
 platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--manager <hex>]
 platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--contract-address <hex>]
+platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> \
+  --validator-node-ids NodeID-...,NodeID-... \
+  --validator-bls-public-keys <hex>,<hex> \
+  --validator-bls-pops <hex>,<hex> \
+  [--manager <hex>]
 platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock-validator
 ```
 
@@ -104,7 +109,10 @@ platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock
 - For each validator address, the CLI auto-queries `/ext/info` and reads:
   - `NodeID`
   - BLS public key + proof of possession (PoP)
-- You do not manually pass BLS/PoP for `subnet convert-l1`.
+- If validator info endpoints are not reachable, use manual flags:
+  - `--validator-node-ids`
+  - `--validator-bls-public-keys`
+  - `--validator-bls-pops`
 
 ### L1 Validators
 
