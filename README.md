@@ -5,7 +5,7 @@ Minimal CLI for Avalanche P-Chain operations.
 ## Installation
 
 Requirements:
-- Go 1.24.11+ (repository currently uses toolchain `go1.24.12`)
+- Go 1.24.13+ (repository currently uses toolchain `go1.24.13`)
 
 ```bash
 go install github.com/ava-labs/platform-cli@latest
