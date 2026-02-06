@@ -48,13 +48,17 @@ jobs:
         run: go test -tags=networke2e -run '^$' ./e2e/...
 
       - name: Run network e2e smoke tests (Fuji, internal PRs)
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && secrets.E2E_FUJI_PRIVATE_KEY != '' }}
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
         env:
-          RUN_E2E_NETWORK_TESTS: "1"
-          PRIVATE_KEY: ${{ secrets.E2E_FUJI_PRIVATE_KEY }}
-        run: >-
-          go test -tags=networke2e -v ./e2e/... -network=fuji
-          -run 'TestWalletCreation|TestFullWalletCreation|TestPChainSendToSelf|TestFullPToCTransfer|TestFullCToPTransfer|TestGetCurrentValidators'
+          E2E_FUJI_PRIVATE_KEY: ${{ secrets.E2E_FUJI_PRIVATE_KEY }}
+        run: |
+          if [ -z "$E2E_FUJI_PRIVATE_KEY" ]; then
+            echo "Skipping Fuji smoke tests: E2E_FUJI_PRIVATE_KEY is not configured"
+            exit 0
+          fi
+          RUN_E2E_NETWORK_TESTS=1 PRIVATE_KEY="$E2E_FUJI_PRIVATE_KEY" \
+            go test -tags=networke2e -v ./e2e/... -network=fuji \
+            -run 'TestWalletCreation|TestFullWalletCreation|TestPChainSendToSelf|TestFullPToCTransfer|TestFullCToPTransfer|TestGetCurrentValidators'
 
       - name: Run ledger-tag tests
         run: go test -tags=ledger ./...
