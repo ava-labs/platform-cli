@@ -3,6 +3,7 @@ package keystore
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -50,6 +51,69 @@ func TestLoadFrom_CreatesDirectory(t *testing.T) {
 	// Directory should exist
 	if _, err := os.Stat(newPath); os.IsNotExist(err) {
 		t.Error("LoadFrom() did not create directory")
+	}
+}
+
+func TestLoadFrom_EnforcesSecureDirectoryPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not portable on windows")
+	}
+
+	tempDir, err := os.MkdirTemp("", "keystore-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	ksPath := filepath.Join(tempDir, "keys")
+	if err := os.MkdirAll(ksPath, 0755); err != nil {
+		t.Fatalf("failed to create keystore dir: %v", err)
+	}
+
+	if _, err := LoadFrom(ksPath); err != nil {
+		t.Fatalf("LoadFrom() error = %v", err)
+	}
+
+	info, err := os.Stat(ksPath)
+	if err != nil {
+		t.Fatalf("failed to stat keystore dir: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0700 {
+		t.Fatalf("keystore dir perms = %o, want 700", got)
+	}
+}
+
+func TestWriteFileAtomic(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "keystore-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	path := filepath.Join(tempDir, "atomic.json")
+	first := []byte("first")
+	second := []byte("second")
+
+	if err := writeFileAtomic(path, first, 0600); err != nil {
+		t.Fatalf("writeFileAtomic(first) error = %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read file: %v", err)
+	}
+	if string(got) != string(first) {
+		t.Fatalf("file content = %q, want %q", got, first)
+	}
+
+	if err := writeFileAtomic(path, second, 0600); err != nil {
+		t.Fatalf("writeFileAtomic(second) error = %v", err)
+	}
+	got, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read file after overwrite: %v", err)
+	}
+	if string(got) != string(second) {
+		t.Fatalf("file content after overwrite = %q, want %q", got, second)
 	}
 }
 

@@ -3,6 +3,7 @@ package keystore
 import (
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,6 +56,60 @@ type KeyStore struct {
 	index    *KeyIndex
 }
 
+// writeFileAtomic writes a file by writing to a temp file in the same
+// directory and renaming it into place.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
+	dir := filepath.Dir(path)
+
+	tmpFile, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+
+	defer func() {
+		_ = tmpFile.Close()
+		if err != nil {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if err := tmpFile.Chmod(perm); err != nil {
+		return fmt.Errorf("failed to set temp file permissions: %w", err)
+	}
+
+	if _, err := tmpFile.Write(data); err != nil {
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+	if err := tmpFile.Sync(); err != nil {
+		return fmt.Errorf("failed to sync temp file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		// Windows may not allow replacing an existing file via rename.
+		if rmErr := os.Remove(path); rmErr == nil || os.IsNotExist(rmErr) {
+			if renameErr := os.Rename(tmpPath, path); renameErr == nil {
+				err = nil
+			} else {
+				err = renameErr
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("failed to replace %s atomically: %w", path, err)
+		}
+	}
+
+	// Best-effort: fsync directory entry to improve durability.
+	if dirFile, err := os.Open(dir); err == nil {
+		_ = dirFile.Sync()
+		_ = dirFile.Close()
+	}
+	return nil
+}
+
 // DefaultPath returns the default keystore path (~/.platform/keys).
 func DefaultPath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -82,6 +137,10 @@ func LoadFrom(basePath string) (*KeyStore, error) {
 	// Ensure directory exists
 	if err := os.MkdirAll(basePath, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create keystore directory: %w", err)
+	}
+	// Enforce secure permissions even for pre-existing directories.
+	if err := os.Chmod(basePath, 0700); err != nil {
+		return nil, fmt.Errorf("failed to set keystore directory permissions: %w", err)
 	}
 
 	// Load or create index
@@ -115,7 +174,7 @@ func (ks *KeyStore) Save() error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal index: %w", err)
 	}
-	if err := os.WriteFile(indexPath, data, 0600); err != nil {
+	if err := writeFileAtomic(indexPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write index: %w", err)
 	}
 	return nil
@@ -173,10 +232,11 @@ func (ks *KeyStore) ImportKey(name string, keyBytes []byte, password []byte) err
 	if err != nil {
 		return fmt.Errorf("failed to marshal key file: %w", err)
 	}
-	if err := os.WriteFile(keyPath, data, 0600); err != nil {
+	if err := writeFileAtomic(keyPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write key file: %w", err)
 	}
 
+	previousDefault := ks.index.Default
 	// Update index
 	ks.index.Keys[name] = KeyEntry{
 		Name:          name,
@@ -191,7 +251,20 @@ func (ks *KeyStore) ImportKey(name string, keyBytes []byte, password []byte) err
 		ks.index.Default = name
 	}
 
-	return ks.Save()
+	if err := ks.Save(); err != nil {
+		// Roll back in-memory index and key file on persistence failure.
+		delete(ks.index.Keys, name)
+		ks.index.Default = previousDefault
+		removeErr := os.Remove(keyPath)
+		if removeErr != nil && !os.IsNotExist(removeErr) {
+			return errors.Join(
+				fmt.Errorf("failed to save key index: %w", err),
+				fmt.Errorf("failed to rollback key file %s: %w", keyPath, removeErr),
+			)
+		}
+		return fmt.Errorf("failed to save key index: %w", err)
+	}
+	return nil
 }
 
 // GenerateKey generates a new random key with the given name.

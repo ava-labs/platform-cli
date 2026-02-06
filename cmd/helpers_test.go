@@ -130,6 +130,13 @@ func TestGetTransferAmountNAVAX(t *testing.T) {
 
 	transferAmount = 1
 	transferAmountNAVAX = 123
+	_, err := getTransferAmountNAVAX()
+	if err == nil {
+		t.Fatal("getTransferAmountNAVAX() expected error when both --amount and --amount-navax are set")
+	}
+
+	transferAmount = 0
+	transferAmountNAVAX = 123
 	got, err := getTransferAmountNAVAX()
 	if err != nil {
 		t.Fatalf("getTransferAmountNAVAX() returned error: %v", err)

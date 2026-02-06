@@ -34,6 +34,9 @@ Amount Precision:
 // getTransferAmountNAVAX returns the transfer amount in nAVAX.
 // Prefers --amount-navax if set, otherwise converts --amount from AVAX.
 func getTransferAmountNAVAX() (uint64, error) {
+	if transferAmount > 0 && transferAmountNAVAX > 0 {
+		return 0, fmt.Errorf("use either --amount or --amount-navax, not both")
+	}
 	if transferAmountNAVAX > 0 {
 		return transferAmountNAVAX, nil
 	}
@@ -289,18 +292,22 @@ func init() {
 	transferSendCmd.Flags().Float64Var(&transferAmount, "amount", 0, "Amount in AVAX to send")
 	transferSendCmd.Flags().Uint64Var(&transferAmountNAVAX, "amount-navax", 0, "Amount in nAVAX (for precision-sensitive transfers)")
 	transferSendCmd.Flags().StringVar(&transferDest, "to", "", "Destination P-Chain address")
+	transferSendCmd.MarkFlagsMutuallyExclusive("amount", "amount-navax")
 
 	// Flags for combined transfer commands
 	transferPToCCmd.Flags().Float64Var(&transferAmount, "amount", 0, "Amount in AVAX to transfer")
 	transferPToCCmd.Flags().Uint64Var(&transferAmountNAVAX, "amount-navax", 0, "Amount in nAVAX (for precision-sensitive transfers)")
 	transferCToPCmd.Flags().Float64Var(&transferAmount, "amount", 0, "Amount in AVAX to transfer")
 	transferCToPCmd.Flags().Uint64Var(&transferAmountNAVAX, "amount-navax", 0, "Amount in nAVAX (for precision-sensitive transfers)")
+	transferPToCCmd.MarkFlagsMutuallyExclusive("amount", "amount-navax")
+	transferCToPCmd.MarkFlagsMutuallyExclusive("amount", "amount-navax")
 
 	// Flags for manual export command
 	transferExportCmd.Flags().Float64Var(&transferAmount, "amount", 0, "Amount in AVAX to export")
 	transferExportCmd.Flags().Uint64Var(&transferAmountNAVAX, "amount-navax", 0, "Amount in nAVAX (for precision-sensitive transfers)")
 	transferExportCmd.Flags().StringVar(&transferFrom, "from", "", "Source chain: 'p' or 'c'")
 	transferExportCmd.Flags().StringVar(&transferTo, "to", "", "Destination chain: 'p' or 'c'")
+	transferExportCmd.MarkFlagsMutuallyExclusive("amount", "amount-navax")
 
 	// Flags for manual import command
 	transferImportCmd.Flags().StringVar(&transferFrom, "from", "", "Source chain: 'p' or 'c'")

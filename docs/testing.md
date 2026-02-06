@@ -12,6 +12,10 @@ go test -race -coverprofile=coverage.out ./...
 
 # CLI smoke e2e tests (help/arg validation, no live funds)
 go test -tags=clie2e -v ./e2e/... -run "Help|Params|MissingArgs"
+
+# Ledger-tag compile/unit checks
+go test -tags=ledger ./pkg/wallet/...
+go build -tags ledger -o platform-ledger .
 ```
 
 ## End-to-End Tests
@@ -54,6 +58,12 @@ AVALANCHEGO_PATH=/path/to/avalanchego go test -tags=integration -v ./pkg/pchain/
 `nightly-network-e2e.yml` runs the Fuji network suite nightly and on manual dispatch.
 It requires the `E2E_FUJI_PRIVATE_KEY` repository secret to be configured.
 The nightly job runs a low-spend smoke subset and uses small transfer amounts.
+
+## PR-Time Network Smoke (GitHub Actions)
+
+`ci.yml` runs a Fuji network smoke subset on internal pull requests when the
+`E2E_FUJI_PRIVATE_KEY` repository secret is configured.
+Fork PRs do not get secrets, so they still run compile-only checks for network e2e.
 
 ## Test Categories
 
