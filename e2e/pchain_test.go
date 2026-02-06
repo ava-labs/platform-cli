@@ -101,7 +101,11 @@ func getNetworkConfig(t *testing.T, ctx context.Context) network.Config {
 		}
 		return cfg
 	}
-	return network.GetConfig(*networkFlag)
+	cfg, err := network.GetConfig(*networkFlag)
+	if err != nil {
+		t.Fatalf("failed to get network config: %v", err)
+	}
+	return cfg
 }
 
 func getTestFullWallet(t *testing.T) (*wallet.FullWallet, network.Config) {

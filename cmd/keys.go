@@ -24,11 +24,11 @@ func clearBytes(b []byte) {
 
 var (
 	// keys flags
-	keyName      string
-	keyEncrypt   bool
-	keyFormat    string
-	keyForce     bool
-	showAddrs    bool
+	keyName       string
+	keyEncrypt    bool
+	keyFormat     string
+	keyForce      bool
+	showAddrs     bool
 	keySetDefault bool
 )
 
@@ -63,6 +63,9 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
+		}
+		if err := keystore.ValidateKeyName(keyName); err != nil {
+			return err
 		}
 
 		ks, err := keystore.Load()
@@ -142,6 +145,9 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
+		}
+		if err := keystore.ValidateKeyName(keyName); err != nil {
+			return err
 		}
 
 		ks, err := keystore.Load()
@@ -276,6 +282,9 @@ Examples:
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
 		}
+		if err := keystore.ValidateKeyName(keyName); err != nil {
+			return err
+		}
 
 		ks, err := keystore.Load()
 		if err != nil {
@@ -320,6 +329,9 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
+		}
+		if err := keystore.ValidateKeyName(keyName); err != nil {
+			return err
 		}
 
 		ks, err := keystore.Load()
@@ -386,6 +398,10 @@ Examples:
 		}
 
 		// Set new default
+		if err := keystore.ValidateKeyName(keyName); err != nil {
+			return err
+		}
+
 		if err := ks.SetDefault(keyName); err != nil {
 			return err
 		}

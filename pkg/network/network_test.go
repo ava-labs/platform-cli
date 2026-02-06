@@ -6,7 +6,10 @@ import (
 )
 
 func TestGetConfig_Fuji(t *testing.T) {
-	cfg := GetConfig("fuji")
+	cfg, err := GetConfig("fuji")
+	if err != nil {
+		t.Fatalf("GetConfig(fuji) returned error: %v", err)
+	}
 
 	if cfg.Name != "fuji" {
 		t.Errorf("GetConfig(fuji).Name = %s, want fuji", cfg.Name)
@@ -29,7 +32,10 @@ func TestGetConfig_Fuji(t *testing.T) {
 }
 
 func TestGetConfig_Mainnet(t *testing.T) {
-	cfg := GetConfig("mainnet")
+	cfg, err := GetConfig("mainnet")
+	if err != nil {
+		t.Fatalf("GetConfig(mainnet) returned error: %v", err)
+	}
 
 	if cfg.Name != "mainnet" {
 		t.Errorf("GetConfig(mainnet).Name = %s, want mainnet", cfg.Name)
@@ -51,12 +57,10 @@ func TestGetConfig_Mainnet(t *testing.T) {
 	}
 }
 
-func TestGetConfig_Default(t *testing.T) {
-	// Unknown network should default to Fuji
-	cfg := GetConfig("unknown")
-
-	if cfg.Name != "fuji" {
-		t.Errorf("GetConfig(unknown) should default to fuji, got %s", cfg.Name)
+func TestGetConfig_Unknown(t *testing.T) {
+	_, err := GetConfig("unknown")
+	if err == nil {
+		t.Fatal("GetConfig(unknown) should return an error")
 	}
 }
 
@@ -69,12 +73,14 @@ func TestGetNetworkIDAndRPC(t *testing.T) {
 	}{
 		{"fuji", "fuji", 5, "https://api.avax-test.network"},
 		{"mainnet", "mainnet", 1, "https://api.avax.network"},
-		{"unknown", "unknown", 5, "https://api.avax-test.network"}, // defaults to fuji
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			networkID, rpc := GetNetworkIDAndRPC(tt.network)
+			networkID, rpc, err := GetNetworkIDAndRPC(tt.network)
+			if err != nil {
+				t.Fatalf("GetNetworkIDAndRPC(%s) returned error: %v", tt.network, err)
+			}
 			if networkID != tt.wantNetworkID {
 				t.Errorf("GetNetworkIDAndRPC(%s) networkID = %d, want %d", tt.network, networkID, tt.wantNetworkID)
 			}
@@ -85,13 +91,20 @@ func TestGetNetworkIDAndRPC(t *testing.T) {
 	}
 }
 
+func TestGetNetworkIDAndRPC_Unknown(t *testing.T) {
+	_, _, err := GetNetworkIDAndRPC("unknown")
+	if err == nil {
+		t.Fatal("GetNetworkIDAndRPC(unknown) should return an error")
+	}
+}
+
 func TestGetHRP(t *testing.T) {
 	tests := []struct {
 		networkID uint32
 		wantHRP   string
 	}{
-		{1, "avax"},  // mainnet
-		{5, "fuji"},  // fuji
+		{1, "avax"},      // mainnet
+		{5, "fuji"},      // fuji
 		{1337, "custom"}, // local/custom
 	}
 

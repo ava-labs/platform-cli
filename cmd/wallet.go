@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"os"
 
@@ -133,7 +134,7 @@ func loadFromKeystore(name string) ([]byte, error) {
 	// Built-in: ewoq test key
 	if name == "ewoq" {
 		// SECURITY: Prevent accidental use of ewoq key on mainnet
-		if networkName == "mainnet" {
+		if networkName == "mainnet" || customNetID == constants.MainnetID {
 			return nil, fmt.Errorf("ewoq test key cannot be used on mainnet - this is a well-known key with no security")
 		}
 		// Return a copy so caller can safely clear it
@@ -186,7 +187,7 @@ func getNetworkConfig(ctx context.Context) (network.Config, error) {
 		fmt.Printf("Using custom RPC: %s (network ID: %d, HRP: %s)\n", customRPCURL, config.NetworkID, hrp)
 		return config, nil
 	}
-	return network.GetConfig(networkName), nil
+	return network.GetConfig(networkName)
 }
 
 // loadPChainWallet creates a P-Chain wallet from either Ledger or private key.
@@ -214,6 +215,9 @@ func loadPChainWallet(ctx context.Context, netConfig network.Config) (*wallet.Wa
 	}
 	// Clear key bytes after wallet creation
 	defer clearBytesWallet(keyBytes)
+	if netConfig.NetworkID == constants.MainnetID && isEwoqKey(keyBytes) {
+		return nil, nil, fmt.Errorf("ewoq test key cannot be used on mainnet - this is a well-known key with no security")
+	}
 
 	key, err := wallet.ToPrivateKey(keyBytes)
 	if err != nil {
@@ -250,6 +254,9 @@ func loadPChainWalletWithSubnet(ctx context.Context, netConfig network.Config, s
 	}
 	// Clear key bytes after wallet creation
 	defer clearBytesWallet(keyBytes)
+	if netConfig.NetworkID == constants.MainnetID && isEwoqKey(keyBytes) {
+		return nil, nil, fmt.Errorf("ewoq test key cannot be used on mainnet - this is a well-known key with no security")
+	}
 
 	key, err := wallet.ToPrivateKey(keyBytes)
 	if err != nil {
@@ -287,6 +294,9 @@ func loadFullWallet(ctx context.Context, netConfig network.Config) (*wallet.Full
 	}
 	// Clear key bytes after wallet creation
 	defer clearBytesWallet(keyBytes)
+	if netConfig.NetworkID == constants.MainnetID && isEwoqKey(keyBytes) {
+		return nil, nil, fmt.Errorf("ewoq test key cannot be used on mainnet - this is a well-known key with no security")
+	}
 
 	key, err := wallet.ToPrivateKey(keyBytes)
 	if err != nil {
@@ -297,6 +307,13 @@ func loadFullWallet(ctx context.Context, netConfig network.Config) (*wallet.Full
 		return nil, nil, err
 	}
 	return w, func() {}, nil
+}
+
+func isEwoqKey(keyBytes []byte) bool {
+	if len(keyBytes) != len(ewoqPrivateKey) {
+		return false
+	}
+	return subtle.ConstantTimeCompare(keyBytes, ewoqPrivateKey) == 1
 }
 
 func init() {

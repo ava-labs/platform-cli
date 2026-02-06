@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/cb58"
@@ -26,6 +28,26 @@ const (
 	indexFile    = "keys.json"
 	keyExtension = ".key"
 )
+
+var keyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
+
+// ValidateKeyName validates a key name for safe filesystem usage.
+func ValidateKeyName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("key name cannot be empty")
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("invalid key name %q", name)
+	}
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") {
+		return fmt.Errorf("invalid key name %q: path separators are not allowed", name)
+	}
+	if !keyNamePattern.MatchString(name) {
+		return fmt.Errorf("invalid key name %q: use 1-64 characters [a-zA-Z0-9._-], starting with alphanumeric", name)
+	}
+	return nil
+}
 
 // KeyStore manages persistent key storage.
 type KeyStore struct {
@@ -102,6 +124,10 @@ func (ks *KeyStore) Save() error {
 // ImportKey imports a private key with the given name.
 // If password is provided, the key will be encrypted.
 func (ks *KeyStore) ImportKey(name string, keyBytes []byte, password []byte) error {
+	if err := ValidateKeyName(name); err != nil {
+		return err
+	}
+
 	// Check if name already exists
 	if _, exists := ks.index.Keys[name]; exists {
 		return fmt.Errorf("key with name %q already exists", name)
@@ -172,6 +198,10 @@ func (ks *KeyStore) ImportKey(name string, keyBytes []byte, password []byte) err
 // If password is provided, the key will be encrypted.
 // Note: The returned key bytes should be cleared by the caller when no longer needed.
 func (ks *KeyStore) GenerateKey(name string, password []byte) ([]byte, error) {
+	if err := ValidateKeyName(name); err != nil {
+		return nil, err
+	}
+
 	// Generate random key bytes
 	keyBytes := make([]byte, secp256k1.PrivateKeyLen)
 	if _, err := rand.Read(keyBytes); err != nil {
@@ -191,6 +221,10 @@ func (ks *KeyStore) GenerateKey(name string, password []byte) ([]byte, error) {
 // LoadKey loads a key by name. If the key is encrypted, password must be provided.
 // Note: The returned key bytes should be cleared by the caller when no longer needed.
 func (ks *KeyStore) LoadKey(name string, password []byte) ([]byte, error) {
+	if err := ValidateKeyName(name); err != nil {
+		return nil, err
+	}
+
 	entry, exists := ks.index.Keys[name]
 	if !exists {
 		return nil, fmt.Errorf("key %q not found", name)
@@ -221,6 +255,10 @@ func (ks *KeyStore) LoadKey(name string, password []byte) ([]byte, error) {
 
 // DeleteKey removes a key by name.
 func (ks *KeyStore) DeleteKey(name string) error {
+	if err := ValidateKeyName(name); err != nil {
+		return err
+	}
+
 	if _, exists := ks.index.Keys[name]; !exists {
 		return fmt.Errorf("key %q not found", name)
 	}
@@ -264,6 +302,10 @@ func (ks *KeyStore) GetKey(name string) (KeyEntry, bool) {
 
 // SetDefault sets the default key name.
 func (ks *KeyStore) SetDefault(name string) error {
+	if err := ValidateKeyName(name); err != nil {
+		return err
+	}
+
 	if _, exists := ks.index.Keys[name]; !exists {
 		return fmt.Errorf("key %q not found", name)
 	}
@@ -294,6 +336,10 @@ func (ks *KeyStore) IsEncrypted(name string) bool {
 // ExportKey exports a key in the specified format.
 // If the key is encrypted, password must be provided.
 func (ks *KeyStore) ExportKey(name string, password []byte, format string) (string, error) {
+	if err := ValidateKeyName(name); err != nil {
+		return "", err
+	}
+
 	keyBytes, err := ks.LoadKey(name, password)
 	if err != nil {
 		return "", err

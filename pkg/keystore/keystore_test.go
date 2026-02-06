@@ -451,3 +451,34 @@ func TestNewKeyIndex(t *testing.T) {
 		t.Errorf("NewKeyIndex().Keys has %d entries, want 0", len(idx.Keys))
 	}
 }
+
+func TestValidateKeyName_Invalid(t *testing.T) {
+	tests := []string{
+		"",
+		".",
+		"..",
+		"../../evil",
+		"..\\..\\evil",
+		"/tmp/key",
+		"spaces not allowed",
+		"-starts-with-dash",
+	}
+
+	for _, name := range tests {
+		t.Run(name, func(t *testing.T) {
+			if err := ValidateKeyName(name); err == nil {
+				t.Fatalf("ValidateKeyName(%q) should fail", name)
+			}
+		})
+	}
+}
+
+func TestKeyStore_ImportKey_RejectsUnsafeName(t *testing.T) {
+	ks, tempDir := setupTestKeystore(t)
+	defer os.RemoveAll(tempDir)
+
+	err := ks.ImportKey("../../outside", testKeyBytes, nil)
+	if err == nil {
+		t.Fatal("ImportKey should fail for unsafe key name")
+	}
+}

@@ -110,6 +110,8 @@ platform transfer import --from p --to c
 # Add validator (min 2000 AVAX, min 14 days)
 platform validator add \
   --node-id NodeID-... \
+  --bls-public-key <hex> \
+  --bls-pop <hex> \
   --stake 2000 \
   --duration 336h \
   --delegation-fee 0.02

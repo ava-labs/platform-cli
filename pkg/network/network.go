@@ -27,9 +27,9 @@ var Fuji = Config{
 	Name:              "fuji",
 	NetworkID:         5,
 	RPCURL:            "https://api.avax-test.network",
-	MinValidatorStake: 1_000_000_000,      // 1 AVAX
-	MinDelegatorStake: 1_000_000_000,      // 1 AVAX
-	MinStakeDuration:  24 * time.Hour,     // 24 hours
+	MinValidatorStake: 1_000_000_000,  // 1 AVAX
+	MinDelegatorStake: 1_000_000_000,  // 1 AVAX
+	MinStakeDuration:  24 * time.Hour, // 24 hours
 }
 
 // Mainnet configuration
@@ -37,29 +37,31 @@ var Mainnet = Config{
 	Name:              "mainnet",
 	NetworkID:         1,
 	RPCURL:            "https://api.avax.network",
-	MinValidatorStake: 2000_000_000_000,   // 2000 AVAX
-	MinDelegatorStake: 25_000_000_000,     // 25 AVAX
+	MinValidatorStake: 2000_000_000_000,    // 2000 AVAX
+	MinDelegatorStake: 25_000_000_000,      // 25 AVAX
 	MinStakeDuration:  14 * 24 * time.Hour, // 14 days
 }
 
 // GetConfig returns the network configuration for the given network name.
 // For local/custom networks, use --rpc-url instead.
-func GetConfig(name string) Config {
+func GetConfig(name string) (Config, error) {
 	switch name {
 	case "mainnet":
-		return Mainnet
+		return Mainnet, nil
 	case "fuji":
-		return Fuji
+		return Fuji, nil
 	default:
-		// Default to Fuji
-		return Fuji
+		return Config{}, fmt.Errorf("unsupported network %q (supported: fuji, mainnet)", name)
 	}
 }
 
 // GetNetworkIDAndRPC is a convenience function that returns both networkID and RPC URL.
-func GetNetworkIDAndRPC(name string) (uint32, string) {
-	config := GetConfig(name)
-	return config.NetworkID, config.RPCURL
+func GetNetworkIDAndRPC(name string) (uint32, string, error) {
+	config, err := GetConfig(name)
+	if err != nil {
+		return 0, "", err
+	}
+	return config.NetworkID, config.RPCURL, nil
 }
 
 // GetNetworkID queries the network ID from an RPC endpoint.
@@ -96,19 +98,19 @@ func NewCustomConfig(ctx context.Context, rpcURL string, networkID uint32) (Conf
 	switch networkID {
 	case constants.MainnetID:
 		// Mainnet parameters
-		minValidatorStake = 2000_000_000_000  // 2000 AVAX
-		minDelegatorStake = 25_000_000_000    // 25 AVAX
+		minValidatorStake = 2000_000_000_000   // 2000 AVAX
+		minDelegatorStake = 25_000_000_000     // 25 AVAX
 		minStakeDuration = 14 * 24 * time.Hour // 14 days
 	case constants.FujiID:
 		// Fuji parameters
-		minValidatorStake = 1_000_000_000     // 1 AVAX
-		minDelegatorStake = 1_000_000_000     // 1 AVAX
-		minStakeDuration = 24 * time.Hour     // 24 hours
+		minValidatorStake = 1_000_000_000 // 1 AVAX
+		minDelegatorStake = 1_000_000_000 // 1 AVAX
+		minStakeDuration = 24 * time.Hour // 24 hours
 	default:
 		// Default devnet/local parameters (permissive)
-		minValidatorStake = 1_000_000_000     // 1 AVAX
-		minDelegatorStake = 1_000_000_000     // 1 AVAX
-		minStakeDuration = 24 * time.Hour     // 24 hours
+		minValidatorStake = 1_000_000_000 // 1 AVAX
+		minDelegatorStake = 1_000_000_000 // 1 AVAX
+		minStakeDuration = 24 * time.Hour // 24 hours
 	}
 
 	hrp := GetHRP(networkID)
