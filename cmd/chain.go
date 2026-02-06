@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
@@ -47,18 +51,9 @@ var chainCreateCmd = &cobra.Command{
 			return fmt.Errorf("invalid subnet ID: %w", err)
 		}
 
-		// Validate genesis file size before reading to prevent memory issues
-		fileInfo, err := os.Stat(chainGenesisFile)
+		genesis, err := loadGenesisJSON(chainGenesisFile)
 		if err != nil {
-			return fmt.Errorf("failed to stat genesis file: %w", err)
-		}
-		if fileInfo.Size() > maxGenesisLen {
-			return fmt.Errorf("genesis file too large: %d bytes (max: %d bytes / 1 MB)", fileInfo.Size(), maxGenesisLen)
-		}
-
-		genesis, err := os.ReadFile(chainGenesisFile)
-		if err != nil {
-			return fmt.Errorf("failed to read genesis file: %w", err)
+			return err
 		}
 
 		// Default to Subnet-EVM
@@ -95,6 +90,46 @@ var chainCreateCmd = &cobra.Command{
 		fmt.Printf("Chain ID: %s\n", txID)
 		return nil
 	},
+}
+
+func loadGenesisJSON(path string) ([]byte, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, fmt.Errorf("genesis file path cannot be empty")
+	}
+	if !strings.EqualFold(filepath.Ext(path), ".json") {
+		return nil, fmt.Errorf("genesis file must use a .json extension")
+	}
+
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat genesis file: %w", err)
+	}
+	if !fileInfo.Mode().IsRegular() {
+		return nil, fmt.Errorf("genesis file must be a regular file")
+	}
+	if fileInfo.Size() > maxGenesisLen {
+		return nil, fmt.Errorf("genesis file too large: %d bytes (max: %d bytes / 1 MB)", fileInfo.Size(), maxGenesisLen)
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open genesis file: %w", err)
+	}
+	defer file.Close()
+
+	genesis, err := io.ReadAll(io.LimitReader(file, maxGenesisLen+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read genesis file: %w", err)
+	}
+	if len(genesis) > maxGenesisLen {
+		return nil, fmt.Errorf("genesis file too large: more than %d bytes", maxGenesisLen)
+	}
+	if !json.Valid(genesis) {
+		return nil, fmt.Errorf("genesis file must contain valid JSON")
+	}
+
+	return genesis, nil
 }
 
 func init() {

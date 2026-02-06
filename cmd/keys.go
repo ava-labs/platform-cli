@@ -53,12 +53,14 @@ var keysImportCmd = &cobra.Command{
 	Long: `Import a private key into the keystore.
 
 If --private-key is not provided, you will be prompted to enter it (hidden input).
-If --encrypt is specified, you will be prompted for a password.
+Keys are encrypted by default. Use --encrypt=false to store unencrypted keys (unsafe).
+When encryption is enabled, set PLATFORM_CLI_KEY_PASSWORD for non-interactive use
+or follow the password prompt.
 
 Examples:
   platform keys import --name mykey --private-key "PrivateKey-..."
   platform keys import --name mykey
-  platform keys import --name mykey --encrypt`,
+  platform keys import --name mykey --encrypt=false`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
@@ -104,9 +106,17 @@ Examples:
 		// Get password if encrypting
 		var password []byte
 		if keyEncrypt {
-			password, err = promptPassword(true)
-			if err != nil {
-				return err
+			if envPwd := os.Getenv("PLATFORM_CLI_KEY_PASSWORD"); envPwd != "" {
+				password = []byte(envPwd)
+				if len(password) < 8 {
+					clearBytes(password)
+					return fmt.Errorf("PLATFORM_CLI_KEY_PASSWORD must be at least 8 characters")
+				}
+			} else {
+				password, err = promptPassword(true)
+				if err != nil {
+					return err
+				}
 			}
 			defer clearBytes(password)
 		}
@@ -136,11 +146,13 @@ var keysGenerateCmd = &cobra.Command{
 	Short: "Generate a new random key",
 	Long: `Generate a new random secp256k1 private key.
 
-If --encrypt is specified, you will be prompted for a password.
+Keys are encrypted by default. Use --encrypt=false to store unencrypted keys (unsafe).
+When encryption is enabled, set PLATFORM_CLI_KEY_PASSWORD for non-interactive use
+or follow the password prompt.
 
 Examples:
   platform keys generate --name mykey
-  platform keys generate --name mykey --encrypt`,
+  platform keys generate --name mykey --encrypt=false`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
@@ -162,9 +174,17 @@ Examples:
 		// Get password if encrypting
 		var password []byte
 		if keyEncrypt {
-			password, err = promptPassword(true)
-			if err != nil {
-				return err
+			if envPwd := os.Getenv("PLATFORM_CLI_KEY_PASSWORD"); envPwd != "" {
+				password = []byte(envPwd)
+				if len(password) < 8 {
+					clearBytes(password)
+					return fmt.Errorf("PLATFORM_CLI_KEY_PASSWORD must be at least 8 characters")
+				}
+			} else {
+				password, err = promptPassword(true)
+				if err != nil {
+					return err
+				}
 			}
 			defer clearBytes(password)
 		}
@@ -462,11 +482,11 @@ func init() {
 
 	// Import flags
 	keysImportCmd.Flags().StringVar(&keyName, "name", "", "Name for the key (required)")
-	keysImportCmd.Flags().BoolVar(&keyEncrypt, "encrypt", false, "Encrypt the key with a password")
+	keysImportCmd.Flags().BoolVar(&keyEncrypt, "encrypt", true, "Encrypt the key with a password (default true)")
 
 	// Generate flags
 	keysGenerateCmd.Flags().StringVar(&keyName, "name", "", "Name for the key (required)")
-	keysGenerateCmd.Flags().BoolVar(&keyEncrypt, "encrypt", false, "Encrypt the key with a password")
+	keysGenerateCmd.Flags().BoolVar(&keyEncrypt, "encrypt", true, "Encrypt the key with a password (default true)")
 
 	// List flags
 	keysListCmd.Flags().BoolVar(&showAddrs, "show-addresses", false, "Show P-Chain and EVM addresses")
