@@ -27,12 +27,18 @@ jobs:
         run: go vet ./...
 
       - name: Run staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@v0.5.1 ./...
+        env:
+          GOTOOLCHAIN: go1.24.13
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...
 
       - name: Run staticcheck (tagged e2e)
-        run: go run honnef.co/go/tools/cmd/staticcheck@v0.5.1 -tags=clie2e,networke2e ./e2e/...
+        env:
+          GOTOOLCHAIN: go1.24.13
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 -tags=clie2e,networke2e ./e2e/...
 
       - name: Run govulncheck
+        env:
+          GOTOOLCHAIN: go1.24.13
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.2 ./...
 
       - name: Run tests
