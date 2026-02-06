@@ -223,11 +223,15 @@ func TestNormalizeNodeURI(t *testing.T) {
 		{"ip with port", "127.0.0.1:9650", "http://127.0.0.1:9650"},
 		{"http uri", "http://127.0.0.1:9650", "http://127.0.0.1:9650"},
 		{"https uri", "https://example.com", "https://example.com"},
+		{"ext info path is stripped", "http://127.0.0.1:9650/ext/info", "http://127.0.0.1:9650"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := normalizeNodeURI(tt.input)
+			got, err := normalizeNodeURI(tt.input)
+			if err != nil {
+				t.Fatalf("normalizeNodeURI(%q) returned error: %v", tt.input, err)
+			}
 			if got != tt.want {
 				t.Fatalf("normalizeNodeURI(%q) = %q, want %q", tt.input, got, tt.want)
 			}
@@ -245,15 +249,33 @@ func TestNormalizeValidatorNodeURI(t *testing.T) {
 		{"ip with port", "127.0.0.1:9650", "http://127.0.0.1:9650"},
 		{"http uri", "http://127.0.0.1:9650", "http://127.0.0.1:9650"},
 		{"https uri", "https://example.com", "https://example.com"},
+		{"ext info path is stripped", "http://127.0.0.1:9650/ext/info", "http://127.0.0.1:9650"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := normalizeValidatorNodeURI(tt.input)
+			got, err := normalizeValidatorNodeURI(tt.input)
+			if err != nil {
+				t.Fatalf("normalizeValidatorNodeURI(%q) returned error: %v", tt.input, err)
+			}
 			if got != tt.want {
 				t.Fatalf("normalizeValidatorNodeURI(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNormalizeNodeURI_InvalidPath(t *testing.T) {
+	_, err := normalizeNodeURI("http://127.0.0.1:9650/custom/path")
+	if err == nil {
+		t.Fatal("normalizeNodeURI() expected error for custom path")
+	}
+}
+
+func TestNormalizeValidatorNodeURI_InvalidPath(t *testing.T) {
+	_, err := normalizeValidatorNodeURI("http://127.0.0.1:9650/custom/path")
+	if err == nil {
+		t.Fatal("normalizeValidatorNodeURI() expected error for custom path")
 	}
 }
 

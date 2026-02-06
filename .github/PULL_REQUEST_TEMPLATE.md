@@ -12,8 +12,9 @@
 
 ## Testing
 <!-- How was this tested? -->
-- [ ] Unit tests pass (`go test ./pkg/...`)
-- [ ] E2E tests pass (`go test ./e2e/...`)
+- [ ] Unit/smoke tests pass (`go test ./...`)
+- [ ] CLI e2e smoke tests pass (`go test -tags=clie2e -v ./e2e/... -run "Help|Params|MissingArgs"`) (if applicable)
+- [ ] Network E2E tests pass (`go test -tags=networke2e -v ./e2e/...`) (if applicable)
 - [ ] Manual testing
 
 ## Checklist

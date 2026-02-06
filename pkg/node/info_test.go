@@ -46,9 +46,14 @@ func TestNormalizeNodeURI(t *testing.T) {
 			want:  "http://mynode.example.com:9650",
 		},
 		{
-			name:  "full URI with path",
+			name:  "full URI with ext info path",
 			input: "http://127.0.0.1:9650/ext/info",
-			want:  "http://127.0.0.1:9650/ext/info",
+			want:  "http://127.0.0.1:9650",
+		},
+		{
+			name:  "full URI with ext info trailing slash",
+			input: "http://127.0.0.1:9650/ext/info/",
+			want:  "http://127.0.0.1:9650",
 		},
 		{
 			name:  "localhost",
@@ -64,9 +69,12 @@ func TestNormalizeNodeURI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := normalizeNodeURI(tt.input)
+			got, err := NormalizeNodeURI(tt.input)
+			if err != nil {
+				t.Fatalf("NormalizeNodeURI(%q) returned error: %v", tt.input, err)
+			}
 			if got != tt.want {
-				t.Errorf("normalizeNodeURI(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("NormalizeNodeURI(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
@@ -93,9 +101,53 @@ func TestNormalizeNodeURI_IPv6(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := normalizeNodeURI(tt.input)
+			got, err := NormalizeNodeURI(tt.input)
+			if err != nil {
+				t.Fatalf("NormalizeNodeURI(%q) returned error: %v", tt.input, err)
+			}
 			if got != tt.want {
-				t.Errorf("normalizeNodeURI(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("NormalizeNodeURI(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeNodeURI_Invalid(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "empty",
+			input: "",
+		},
+		{
+			name:  "unsupported scheme",
+			input: "ftp://127.0.0.1:9650",
+		},
+		{
+			name:  "custom path not allowed",
+			input: "http://127.0.0.1:9650/custom/path",
+		},
+		{
+			name:  "query not allowed",
+			input: "http://127.0.0.1:9650?x=1",
+		},
+		{
+			name:  "fragment not allowed",
+			input: "http://127.0.0.1:9650#frag",
+		},
+		{
+			name:  "host shorthand with path",
+			input: "127.0.0.1:9650/ext/info",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NormalizeNodeURI(tt.input)
+			if err == nil {
+				t.Fatalf("NormalizeNodeURI(%q) expected error", tt.input)
 			}
 		})
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
+	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
 )
 
@@ -22,8 +23,27 @@ import (
 // Send sends AVAX on the P-Chain (IssueBaseTx).
 func Send(ctx context.Context, w *wallet.Wallet, to ids.ShortID, amountNAVAX uint64) (ids.ID, error) {
 	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
+	return issueSendTx(w.PWallet().IssueBaseTx, avaxAssetID, to, amountNAVAX)
+}
 
-	tx, err := w.PWallet().IssueBaseTx([]*avax.TransferableOutput{{
+// Export exports AVAX from P-Chain to another chain (IssueExportTx).
+func Export(ctx context.Context, w *wallet.Wallet, destChainID ids.ID, amountNAVAX uint64) (ids.ID, error) {
+	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
+	return issueExportTx(w.PWallet().IssueExportTx, destChainID, avaxAssetID, w.PChainAddress(), amountNAVAX)
+}
+
+// Import imports AVAX to P-Chain from another chain (IssueImportTx).
+func Import(ctx context.Context, w *wallet.Wallet, sourceChainID ids.ID) (ids.ID, error) {
+	return issueImportTx(w.PWallet().IssueImportTx, sourceChainID, w.PChainAddress())
+}
+
+func issueSendTx(
+	issueBaseTx func(outputs []*avax.TransferableOutput, options ...common.Option) (*txs.Tx, error),
+	avaxAssetID ids.ID,
+	to ids.ShortID,
+	amountNAVAX uint64,
+) (ids.ID, error) {
+	tx, err := issueBaseTx([]*avax.TransferableOutput{{
 		Asset: avax.Asset{ID: avaxAssetID},
 		Out: &secp256k1fx.TransferOutput{
 			Amt: amountNAVAX,
@@ -39,15 +59,19 @@ func Send(ctx context.Context, w *wallet.Wallet, to ids.ShortID, amountNAVAX uin
 	return tx.ID(), nil
 }
 
-// Export exports AVAX from P-Chain to another chain (IssueExportTx).
-func Export(ctx context.Context, w *wallet.Wallet, destChainID ids.ID, amountNAVAX uint64) (ids.ID, error) {
-	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
+func issueExportTx(
+	issueExportTxFn func(chainID ids.ID, outputs []*avax.TransferableOutput, options ...common.Option) (*txs.Tx, error),
+	destChainID ids.ID,
+	avaxAssetID ids.ID,
+	ownerAddr ids.ShortID,
+	amountNAVAX uint64,
+) (ids.ID, error) {
 	owner := secp256k1fx.OutputOwners{
 		Threshold: 1,
-		Addrs:     []ids.ShortID{w.PChainAddress()},
+		Addrs:     []ids.ShortID{ownerAddr},
 	}
 
-	tx, err := w.PWallet().IssueExportTx(destChainID, []*avax.TransferableOutput{{
+	tx, err := issueExportTxFn(destChainID, []*avax.TransferableOutput{{
 		Asset: avax.Asset{ID: avaxAssetID},
 		Out: &secp256k1fx.TransferOutput{
 			Amt:          amountNAVAX,
@@ -60,14 +84,17 @@ func Export(ctx context.Context, w *wallet.Wallet, destChainID ids.ID, amountNAV
 	return tx.ID(), nil
 }
 
-// Import imports AVAX to P-Chain from another chain (IssueImportTx).
-func Import(ctx context.Context, w *wallet.Wallet, sourceChainID ids.ID) (ids.ID, error) {
+func issueImportTx(
+	issueImportTxFn func(chainID ids.ID, to *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error),
+	sourceChainID ids.ID,
+	ownerAddr ids.ShortID,
+) (ids.ID, error) {
 	owner := secp256k1fx.OutputOwners{
 		Threshold: 1,
-		Addrs:     []ids.ShortID{w.PChainAddress()},
+		Addrs:     []ids.ShortID{ownerAddr},
 	}
 
-	tx, err := w.PWallet().IssueImportTx(sourceChainID, &owner)
+	tx, err := issueImportTxFn(sourceChainID, &owner)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue ImportTx: %w", err)
 	}
@@ -118,23 +145,42 @@ type AddPermissionlessValidatorConfig struct {
 	NodeID        ids.NodeID
 	Start         time.Time
 	End           time.Time
-	StakeAmt      uint64      // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 2000 AVAX for primary network)
+	StakeAmt      uint64 // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 2000 AVAX for primary network)
 	RewardAddr    ids.ShortID
-	DelegationFee uint32      // in parts per million (1_000_000 = 100%)
+	DelegationFee uint32                    // in parts per million (1_000_000 = 100%)
 	BLSSigner     *signer.ProofOfPossession // BLS proof of possession for the validator (required for primary network)
 }
 
 // AddPermissionlessValidator adds a permissionless validator to the primary network.
 // This is the post-Etna method for staking on the primary network.
 func AddPermissionlessValidator(ctx context.Context, w *wallet.Wallet, cfg AddPermissionlessValidatorConfig) (ids.ID, error) {
+	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
+	return issueAddPermissionlessValidatorTx(
+		w.PWallet().IssueAddPermissionlessValidatorTx,
+		avaxAssetID,
+		cfg,
+	)
+}
+
+func issueAddPermissionlessValidatorTx(
+	issueTxFn func(
+		vdr *txs.SubnetValidator,
+		signer signer.Signer,
+		assetID ids.ID,
+		validationRewardsOwner *secp256k1fx.OutputOwners,
+		delegationRewardsOwner *secp256k1fx.OutputOwners,
+		shares uint32,
+		options ...common.Option,
+	) (*txs.Tx, error),
+	avaxAssetID ids.ID,
+	cfg AddPermissionlessValidatorConfig,
+) (ids.ID, error) {
 	rewardsOwner := &secp256k1fx.OutputOwners{
 		Threshold: 1,
 		Addrs:     []ids.ShortID{cfg.RewardAddr},
 	}
 
-	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
-
-	tx, err := w.PWallet().IssueAddPermissionlessValidatorTx(
+	tx, err := issueTxFn(
 		&txs.SubnetValidator{
 			Validator: txs.Validator{
 				NodeID: cfg.NodeID,
@@ -194,21 +240,37 @@ type AddPermissionlessDelegatorConfig struct {
 	NodeID     ids.NodeID
 	Start      time.Time
 	End        time.Time
-	StakeAmt   uint64      // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 25 AVAX)
+	StakeAmt   uint64 // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 25 AVAX)
 	RewardAddr ids.ShortID
 }
 
 // AddPermissionlessDelegator adds a permissionless delegator to the primary network.
 // This is the post-Etna method for delegating on the primary network.
 func AddPermissionlessDelegator(ctx context.Context, w *wallet.Wallet, cfg AddPermissionlessDelegatorConfig) (ids.ID, error) {
+	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
+	return issueAddPermissionlessDelegatorTx(
+		w.PWallet().IssueAddPermissionlessDelegatorTx,
+		avaxAssetID,
+		cfg,
+	)
+}
+
+func issueAddPermissionlessDelegatorTx(
+	issueTxFn func(
+		vdr *txs.SubnetValidator,
+		assetID ids.ID,
+		rewardsOwner *secp256k1fx.OutputOwners,
+		options ...common.Option,
+	) (*txs.Tx, error),
+	avaxAssetID ids.ID,
+	cfg AddPermissionlessDelegatorConfig,
+) (ids.ID, error) {
 	rewardsOwner := &secp256k1fx.OutputOwners{
 		Threshold: 1,
 		Addrs:     []ids.ShortID{cfg.RewardAddr},
 	}
 
-	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
-
-	tx, err := w.PWallet().IssueAddPermissionlessDelegatorTx(
+	tx, err := issueTxFn(
 		&txs.SubnetValidator{
 			Validator: txs.Validator{
 				NodeID: cfg.NodeID,
@@ -233,12 +295,19 @@ func AddPermissionlessDelegator(ctx context.Context, w *wallet.Wallet, cfg AddPe
 
 // CreateSubnet creates a new subnet (IssueCreateSubnetTx).
 func CreateSubnet(ctx context.Context, w *wallet.Wallet) (ids.ID, error) {
+	return issueCreateSubnetTx(w.PWallet().IssueCreateSubnetTx, w.PChainAddress())
+}
+
+func issueCreateSubnetTx(
+	issueTxFn func(owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error),
+	ownerAddr ids.ShortID,
+) (ids.ID, error) {
 	owner := &secp256k1fx.OutputOwners{
 		Threshold: 1,
-		Addrs:     []ids.ShortID{w.PChainAddress()},
+		Addrs:     []ids.ShortID{ownerAddr},
 	}
 
-	tx, err := w.PWallet().IssueCreateSubnetTx(owner)
+	tx, err := issueTxFn(owner)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue CreateSubnetTx: %w", err)
 	}
@@ -247,12 +316,20 @@ func CreateSubnet(ctx context.Context, w *wallet.Wallet) (ids.ID, error) {
 
 // TransferSubnetOwnership transfers subnet ownership (IssueTransferSubnetOwnershipTx).
 func TransferSubnetOwnership(ctx context.Context, w *wallet.Wallet, subnetID ids.ID, newOwner ids.ShortID) (ids.ID, error) {
+	return issueTransferSubnetOwnershipTx(w.PWallet().IssueTransferSubnetOwnershipTx, subnetID, newOwner)
+}
+
+func issueTransferSubnetOwnershipTx(
+	issueTxFn func(subnetID ids.ID, owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error),
+	subnetID ids.ID,
+	newOwner ids.ShortID,
+) (ids.ID, error) {
 	owner := &secp256k1fx.OutputOwners{
 		Threshold: 1,
 		Addrs:     []ids.ShortID{newOwner},
 	}
 
-	tx, err := w.PWallet().IssueTransferSubnetOwnershipTx(subnetID, owner)
+	tx, err := issueTxFn(subnetID, owner)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue TransferSubnetOwnershipTx: %w", err)
 	}
@@ -261,7 +338,17 @@ func TransferSubnetOwnership(ctx context.Context, w *wallet.Wallet, subnetID ids
 
 // ConvertSubnetToL1 converts a subnet to L1 (IssueConvertSubnetToL1Tx).
 func ConvertSubnetToL1(ctx context.Context, w *wallet.Wallet, subnetID, chainID ids.ID, managerAddr []byte, validators []*txs.ConvertSubnetToL1Validator) (ids.ID, error) {
-	tx, err := w.PWallet().IssueConvertSubnetToL1Tx(subnetID, chainID, managerAddr, validators)
+	return issueConvertSubnetToL1Tx(w.PWallet().IssueConvertSubnetToL1Tx, subnetID, chainID, managerAddr, validators)
+}
+
+func issueConvertSubnetToL1Tx(
+	issueTxFn func(subnetID ids.ID, chainID ids.ID, address []byte, validators []*txs.ConvertSubnetToL1Validator, options ...common.Option) (*txs.Tx, error),
+	subnetID ids.ID,
+	chainID ids.ID,
+	managerAddr []byte,
+	validators []*txs.ConvertSubnetToL1Validator,
+) (ids.ID, error) {
+	tx, err := issueTxFn(subnetID, chainID, managerAddr, validators)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue ConvertSubnetToL1Tx: %w", err)
 	}
@@ -323,7 +410,21 @@ type CreateChainConfig struct {
 
 // CreateChain creates a new chain on a subnet (IssueCreateChainTx).
 func CreateChain(ctx context.Context, w *wallet.Wallet, cfg CreateChainConfig) (ids.ID, error) {
-	tx, err := w.PWallet().IssueCreateChainTx(
+	return issueCreateChainTx(w.PWallet().IssueCreateChainTx, cfg)
+}
+
+func issueCreateChainTx(
+	issueTxFn func(
+		subnetID ids.ID,
+		genesis []byte,
+		vmID ids.ID,
+		fxIDs []ids.ID,
+		chainName string,
+		options ...common.Option,
+	) (*txs.Tx, error),
+	cfg CreateChainConfig,
+) (ids.ID, error) {
+	tx, err := issueTxFn(
 		cfg.SubnetID,
 		cfg.Genesis,
 		cfg.VMID,

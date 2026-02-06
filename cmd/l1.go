@@ -38,6 +38,9 @@ var l1RegisterValidatorCmd = &cobra.Command{
 		if l1PoP == "" {
 			return fmt.Errorf("--pop is required (hex-encoded BLS proof of possession)")
 		}
+		if l1Balance <= 0 {
+			return fmt.Errorf("--balance is required and must be positive")
+		}
 
 		message, err := hex.DecodeString(strings.TrimPrefix(l1Message, "0x"))
 		if err != nil {
@@ -130,6 +133,9 @@ var l1AddBalanceCmd = &cobra.Command{
 		if l1ValidationID == "" {
 			return fmt.Errorf("--validation-id is required")
 		}
+		if l1Balance <= 0 {
+			return fmt.Errorf("--balance is required and must be positive")
+		}
 
 		validationID, err := ids.FromString(l1ValidationID)
 		if err != nil {
@@ -209,16 +215,18 @@ func init() {
 	l1Cmd.AddCommand(l1DisableValidatorCmd)
 
 	// Register validator flags
-	l1RegisterValidatorCmd.Flags().Float64Var(&l1Balance, "balance", 0, "Initial balance in AVAX for continuous fees")
+	l1RegisterValidatorCmd.Flags().Float64Var(&l1Balance, "balance", 0, "Initial balance in AVAX for continuous fees (required, > 0)")
 	l1RegisterValidatorCmd.Flags().StringVar(&l1PoP, "pop", "", "BLS proof of possession (hex)")
 	l1RegisterValidatorCmd.Flags().StringVar(&l1Message, "message", "", "Warp message authorizing the validator (hex)")
+	_ = l1RegisterValidatorCmd.MarkFlagRequired("balance")
 
 	// Set weight flags
 	l1SetWeightCmd.Flags().StringVar(&l1Message, "message", "", "Warp message authorizing the weight change (hex)")
 
 	// Add balance flags
 	l1AddBalanceCmd.Flags().StringVar(&l1ValidationID, "validation-id", "", "Validation ID")
-	l1AddBalanceCmd.Flags().Float64Var(&l1Balance, "balance", 0, "Balance in AVAX to add")
+	l1AddBalanceCmd.Flags().Float64Var(&l1Balance, "balance", 0, "Balance in AVAX to add (required, > 0)")
+	_ = l1AddBalanceCmd.MarkFlagRequired("balance")
 
 	// Disable validator flags
 	l1DisableValidatorCmd.Flags().StringVar(&l1ValidationID, "validation-id", "", "Validation ID to disable")

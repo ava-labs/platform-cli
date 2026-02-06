@@ -1,3 +1,5 @@
+//go:build clie2e
+
 package e2e
 
 import (
@@ -227,7 +229,7 @@ func TestCLITransferSend(t *testing.T) {
 func TestCLITransferPToC(t *testing.T) {
 	requireStateChangingCLITest(t)
 
-	stdout, stderr, err := runCLI(t, "transfer", "p-to-c", "--amount", "0.01")
+	stdout, stderr, err := runCLI(t, "transfer", "p-to-c", "--amount", "0.001")
 	if err != nil {
 		t.Fatalf("transfer p-to-c failed: %v\nstderr: %s", err, stderr)
 	}
@@ -242,7 +244,7 @@ func TestCLITransferPToC(t *testing.T) {
 func TestCLITransferCToP(t *testing.T) {
 	requireStateChangingCLITest(t)
 
-	stdout, stderr, err := runCLI(t, "transfer", "c-to-p", "--amount", "0.01")
+	stdout, stderr, err := runCLI(t, "transfer", "c-to-p", "--amount", "0.001")
 	if err != nil {
 		t.Fatalf("transfer c-to-p failed: %v\nstderr: %s", err, stderr)
 	}
@@ -304,7 +306,7 @@ func TestCLIValidatorDelegateMissingArgs(t *testing.T) {
 // =============================================================================
 
 func TestCLIL1AddBalanceMissingArgs(t *testing.T) {
-	_, stderr, err := runCLI(t, "l1", "add-balance")
+	_, stderr, err := runCLI(t, "l1", "add-balance", "--balance", "1")
 	if err == nil {
 		t.Error("expected error when missing required args")
 	}

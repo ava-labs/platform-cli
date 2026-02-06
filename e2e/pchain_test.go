@@ -1,18 +1,19 @@
+//go:build networke2e
+
 // Package e2e provides end-to-end tests for P-Chain operations.
 //
 // Run against Fuji (requires funded wallet and explicit opt-in):
 //
-//	RUN_E2E_NETWORK_TESTS=1 PRIVATE_KEY="PrivateKey-..." go test -v ./e2e/... -network=fuji
+//	RUN_E2E_NETWORK_TESTS=1 PRIVATE_KEY="PrivateKey-..." go test -tags=networke2e -v ./e2e/... -network=fuji
 //
 // Run against local network (uses ewoq key, connects to http://127.0.0.1:9650):
 //
-//	RUN_E2E_NETWORK_TESTS=1 go test -v ./e2e/... -network=local
+//	RUN_E2E_NETWORK_TESTS=1 go test -tags=networke2e -v ./e2e/... -network=local
 package e2e
 
 import (
 	"context"
 	"crypto/rand"
-	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -32,11 +33,6 @@ import (
 	"github.com/ava-labs/platform-cli/pkg/wallet"
 )
 
-var (
-	networkFlag = flag.String("network", "fuji", "Network to test against: local, fuji")
-	localRPCURL = "http://127.0.0.1:9650" // Default local network RPC URL
-)
-
 // ewoqPrivateKey is the well-known ewoq test key used in local/test networks.
 var ewoqPrivateKey = []byte{
 	0x56, 0x28, 0x9e, 0x99, 0xc9, 0x4b, 0x69, 0x12,
@@ -45,20 +41,10 @@ var ewoqPrivateKey = []byte{
 	0xb2, 0xbc, 0x5c, 0xcf, 0x55, 0x8d, 0x80, 0x27,
 }
 
-func TestMain(m *testing.M) {
-	flag.Parse()
-
-	binPath, cleanup, err := buildCLIBinaryForE2E()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to set up e2e CLI binary: %v\n", err)
-		os.Exit(1)
-	}
-	cliBinaryPath = binPath
-
-	code := m.Run()
-	cleanup()
-	os.Exit(code)
-}
+const (
+	// Keep transfer amounts low to minimize spend on funded test wallets.
+	smallTransferAmountNAVAX = uint64(1_000_000) // 0.001 AVAX
+)
 
 func getPrivateKeyBytes(t *testing.T) []byte {
 	t.Helper()
@@ -208,7 +194,7 @@ func TestPChainSendToSelf(t *testing.T) {
 	w, _ := getTestWallet(t)
 
 	// Send 0.001 AVAX to self
-	amount := uint64(1_000_000) // 0.001 AVAX in nAVAX
+	amount := smallTransferAmountNAVAX
 
 	t.Logf("Sending %d nAVAX to self (%s)...", amount, w.PChainAddress())
 
@@ -228,8 +214,8 @@ func TestExportFromPChain(t *testing.T) {
 	ctx := context.Background()
 	w, _ := getTestFullWallet(t)
 
-	// Export 0.01 AVAX from P-Chain to C-Chain
-	amount := uint64(10_000_000) // 0.01 AVAX
+	// Export a small amount from P-Chain to C-Chain
+	amount := smallTransferAmountNAVAX
 
 	t.Logf("Exporting %d nAVAX from P-Chain...", amount)
 
@@ -261,8 +247,8 @@ func TestFullPToCTransfer(t *testing.T) {
 	ctx := context.Background()
 	w, _ := getTestFullWallet(t)
 
-	// Transfer 0.01 AVAX from P-Chain to C-Chain
-	amount := uint64(10_000_000) // 0.01 AVAX
+	// Transfer a small amount from P-Chain to C-Chain
+	amount := smallTransferAmountNAVAX
 
 	t.Logf("Transferring %d nAVAX from P-Chain to C-Chain...", amount)
 	t.Logf("From P-Chain: %s", w.PChainAddress())
@@ -281,8 +267,8 @@ func TestExportFromCChain(t *testing.T) {
 	ctx := context.Background()
 	w, _ := getTestFullWallet(t)
 
-	// Export 0.01 AVAX from C-Chain to P-Chain
-	amount := uint64(10_000_000) // 0.01 AVAX
+	// Export a small amount from C-Chain to P-Chain
+	amount := smallTransferAmountNAVAX
 
 	t.Logf("Exporting %d nAVAX from C-Chain...", amount)
 
@@ -314,8 +300,8 @@ func TestFullCToPTransfer(t *testing.T) {
 	ctx := context.Background()
 	w, _ := getTestFullWallet(t)
 
-	// Transfer 0.01 AVAX from C-Chain to P-Chain
-	amount := uint64(10_000_000) // 0.01 AVAX
+	// Transfer a small amount from C-Chain to P-Chain
+	amount := smallTransferAmountNAVAX
 
 	t.Logf("Transferring %d nAVAX from C-Chain to P-Chain...", amount)
 	t.Logf("From C-Chain: %s", w.EthAddress().Hex())
@@ -612,7 +598,7 @@ func TestIncreaseL1ValidatorBalance(t *testing.T) {
 
 	// Use a fake validation ID - this will fail but tests the call path
 	validationID := ids.GenerateTestID()
-	amount := uint64(1_000_000_000) // 1 AVAX
+	amount := smallTransferAmountNAVAX
 
 	t.Logf("Testing IncreaseL1ValidatorBalance with fake ID: %s", validationID)
 
@@ -771,7 +757,7 @@ func TestCrossChainRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	w, _ := getTestFullWallet(t)
 
-	amount := uint64(10_000_000) // 0.01 AVAX
+	amount := smallTransferAmountNAVAX
 
 	t.Log("=== Cross-Chain Round Trip Test ===")
 	t.Logf("P-Chain Address: %s", w.PChainAddress())

@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,7 +14,11 @@ const (
 	envRunNetworkTests = "RUN_E2E_NETWORK_TESTS"
 )
 
-var cliBinaryPath string
+var (
+	networkFlag   = flag.String("network", "fuji", "Network to test against: local, fuji")
+	localRPCURL   = "http://127.0.0.1:9650" // Default local network RPC URL
+	cliBinaryPath string
+)
 
 // buildCLIBinaryForE2E builds a fresh CLI binary for this test run.
 func buildCLIBinaryForE2E() (string, func(), error) {

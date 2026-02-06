@@ -11,6 +11,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
+	nodeutil "github.com/ava-labs/platform-cli/pkg/node"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
 )
@@ -241,7 +242,10 @@ func getValidatorPoP(ctx context.Context, nodeID ids.NodeID) (*signer.ProofOfPos
 	case hasManualPub != hasManualPoP:
 		return nil, "", fmt.Errorf("manual BLS mode requires both --bls-public-key and --bls-pop")
 	case valNodeEndpoint != "":
-		nodeURI := normalizeValidatorNodeURI(valNodeEndpoint)
+		nodeURI, err := normalizeValidatorNodeURI(valNodeEndpoint)
+		if err != nil {
+			return nil, "", err
+		}
 		nodeInfoClient := info.NewClient(nodeURI)
 		fetchedNodeID, fetchedPoP, err := nodeInfoClient.GetNodeID(ctx)
 		if err != nil {
@@ -286,14 +290,8 @@ func parseManualPoP(pubKeyHex, popHex string) (*signer.ProofOfPossession, error)
 	return pop, nil
 }
 
-func normalizeValidatorNodeURI(addr string) string {
-	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
-		return addr
-	}
-	if strings.Contains(addr, ":") {
-		return "http://" + addr
-	}
-	return fmt.Sprintf("http://%s:9650", addr)
+func normalizeValidatorNodeURI(addr string) (string, error) {
+	return nodeutil.NormalizeNodeURI(addr)
 }
 
 func init() {

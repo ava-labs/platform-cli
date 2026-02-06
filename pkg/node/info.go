@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/ava-labs/avalanchego/api/info"
@@ -17,25 +18,62 @@ type NodeInfo struct {
 	BLSProofOfPossession string
 }
 
-// normalizeNodeURI converts a node address to a full URI.
-// Accepts: "127.0.0.1", "127.0.0.1:9650", "http://127.0.0.1:9650"
-func normalizeNodeURI(addr string) string {
-	// Already a full URI
-	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
-		return addr
+// NormalizeNodeURI converts a node address to a base URI suitable for info.NewClient.
+// Accepts: "127.0.0.1", "127.0.0.1:9650", "http://127.0.0.1:9650".
+//
+// The info client appends "/ext/info", so this rejects custom paths except a
+// trailing "/ext/info" (which is normalized away).
+func NormalizeNodeURI(addr string) (string, error) {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return "", fmt.Errorf("node address cannot be empty")
 	}
-	// Has port but no scheme
-	if strings.Contains(addr, ":") {
-		return "http://" + addr
+
+	// Allow host[:port] shorthand.
+	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
+		if strings.Contains(addr, "/") {
+			return "", fmt.Errorf("invalid node address %q: use host[:port] or http(s)://host[:port]", addr)
+		}
+		if strings.Contains(addr, ":") {
+			addr = "http://" + addr
+		} else {
+			addr = fmt.Sprintf("http://%s:9650", addr)
+		}
 	}
-	// Just IP/hostname, add default port
-	return fmt.Sprintf("http://%s:9650", addr)
+
+	parsed, err := url.Parse(addr)
+	if err != nil {
+		return "", fmt.Errorf("invalid node URI %q: %w", addr, err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("unsupported URI scheme %q: use http or https", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("invalid node URI %q: missing host", addr)
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("invalid node URI %q: query and fragment are not supported", addr)
+	}
+
+	switch trimmedPath := strings.TrimSuffix(parsed.EscapedPath(), "/"); trimmedPath {
+	case "", "/":
+		parsed.Path = ""
+	case "/ext/info":
+		parsed.Path = ""
+	default:
+		return "", fmt.Errorf("invalid node URI %q: use base URI only (without path)", addr)
+	}
+
+	return parsed.String(), nil
 }
 
 // GetNodeInfo queries an avalanchego node for its node ID and BLS key.
 // Accepts IP, IP:port, or full URI (e.g., "127.0.0.1", "127.0.0.1:9650", "http://127.0.0.1:9650").
 func GetNodeInfo(ctx context.Context, addr string) (*NodeInfo, error) {
-	uri := normalizeNodeURI(addr)
+	uri, err := NormalizeNodeURI(addr)
+	if err != nil {
+		return nil, err
+	}
 	infoClient := info.NewClient(uri)
 
 	nodeID, nodePoP, err := infoClient.GetNodeID(ctx)

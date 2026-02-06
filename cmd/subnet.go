@@ -15,6 +15,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
+	nodeutil "github.com/ava-labs/platform-cli/pkg/node"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
 )
@@ -242,7 +243,10 @@ func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance fl
 
 	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(validatorAddrs))
 	for _, addr := range validatorAddrs {
-		uri := normalizeNodeURI(addr)
+		uri, err := normalizeNodeURI(addr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid validator address %q: %w", addr, err)
+		}
 		infoClient := info.NewClient(uri)
 
 		nodeID, nodePoP, err := infoClient.GetNodeID(ctx)
@@ -339,19 +343,8 @@ func parseValidatorAddrs(addrList string) []string {
 	return addrs
 }
 
-// normalizeNodeURI converts a node address to a full URI.
-// Accepts: "127.0.0.1", "127.0.0.1:9650", "http://127.0.0.1:9650"
-func normalizeNodeURI(addr string) string {
-	// Already a full URI
-	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
-		return addr
-	}
-	// Has port but no scheme
-	if strings.Contains(addr, ":") {
-		return "http://" + addr
-	}
-	// Just IP/hostname, add default port
-	return fmt.Sprintf("http://%s:9650", addr)
+func normalizeNodeURI(addr string) (string, error) {
+	return nodeutil.NormalizeNodeURI(addr)
 }
 
 // generateMockValidator creates a mock validator with valid BLS credentials for testing.
