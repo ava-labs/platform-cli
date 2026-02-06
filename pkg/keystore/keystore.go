@@ -349,15 +349,12 @@ func (ks *KeyStore) DeleteKey(name string) error {
 		return err
 	}
 
-	if _, exists := ks.index.Keys[name]; !exists {
+	entry, exists := ks.index.Keys[name]
+	if !exists {
 		return fmt.Errorf("key %q not found", name)
 	}
 
-	// Remove key file
-	keyPath := filepath.Join(ks.basePath, name+keyExtension)
-	if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove key file: %w", err)
-	}
+	previousDefault := ks.index.Default
 
 	// Update index
 	delete(ks.index.Keys, name)
@@ -372,7 +369,20 @@ func (ks *KeyStore) DeleteKey(name string) error {
 		}
 	}
 
-	return ks.Save()
+	if err := ks.Save(); err != nil {
+		// Roll back in-memory index state if persistence fails.
+		ks.index.Keys[name] = entry
+		ks.index.Default = previousDefault
+		return fmt.Errorf("failed to save key index: %w", err)
+	}
+
+	// Remove key file after index is durably updated to avoid dangling index entries.
+	keyPath := filepath.Join(ks.basePath, name+keyExtension)
+	if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("key deleted from index but failed to remove key file %s: %w", keyPath, err)
+	}
+
+	return nil
 }
 
 // ListKeys returns all key entries.

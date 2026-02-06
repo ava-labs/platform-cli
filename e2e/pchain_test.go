@@ -44,7 +44,50 @@ var ewoqPrivateKey = []byte{
 const (
 	// Keep transfer amounts low to minimize spend on funded test wallets.
 	smallTransferAmountNAVAX = uint64(1_000_000) // 0.001 AVAX
+
+	// Retry transient RPC rate limits from shared public endpoints.
+	rateLimitRetryAttempts = 6
+	rateLimitRetryDelay    = 1 * time.Second
 )
+
+func isRateLimitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "status code: 429") ||
+		strings.Contains(errStr, "too many requests") ||
+		strings.Contains(errStr, "rate limit")
+}
+
+func retryRateLimitedOperation[T any](t *testing.T, opName string, fn func() (T, error)) (T, error) {
+	t.Helper()
+
+	var zero T
+	delay := rateLimitRetryDelay
+	var lastErr error
+
+	for attempt := 1; attempt <= rateLimitRetryAttempts; attempt++ {
+		result, err := fn()
+		if err == nil {
+			return result, nil
+		}
+		if !isRateLimitError(err) {
+			return zero, err
+		}
+
+		lastErr = err
+		if attempt == rateLimitRetryAttempts {
+			break
+		}
+
+		t.Logf("%s hit rate limit (attempt %d/%d), retrying in %s: %v", opName, attempt, rateLimitRetryAttempts, delay, err)
+		time.Sleep(delay)
+		delay *= 2
+	}
+
+	return zero, fmt.Errorf("%s failed after %d rate-limit retries: %w", opName, rateLimitRetryAttempts, lastErr)
+}
 
 func getPrivateKeyBytes(t *testing.T) []byte {
 	t.Helper()
@@ -79,7 +122,9 @@ func getTestWallet(t *testing.T) (*wallet.Wallet, network.Config) {
 	}
 
 	netConfig := getNetworkConfig(t, ctx)
-	w, err := wallet.NewWallet(ctx, key, netConfig)
+	w, err := retryRateLimitedOperation(t, "wallet.NewWallet", func() (*wallet.Wallet, error) {
+		return wallet.NewWallet(ctx, key, netConfig)
+	})
 	if err != nil {
 		t.Fatalf("failed to create wallet: %v", err)
 	}
@@ -116,7 +161,9 @@ func getTestFullWallet(t *testing.T) (*wallet.FullWallet, network.Config) {
 	}
 
 	netConfig := getNetworkConfig(t, ctx)
-	w, err := wallet.NewFullWallet(ctx, key, netConfig)
+	w, err := retryRateLimitedOperation(t, "wallet.NewFullWallet", func() (*wallet.FullWallet, error) {
+		return wallet.NewFullWallet(ctx, key, netConfig)
+	})
 	if err != nil {
 		t.Fatalf("failed to create full wallet: %v", err)
 	}
@@ -429,7 +476,7 @@ func TestAddPermissionlessDelegator(t *testing.T) {
 	w, netConfig := getTestWallet(t)
 
 	// Find a validator to delegate to
-	validator, err := findValidatorForDelegation(ctx, netConfig)
+	validator, err := findValidatorForDelegation(t, ctx, netConfig)
 	if err != nil {
 		t.Skipf("Could not find suitable validator for delegation: %v", err)
 	}
@@ -528,7 +575,9 @@ func TestGetCurrentValidators(t *testing.T) {
 	_, netConfig := getTestWallet(t)
 
 	client := platformvm.NewClient(netConfig.RPCURL)
-	validators, err := client.GetCurrentValidators(ctx, constants.PrimaryNetworkID, nil)
+	validators, err := retryRateLimitedOperation(t, "GetCurrentValidators", func() ([]platformvm.ClientPermissionlessValidator, error) {
+		return client.GetCurrentValidators(ctx, constants.PrimaryNetworkID, nil)
+	})
 	if err != nil {
 		t.Fatalf("GetCurrentValidators failed: %v", err)
 	}
@@ -553,9 +602,11 @@ type ValidatorInfo struct {
 }
 
 // findValidatorForDelegation queries the network for a validator suitable for delegation.
-func findValidatorForDelegation(ctx context.Context, netConfig network.Config) (*ValidatorInfo, error) {
+func findValidatorForDelegation(t *testing.T, ctx context.Context, netConfig network.Config) (*ValidatorInfo, error) {
 	client := platformvm.NewClient(netConfig.RPCURL)
-	validators, err := client.GetCurrentValidators(ctx, constants.PrimaryNetworkID, nil)
+	validators, err := retryRateLimitedOperation(t, "findValidatorForDelegation.GetCurrentValidators", func() ([]platformvm.ClientPermissionlessValidator, error) {
+		return client.GetCurrentValidators(ctx, constants.PrimaryNetworkID, nil)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validators: %w", err)
 	}

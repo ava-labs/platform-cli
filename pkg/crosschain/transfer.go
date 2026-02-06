@@ -172,6 +172,8 @@ func isRetryableImportError(err error) bool {
 		"no utxos",
 		"insufficient funds", // May occur if UTXOs haven't propagated
 		"missing utxo",
+		"status code: 429",
+		"too many requests",
 	}
 	for _, pattern := range retryablePatterns {
 		if strings.Contains(errStr, pattern) {

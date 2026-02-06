@@ -320,6 +320,40 @@ func TestKeyStore_DeleteKey(t *testing.T) {
 	}
 }
 
+func TestKeyStore_DeleteKey_RollsBackOnSaveFailure(t *testing.T) {
+	ks, tempDir := setupTestKeystore(t)
+	defer os.RemoveAll(tempDir)
+
+	err := ks.ImportKey("todelete", testKeyBytes, nil)
+	if err != nil {
+		t.Fatalf("ImportKey() error = %v", err)
+	}
+
+	originalDefault := ks.GetDefault()
+	keyPath := filepath.Join(tempDir, "todelete"+keyExtension)
+	if _, err := os.Stat(keyPath); err != nil {
+		t.Fatalf("expected key file to exist before delete: %v", err)
+	}
+
+	// Force Save() to fail by pointing basePath to a missing directory.
+	ks.basePath = filepath.Join(tempDir, "missing-dir")
+
+	err = ks.DeleteKey("todelete")
+	if err == nil {
+		t.Fatal("DeleteKey() expected error when index save fails")
+	}
+
+	if !ks.HasKey("todelete") {
+		t.Error("DeleteKey() should keep key in memory when save fails")
+	}
+	if ks.GetDefault() != originalDefault {
+		t.Errorf("default key changed on failed delete: got %q, want %q", ks.GetDefault(), originalDefault)
+	}
+	if _, err := os.Stat(keyPath); err != nil {
+		t.Errorf("key file should remain on failed delete: %v", err)
+	}
+}
+
 func TestKeyStore_SetDefault(t *testing.T) {
 	ks, tempDir := setupTestKeystore(t)
 	defer os.RemoveAll(tempDir)
