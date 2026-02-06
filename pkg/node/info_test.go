@@ -23,7 +23,7 @@ func TestNormalizeNodeURI(t *testing.T) {
 		{
 			name:  "IP with custom port",
 			input: "192.168.1.1:8080",
-			want:  "http://192.168.1.1:8080",
+			want:  "https://192.168.1.1:8080",
 		},
 		{
 			name:  "full HTTP URI",
@@ -38,12 +38,12 @@ func TestNormalizeNodeURI(t *testing.T) {
 		{
 			name:  "hostname only",
 			input: "mynode.example.com",
-			want:  "http://mynode.example.com:9650",
+			want:  "https://mynode.example.com:9650",
 		},
 		{
 			name:  "hostname with port",
 			input: "mynode.example.com:9650",
-			want:  "http://mynode.example.com:9650",
+			want:  "https://mynode.example.com:9650",
 		},
 		{
 			name:  "full URI with ext info path",
@@ -141,6 +141,10 @@ func TestNormalizeNodeURI_Invalid(t *testing.T) {
 			name:  "host shorthand with path",
 			input: "127.0.0.1:9650/ext/info",
 		},
+		{
+			name:  "non-local http disallowed by default",
+			input: "http://mynode.example.com:9650",
+		},
 	}
 
 	for _, tt := range tests {
@@ -150,5 +154,15 @@ func TestNormalizeNodeURI_Invalid(t *testing.T) {
 				t.Fatalf("NormalizeNodeURI(%q) expected error", tt.input)
 			}
 		})
+	}
+}
+
+func TestNormalizeNodeURI_AllowInsecureHTTP(t *testing.T) {
+	got, err := NormalizeNodeURIWithInsecureHTTP("http://mynode.example.com:9650", true)
+	if err != nil {
+		t.Fatalf("NormalizeNodeURIWithInsecureHTTP() returned error: %v", err)
+	}
+	if got != "http://mynode.example.com:9650" {
+		t.Fatalf("NormalizeNodeURIWithInsecureHTTP() = %q, want %q", got, "http://mynode.example.com:9650")
 	}
 }

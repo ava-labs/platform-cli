@@ -117,6 +117,59 @@ func TestWriteFileAtomic(t *testing.T) {
 	}
 }
 
+func TestLoadFrom_RejectsOversizedIndex(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "keystore-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	indexPath := filepath.Join(tempDir, indexFile)
+	f, err := os.Create(indexPath)
+	if err != nil {
+		t.Fatalf("failed to create index file: %v", err)
+	}
+	if err := f.Truncate(maxIndexFileSize + 1); err != nil {
+		_ = f.Close()
+		t.Fatalf("failed to grow index file: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("failed to close index file: %v", err)
+	}
+
+	_, err = LoadFrom(tempDir)
+	if err == nil {
+		t.Fatal("LoadFrom() should fail for oversized index file")
+	}
+}
+
+func TestLoadKey_RejectsOversizedKeyFile(t *testing.T) {
+	ks, tempDir := setupTestKeystore(t)
+	defer os.RemoveAll(tempDir)
+
+	if err := ks.ImportKey("oversized", testKeyBytes, nil); err != nil {
+		t.Fatalf("ImportKey() error = %v", err)
+	}
+
+	keyPath := filepath.Join(tempDir, "oversized"+keyExtension)
+	f, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		t.Fatalf("failed to open key file: %v", err)
+	}
+	if err := f.Truncate(maxKeyFileSize + 1); err != nil {
+		_ = f.Close()
+		t.Fatalf("failed to grow key file: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("failed to close key file: %v", err)
+	}
+
+	_, err = ks.LoadKey("oversized", nil)
+	if err == nil {
+		t.Fatal("LoadKey() should fail for oversized key file")
+	}
+}
+
 func TestKeyStore_ImportKey_Unencrypted(t *testing.T) {
 	ks, tempDir := setupTestKeystore(t)
 	defer os.RemoveAll(tempDir)

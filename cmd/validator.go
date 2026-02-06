@@ -291,7 +291,7 @@ func parseManualPoP(pubKeyHex, popHex string) (*signer.ProofOfPossession, error)
 }
 
 func normalizeValidatorNodeURI(addr string) (string, error) {
-	return nodeutil.NormalizeNodeURI(addr)
+	return nodeutil.NormalizeNodeURIWithInsecureHTTP(addr, allowInsecureHTTP)
 }
 
 func init() {

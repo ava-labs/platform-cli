@@ -228,6 +228,7 @@ func TestNormalizeNodeURI(t *testing.T) {
 	}{
 		{"ip only", "127.0.0.1", "http://127.0.0.1:9650"},
 		{"ip with port", "127.0.0.1:9650", "http://127.0.0.1:9650"},
+		{"hostname shorthand defaults https", "mynode.example.com:9650", "https://mynode.example.com:9650"},
 		{"http uri", "http://127.0.0.1:9650", "http://127.0.0.1:9650"},
 		{"https uri", "https://example.com", "https://example.com"},
 		{"ext info path is stripped", "http://127.0.0.1:9650/ext/info", "http://127.0.0.1:9650"},
@@ -254,6 +255,7 @@ func TestNormalizeValidatorNodeURI(t *testing.T) {
 	}{
 		{"ip only", "127.0.0.1", "http://127.0.0.1:9650"},
 		{"ip with port", "127.0.0.1:9650", "http://127.0.0.1:9650"},
+		{"hostname shorthand defaults https", "mynode.example.com:9650", "https://mynode.example.com:9650"},
 		{"http uri", "http://127.0.0.1:9650", "http://127.0.0.1:9650"},
 		{"https uri", "https://example.com", "https://example.com"},
 		{"ext info path is stripped", "http://127.0.0.1:9650/ext/info", "http://127.0.0.1:9650"},
@@ -283,6 +285,28 @@ func TestNormalizeValidatorNodeURI_InvalidPath(t *testing.T) {
 	_, err := normalizeValidatorNodeURI("http://127.0.0.1:9650/custom/path")
 	if err == nil {
 		t.Fatal("normalizeValidatorNodeURI() expected error for custom path")
+	}
+}
+
+func TestNormalizeNodeURI_InsecureHTTPOverride(t *testing.T) {
+	origAllow := allowInsecureHTTP
+	defer func() {
+		allowInsecureHTTP = origAllow
+	}()
+
+	allowInsecureHTTP = false
+	_, err := normalizeNodeURI("http://mynode.example.com:9650")
+	if err == nil {
+		t.Fatal("normalizeNodeURI() expected error for insecure non-local HTTP when override is disabled")
+	}
+
+	allowInsecureHTTP = true
+	got, err := normalizeNodeURI("http://mynode.example.com:9650")
+	if err != nil {
+		t.Fatalf("normalizeNodeURI() returned error with override enabled: %v", err)
+	}
+	if got != "http://mynode.example.com:9650" {
+		t.Fatalf("normalizeNodeURI() = %q, want %q", got, "http://mynode.example.com:9650")
 	}
 }
 

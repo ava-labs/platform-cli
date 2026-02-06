@@ -20,13 +20,14 @@ const (
 
 var (
 	// Global flags
-	networkName   string
-	privateKey    string
-	useLedger     bool
-	ledgerIndex   uint32 // Ledger address index (BIP44)
-	keyNameGlobal string // Key name for loading from keystore
-	customRPCURL  string // Custom RPC URL for devnets
-	customNetID   uint32 // Optional network ID for custom RPC (auto-detected if not set)
+	networkName       string
+	privateKey        string
+	useLedger         bool
+	allowInsecureHTTP bool   // Allow plain HTTP for non-local node endpoint discovery
+	ledgerIndex       uint32 // Ledger address index (BIP44)
+	keyNameGlobal     string // Key name for loading from keystore
+	customRPCURL      string // Custom RPC URL for devnets
+	customNetID       uint32 // Optional network ID for custom RPC (auto-detected if not set)
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -61,6 +62,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&networkName, "network", "n", "fuji", "Network: fuji or mainnet (use --rpc-url for local/custom)")
 	rootCmd.PersistentFlags().StringVarP(&privateKey, "private-key", "k", "", "Private key (PrivateKey-... or 0x... format)")
 	rootCmd.PersistentFlags().BoolVar(&useLedger, "ledger", false, "Use Ledger hardware wallet")
+	rootCmd.PersistentFlags().BoolVar(&allowInsecureHTTP, "allow-insecure-http", false, "Allow plain HTTP for non-local node endpoint discovery (unsafe; use only on trusted networks)")
 	rootCmd.PersistentFlags().Uint32Var(&ledgerIndex, "ledger-index", 0, "Ledger address index (BIP44 path: m/44'/9000'/0'/0/{index})")
 	rootCmd.PersistentFlags().StringVar(&keyNameGlobal, "key-name", "", "Name of key to load from keystore")
 	rootCmd.PersistentFlags().StringVar(&customRPCURL, "rpc-url", "", "Custom RPC URL (overrides --network)")

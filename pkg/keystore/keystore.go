@@ -28,6 +28,9 @@ const (
 	keysDir      = "keys"
 	indexFile    = "keys.json"
 	keyExtension = ".key"
+
+	maxIndexFileSize = 4 * 1024 * 1024 // 4 MiB
+	maxKeyFileSize   = 64 * 1024       // 64 KiB
 )
 
 var keyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
@@ -110,6 +113,20 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 	return nil
 }
 
+func readFileWithLimit(path string, maxSize int64) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("refusing to read non-regular file: %s", path)
+	}
+	if info.Size() > maxSize {
+		return nil, fmt.Errorf("file too large: %d bytes (max: %d bytes)", info.Size(), maxSize)
+	}
+	return os.ReadFile(path)
+}
+
 // DefaultPath returns the default keystore path (~/.platform/keys).
 func DefaultPath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -145,7 +162,7 @@ func LoadFrom(basePath string) (*KeyStore, error) {
 
 	// Load or create index
 	indexPath := filepath.Join(basePath, indexFile)
-	data, err := os.ReadFile(indexPath)
+	data, err := readFileWithLimit(indexPath, maxIndexFileSize)
 	if err != nil {
 		if os.IsNotExist(err) {
 			ks.index = NewKeyIndex()
@@ -305,7 +322,7 @@ func (ks *KeyStore) LoadKey(name string, password []byte) ([]byte, error) {
 
 	// Read key file
 	keyPath := filepath.Join(ks.basePath, name+keyExtension)
-	data, err := os.ReadFile(keyPath)
+	data, err := readFileWithLimit(keyPath, maxKeyFileSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key file: %w", err)
 	}
