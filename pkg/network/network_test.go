@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -146,5 +147,74 @@ func TestMainnetConfig(t *testing.T) {
 	}
 	if Mainnet.MinStakeDuration <= Fuji.MinStakeDuration {
 		t.Error("Mainnet.MinStakeDuration should be greater than Fuji")
+	}
+}
+
+func TestNewCustomConfigWithInsecureHTTP(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name              string
+		rpcURL            string
+		allowInsecureHTTP bool
+		networkID         uint32
+		wantRPC           string
+		wantErr           bool
+	}{
+		{
+			name:      "loopback http allowed by default",
+			rpcURL:    "http://127.0.0.1:9650",
+			networkID: 12345,
+			wantRPC:   "http://127.0.0.1:9650",
+		},
+		{
+			name:      "non-local shorthand defaults https",
+			rpcURL:    "my-devnet.example.com:9650",
+			networkID: 12345,
+			wantRPC:   "https://my-devnet.example.com:9650",
+		},
+		{
+			name:      "ext info path stripped",
+			rpcURL:    "https://my-devnet.example.com:9650/ext/info",
+			networkID: 12345,
+			wantRPC:   "https://my-devnet.example.com:9650",
+		},
+		{
+			name:      "non-local http rejected by default",
+			rpcURL:    "http://my-devnet.example.com:9650",
+			networkID: 12345,
+			wantErr:   true,
+		},
+		{
+			name:              "non-local http allowed with override",
+			rpcURL:            "http://my-devnet.example.com:9650",
+			allowInsecureHTTP: true,
+			networkID:         12345,
+			wantRPC:           "http://my-devnet.example.com:9650",
+		},
+		{
+			name:      "custom path rejected",
+			rpcURL:    "https://my-devnet.example.com:9650/custom/path",
+			networkID: 12345,
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := NewCustomConfigWithInsecureHTTP(ctx, tt.rpcURL, tt.networkID, tt.allowInsecureHTTP)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("NewCustomConfigWithInsecureHTTP(%q) expected error", tt.rpcURL)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewCustomConfigWithInsecureHTTP(%q) returned error: %v", tt.rpcURL, err)
+			}
+			if cfg.RPCURL != tt.wantRPC {
+				t.Fatalf("NewCustomConfigWithInsecureHTTP(%q) RPCURL = %q, want %q", tt.rpcURL, cfg.RPCURL, tt.wantRPC)
+			}
+		})
 	}
 }

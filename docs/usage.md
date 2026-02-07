@@ -40,7 +40,8 @@ platform wallet address --ledger --ledger-index 2
 platform keys generate --name <name> [--encrypt]
 platform keys import --name <name> --private-key "PrivateKey-..."
 platform keys list [--show-addresses]
-platform keys export --name <name> [--format cb58|hex]
+platform keys export --name <name> --output-file <path> [--format cb58|hex]
+platform keys export --name <name> --unsafe-stdout [--format cb58|hex]  # discouraged
 platform keys delete --name <name> [--force]
 platform keys default [--name <name>]
 ```
@@ -141,8 +142,8 @@ platform node info --ip <IP-or-URI> [--allow-insecure-http]
 ## Key Loading Priority
 
 1. `--ledger`
-2. `--private-key`
-3. `--key-name`
+2. `--key-name`
+3. `--private-key` (deprecated; prefer keystore/Ledger)
 4. Default key from keystore
 5. `AVALANCHE_PRIVATE_KEY`
 

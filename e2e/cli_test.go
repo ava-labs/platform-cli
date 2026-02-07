@@ -24,6 +24,7 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 	}
 
 	var fullArgs []string
+	var cliPrivateKeyEnv string
 	if isHelpCmd {
 		fullArgs = args
 	} else {
@@ -35,9 +36,9 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 			fullArgs = append([]string{"--network", *networkFlag}, args...)
 		}
 
-		// Add private key if available
+		// Pass private key via environment to avoid exposing it in process args.
 		if envKey := os.Getenv(envPrivateKey); envKey != "" {
-			fullArgs = append(fullArgs, "--private-key", envKey)
+			cliPrivateKeyEnv = envKey
 		} else if *networkFlag == "local" {
 			fullArgs = append(fullArgs, "--key-name", "ewoq")
 		}
@@ -49,6 +50,10 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 		binPath = "../platform"
 	}
 	cmd := exec.Command(binPath, fullArgs...)
+	cmd.Env = os.Environ()
+	if cliPrivateKeyEnv != "" {
+		cmd.Env = append(cmd.Env, "AVALANCHE_PRIVATE_KEY="+cliPrivateKeyEnv)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

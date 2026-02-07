@@ -24,11 +24,13 @@ func clearBytes(b []byte) {
 
 var (
 	// keys flags
-	keyName    string
-	keyEncrypt bool
-	keyFormat  string
-	keyForce   bool
-	showAddrs  bool
+	keyName         string
+	keyEncrypt      bool
+	keyFormat       string
+	keyForce        bool
+	showAddrs       bool
+	keyExportUnsafe bool
+	keyExportFile   string
 )
 
 var keysCmd = &cobra.Command{
@@ -288,21 +290,26 @@ Examples:
 var keysExportCmd = &cobra.Command{
 	Use:   "export",
 	Short: "Export a key (show private key)",
-	Long: `Export a key by displaying its private key.
+	Long: `Export a key.
 
-WARNING: This will display your private key in plaintext!
+Secure default: write to --output-file with permissions 0600.
+If you really need stdout output, you must pass --unsafe-stdout.
 
 If the key is encrypted, you will be prompted for the password.
 
 Examples:
-  platform keys export --name mykey
-  platform keys export --name mykey --format hex`,
+  platform keys export --name mykey --output-file ./mykey.txt
+  platform keys export --name mykey --format hex --output-file ./mykey.hex
+  platform keys export --name mykey --unsafe-stdout`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
 		}
 		if err := keystore.ValidateKeyName(keyName); err != nil {
 			return err
+		}
+		if keyExportUnsafe && keyExportFile != "" {
+			return fmt.Errorf("use either --unsafe-stdout or --output-file, not both")
 		}
 
 		ks, err := keystore.Load()
@@ -333,6 +340,18 @@ Examples:
 		exported, err := ks.ExportKey(keyName, password, keyFormat)
 		if err != nil {
 			return err
+		}
+
+		if keyExportFile != "" {
+			if err := writeSensitiveExportFile(keyExportFile, exported); err != nil {
+				return err
+			}
+			fmt.Printf("Private key written to %s (permissions: 0600)\n", keyExportFile)
+			return nil
+		}
+
+		if !keyExportUnsafe {
+			return fmt.Errorf("refusing to print private key to stdout without --unsafe-stdout (or use --output-file)")
 		}
 
 		fmt.Println(exported)
@@ -471,6 +490,22 @@ func promptPassword(confirm bool) ([]byte, error) {
 	return password, nil
 }
 
+// writeSensitiveExportFile writes exported private key material to disk
+// with restrictive permissions, even when overwriting an existing file.
+func writeSensitiveExportFile(path string, value string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("--output-file cannot be empty")
+	}
+	if err := os.WriteFile(path, []byte(value+"\n"), 0600); err != nil {
+		return fmt.Errorf("failed to write export file %q: %w", path, err)
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		return fmt.Errorf("failed to set permissions on %q: %w", path, err)
+	}
+	return nil
+}
+
 func init() {
 	rootCmd.AddCommand(keysCmd)
 	keysCmd.AddCommand(keysImportCmd)
@@ -494,6 +529,8 @@ func init() {
 	// Export flags
 	keysExportCmd.Flags().StringVar(&keyName, "name", "", "Name of the key to export (required)")
 	keysExportCmd.Flags().StringVar(&keyFormat, "format", "cb58", "Output format: cb58 or hex")
+	keysExportCmd.Flags().StringVar(&keyExportFile, "output-file", "", "Write exported key to file (permissions forced to 0600)")
+	keysExportCmd.Flags().BoolVar(&keyExportUnsafe, "unsafe-stdout", false, "Print private key to stdout (unsafe)")
 
 	// Delete flags
 	keysDeleteCmd.Flags().StringVar(&keyName, "name", "", "Name of the key to delete (required)")
