@@ -45,7 +45,7 @@ Example usage:
   platform subnet create --network fuji --key-name mykey
 
 Environment Variables:
-  AVALANCHE_PRIVATE_KEY      Private key (alternative to --private-key flag)
+  AVALANCHE_PRIVATE_KEY      Private key fallback (prefer --key-name or --ledger)
   PLATFORM_CLI_KEY_PASSWORD  Password for encrypted keys (safer than prompting in scripts)
   PLATFORM_CLI_TIMEOUT       Operation timeout duration (e.g., "5m", "30s", default: 2m)`,
 }
@@ -60,13 +60,14 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&networkName, "network", "n", "fuji", "Network: fuji or mainnet (use --rpc-url for local/custom)")
-	rootCmd.PersistentFlags().StringVarP(&privateKey, "private-key", "k", "", "Private key (PrivateKey-... or 0x... format)")
+	rootCmd.PersistentFlags().StringVarP(&privateKey, "private-key", "k", "", "Private key (PrivateKey-... or 0x... format; discouraged, prefer --key-name)")
 	rootCmd.PersistentFlags().BoolVar(&useLedger, "ledger", false, "Use Ledger hardware wallet")
-	rootCmd.PersistentFlags().BoolVar(&allowInsecureHTTP, "allow-insecure-http", false, "Allow plain HTTP for non-local node endpoint discovery (unsafe; use only on trusted networks)")
+	rootCmd.PersistentFlags().BoolVar(&allowInsecureHTTP, "allow-insecure-http", false, "Allow plain HTTP for non-local node/custom RPC endpoint discovery (unsafe; use only on trusted networks)")
 	rootCmd.PersistentFlags().Uint32Var(&ledgerIndex, "ledger-index", 0, "Ledger address index (BIP44 path: m/44'/9000'/0'/0/{index})")
 	rootCmd.PersistentFlags().StringVar(&keyNameGlobal, "key-name", "", "Name of key to load from keystore")
 	rootCmd.PersistentFlags().StringVar(&customRPCURL, "rpc-url", "", "Custom RPC URL (overrides --network)")
 	rootCmd.PersistentFlags().Uint32Var(&customNetID, "network-id", 0, "Network ID for custom RPC (1=mainnet, 5=fuji, auto-detected if not set)")
+	_ = rootCmd.PersistentFlags().MarkDeprecated("private-key", "prefer --key-name (keystore) or --ledger to avoid exposing secrets in process arguments")
 }
 
 // avaxToNAVAX converts AVAX amount to nAVAX with validation.

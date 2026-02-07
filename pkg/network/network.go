@@ -8,6 +8,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/utils/constants"
+	nodeutil "github.com/ava-labs/platform-cli/pkg/node"
 )
 
 // Config holds network-specific configuration.
@@ -83,9 +84,21 @@ func GetHRP(networkID uint32) string {
 // If networkID is 0, it will be queried from the node.
 // If the node doesn't expose /ext/info, use --network-id flag.
 func NewCustomConfig(ctx context.Context, rpcURL string, networkID uint32) (Config, error) {
-	var err error
+	return NewCustomConfigWithInsecureHTTP(ctx, rpcURL, networkID, false)
+}
+
+// NewCustomConfigWithInsecureHTTP creates a config for a custom network (devnet)
+// and validates/normalizes the RPC URL using the same URI policy used for node endpoints.
+// If networkID is 0, it will be queried from the node.
+// If the node doesn't expose /ext/info, use --network-id flag.
+func NewCustomConfigWithInsecureHTTP(ctx context.Context, rpcURL string, networkID uint32, allowInsecureHTTP bool) (Config, error) {
+	normalizedRPCURL, err := nodeutil.NormalizeNodeURIWithInsecureHTTP(rpcURL, allowInsecureHTTP)
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid --rpc-url: %w", err)
+	}
+
 	if networkID == 0 {
-		networkID, err = GetNetworkID(ctx, rpcURL)
+		networkID, err = GetNetworkID(ctx, normalizedRPCURL)
 		if err != nil {
 			return Config{}, fmt.Errorf("%w\n\nUse --network-id to specify the network ID manually:\n  --network-id 1     (mainnet)\n  --network-id 5     (fuji)\n  --network-id 12345 (custom)", err)
 		}
@@ -118,7 +131,7 @@ func NewCustomConfig(ctx context.Context, rpcURL string, networkID uint32) (Conf
 	return Config{
 		Name:              fmt.Sprintf("custom-%s", hrp),
 		NetworkID:         networkID,
-		RPCURL:            rpcURL,
+		RPCURL:            normalizedRPCURL,
 		MinValidatorStake: minValidatorStake,
 		MinDelegatorStake: minDelegatorStake,
 		MinStakeDuration:  minStakeDuration,

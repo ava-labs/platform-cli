@@ -93,14 +93,17 @@ var addressCmd = &cobra.Command{
 }
 
 func loadKey() ([]byte, error) {
-	// Priority 1: Direct private key via flag
-	if privateKey != "" {
-		return wallet.ParsePrivateKey(privateKey)
+	// Priority 1: Key from keystore by name
+	if keyNameGlobal != "" {
+		if privateKey != "" {
+			return nil, fmt.Errorf("use either --key-name or --private-key, not both")
+		}
+		return loadFromKeystore(keyNameGlobal)
 	}
 
-	// Priority 2: Key from keystore by name
-	if keyNameGlobal != "" {
-		return loadFromKeystore(keyNameGlobal)
+	// Priority 2: Direct private key via flag (discouraged; prefer keystore/Ledger)
+	if privateKey != "" {
+		return wallet.ParsePrivateKey(privateKey)
 	}
 
 	// Priority 3: Default key from keystore
@@ -114,7 +117,7 @@ func loadKey() ([]byte, error) {
 		return wallet.ParsePrivateKey(envKey)
 	}
 
-	return nil, fmt.Errorf("no private key provided. Use --private-key, --key-name, or set AVALANCHE_PRIVATE_KEY env var")
+	return nil, fmt.Errorf("no key source provided. Use --key-name (preferred), --private-key, or set AVALANCHE_PRIVATE_KEY env var")
 }
 
 // ewoqPrivateKey is the well-known ewoq test key used in local/test networks.
@@ -179,12 +182,12 @@ func loadFromKeystore(name string) ([]byte, error) {
 // Otherwise, it uses the standard named network config.
 func getNetworkConfig(ctx context.Context) (network.Config, error) {
 	if customRPCURL != "" {
-		config, err := network.NewCustomConfig(ctx, customRPCURL, customNetID)
+		config, err := network.NewCustomConfigWithInsecureHTTP(ctx, customRPCURL, customNetID, allowInsecureHTTP)
 		if err != nil {
 			return network.Config{}, err
 		}
 		hrp := constants.GetHRP(config.NetworkID)
-		fmt.Printf("Using custom RPC: %s (network ID: %d, HRP: %s)\n", customRPCURL, config.NetworkID, hrp)
+		fmt.Printf("Using custom RPC: %s (network ID: %d, HRP: %s)\n", config.RPCURL, config.NetworkID, hrp)
 		return config, nil
 	}
 	return network.GetConfig(networkName)
