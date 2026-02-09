@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -59,6 +60,9 @@ var chainCreateCmd = &cobra.Command{
 		genesis, err := os.ReadFile(chainGenesisFile)
 		if err != nil {
 			return fmt.Errorf("failed to read genesis file: %w", err)
+		}
+		if !json.Valid(genesis) {
+			return fmt.Errorf("genesis file contains invalid JSON")
 		}
 
 		// Default to Subnet-EVM

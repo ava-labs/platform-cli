@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -31,6 +32,24 @@ const (
 )
 
 var keyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
+
+// validateFilePermissions checks that a file has the expected permissions.
+// On Windows this is a no-op since POSIX permissions don't apply.
+func validateFilePermissions(path string, expected os.FileMode) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	perm := info.Mode().Perm()
+	if perm != expected {
+		return fmt.Errorf("insecure permissions on %s: %04o (expected %04o). Fix with: chmod %04o %s",
+			path, perm, expected, expected, path)
+	}
+	return nil
+}
 
 // ValidateKeyName validates a key name for safe filesystem usage.
 func ValidateKeyName(name string) error {
@@ -305,6 +324,9 @@ func (ks *KeyStore) LoadKey(name string, password []byte) ([]byte, error) {
 
 	// Read key file
 	keyPath := filepath.Join(ks.basePath, name+keyExtension)
+	if err := validateFilePermissions(keyPath, 0600); err != nil {
+		return nil, fmt.Errorf("keystore security check failed: %w", err)
+	}
 	data, err := os.ReadFile(keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key file: %w", err)
