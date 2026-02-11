@@ -3,3 +3,12 @@
 
 # Default owner for everything
 * @owenwahlgren
+
+# Security-critical paths (require explicit owner review)
+/pkg/keystore/ @owenwahlgren
+/pkg/pchain/ @owenwahlgren
+/pkg/wallet/ @owenwahlgren
+/pkg/crosschain/ @owenwahlgren
+
+# CI/CD and repo config
+/.github/ @owenwahlgren
