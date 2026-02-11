@@ -2,13 +2,13 @@
 # These users will be automatically requested for review on PRs
 
 # Default owner for everything
-* @owenwahlgren
+* @owenwahlgren @containerman17 @martineckardt
 
 # Security-critical paths (require explicit owner review)
-/pkg/keystore/ @owenwahlgren
-/pkg/pchain/ @owenwahlgren
-/pkg/wallet/ @owenwahlgren
-/pkg/crosschain/ @owenwahlgren
+/pkg/keystore/ @owenwahlgren @containerman17 @martineckardt
+/pkg/pchain/ @owenwahlgren @containerman17 @martineckardt
+/pkg/wallet/ @owenwahlgren @containerman17 @martineckardt
+/pkg/crosschain/ @owenwahlgren @containerman17 @martineckardt
 
 # CI/CD and repo config
-/.github/ @owenwahlgren
+/.github/ @owenwahlgren @containerman17 @martineckardt
