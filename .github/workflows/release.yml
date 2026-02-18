@@ -9,23 +9,119 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build & Release
-    runs-on: ubuntu-latest
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            cc: gcc
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            cc: aarch64-linux-gnu-gcc
+            cross_deps: gcc-aarch64-linux-gnu
+          - runner: macos-latest
+            goos: darwin
+            goarch: arm64
+            cc: cc
+          - runner: macos-13
+            goos: darwin
+            goarch: amd64
+            cc: cc
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.24.13"
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: "~> v2"
-          args: release --clean
+      - name: Install cross-compiler
+        if: matrix.cross_deps != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.cross_deps }}
+
+      - name: Build binary
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+          CC: ${{ matrix.cc }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          go build \
+            -ldflags "-s -w -X github.com/ava-labs/platform-cli/cmd.version=${VERSION}" \
+            -o platform .
+
+      - name: Package tarball
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARBALL="platform-cli_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
+          tar -czf "${TARBALL}" platform
+          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-cli_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: ${{ env.TARBALL }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sha256sum platform-cli_*.tar.gz > "platform-cli_${VERSION}_checksums.txt"
+          cat "platform-cli_${VERSION}_checksums.txt"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git tag --sort=-v:refname | head -2 | tail -1)
+          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$GITHUB_REF_NAME" ]; then
+            echo "body=Initial release" >> "$GITHUB_OUTPUT"
+          else
+            CHANGES=$(git log --pretty=format:"- %s" "${PREV_TAG}..${GITHUB_REF_NAME}" | grep -v "^- Merge")
+            # Use heredoc for multiline output
+            {
+              echo "body<<CHANGELOG_EOF"
+              echo "$CHANGES"
+              echo "CHANGELOG_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            ## Install
+
+            ```sh
+            curl -sSfL https://raw.githubusercontent.com/ava-labs/platform-cli/main/install.sh | sh
+            ```
+
+            Or download the binary for your platform below.
+
+            ## Changelog
+
+            ${{ steps.changelog.outputs.body }}
+          files: dist/*
+          generate_release_notes: false
