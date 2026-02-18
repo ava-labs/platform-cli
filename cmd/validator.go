@@ -208,7 +208,11 @@ func parseTimeRange(startStr, durationStr string) (time.Time, time.Time, error) 
 	var err error
 
 	if startStr == "" || startStr == "now" {
-		start = time.Now().Add(30 * time.Second)
+		offset := 30 * time.Second
+		if useLedger {
+			offset = 5 * time.Minute
+		}
+		start = time.Now().Add(offset)
 	} else {
 		start, err = time.Parse(time.RFC3339, startStr)
 		if err != nil {
