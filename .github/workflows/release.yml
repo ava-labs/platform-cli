@@ -27,7 +27,7 @@ jobs:
             goos: darwin
             goarch: arm64
             cc: cc
-          - runner: macos-13
+          - runner: macos-latest
             goos: darwin
             goarch: amd64
             cc: cc
@@ -50,6 +50,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "1"
           CC: ${{ matrix.cc }}
+          CGO_CFLAGS: "-O2 -D__BLST_PORTABLE__"
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           go build \
