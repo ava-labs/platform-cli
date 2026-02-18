@@ -53,7 +53,7 @@ jobs:
           CGO_CFLAGS: "-O2 -D__BLST_PORTABLE__"
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          go build \
+          go build -tags ledger \
             -ldflags "-s -w -X github.com/ava-labs/platform-cli/cmd.version=${VERSION}" \
             -o platform .
 
