@@ -19,6 +19,9 @@ const (
 )
 
 var (
+	// version is set by goreleaser via ldflags at build time.
+	version = "dev"
+
 	// Global flags
 	networkName       string
 	privateKey        string
@@ -68,6 +71,14 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&customRPCURL, "rpc-url", "", "Custom RPC URL (overrides --network)")
 	rootCmd.PersistentFlags().Uint32Var(&customNetID, "network-id", 0, "Network ID for custom RPC (1=mainnet, 5=fuji, auto-detected if not set)")
 	_ = rootCmd.PersistentFlags().MarkDeprecated("private-key", "prefer --key-name (keystore) or --ledger to avoid exposing secrets in process arguments")
+
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Print the CLI version",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("platform " + version)
+		},
+	})
 }
 
 // avaxToNAVAX converts AVAX amount to nAVAX with validation.
