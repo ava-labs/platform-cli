@@ -27,7 +27,7 @@ jobs:
             goos: darwin
             goarch: arm64
             cc: cc
-          - runner: macos-13
+          - runner: macos-latest
             goos: darwin
             goarch: amd64
             cc: cc
