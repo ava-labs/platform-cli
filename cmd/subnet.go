@@ -12,7 +12,6 @@ import (
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
-	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	ethcommon "github.com/ava-labs/libevm/common"
@@ -20,6 +19,8 @@ import (
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
 )
+
+const defaultValidatorWeight uint64 = 100
 
 var (
 	subnetID           string
@@ -279,7 +280,7 @@ func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance fl
 			return nil, fmt.Errorf("node %s did not return BLS proof of possession from /ext/info", uri)
 		}
 
-		weight := uint64(units.Avax)
+		weight := uint64(defaultValidatorWeight)
 		if weights != nil {
 			weight = weights[i]
 		}
@@ -335,7 +336,7 @@ func buildManualL1Validators(nodeIDs, blsPubKeys, blsPoPs string, balance float6
 			return nil, fmt.Errorf("invalid validator BLS data at index %d: %w", i, err)
 		}
 
-		weight := uint64(units.Avax)
+		weight := uint64(defaultValidatorWeight)
 		if weights != nil {
 			weight = weights[i]
 		}
@@ -404,7 +405,7 @@ func normalizeNodeURI(addr string) (string, error) {
 }
 
 // generateMockValidator creates a mock validator with valid BLS credentials for testing.
-// If weight is 0, units.Avax (1 AVAX) is used as the default.
+// If weight is 0, defaultValidatorWeight (100) is used as the default.
 func generateMockValidator(balance float64, weight uint64) (*txs.ConvertSubnetToL1Validator, error) {
 	// Validate balance to prevent overflow
 	balanceNAVAX, err := avaxToNAVAX(balance)
@@ -413,7 +414,7 @@ func generateMockValidator(balance float64, weight uint64) (*txs.ConvertSubnetTo
 	}
 
 	if weight == 0 {
-		weight = units.Avax
+		weight = defaultValidatorWeight
 	}
 
 	// Generate random NodeID (20 bytes)
@@ -462,6 +463,6 @@ func init() {
 	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorBLS, "validator-bls-public-keys", "", "Manual mode: comma-separated validator BLS public keys (hex)")
 	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorPoP, "validator-bls-pops", "", "Manual mode: comma-separated validator BLS proofs of possession (hex)")
 	subnetConvertL1Cmd.Flags().Float64Var(&subnetValBalance, "validator-balance", 1.0, "Balance per validator in AVAX")
-	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorWeights, "validator-weights", "", "Comma-separated validator weights (uint64). Must match validator count. Defaults to 1 AVAX (1000000000) per validator if omitted.")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorWeights, "validator-weights", "", "Comma-separated validator weights (uint64). Must match validator count. Defaults to 100 per validator if omitted.")
 	subnetConvertL1Cmd.Flags().BoolVar(&subnetMockVal, "mock-validator", false, "Use a mock validator (for testing)")
 }
