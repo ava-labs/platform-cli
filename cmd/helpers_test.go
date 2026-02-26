@@ -346,6 +346,7 @@ func TestBuildManualL1Validators(t *testing.T) {
 		pubHex,
 		popHex,
 		1.5,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("buildManualL1Validators() error = %v", err)
@@ -367,6 +368,7 @@ func TestBuildManualL1Validators_MismatchLengths(t *testing.T) {
 		"deadbeef",
 		"beadfeed",
 		1,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("buildManualL1Validators() expected error for mismatched list lengths")
@@ -386,7 +388,7 @@ func TestBuildManualL1Validators_InvalidNodeID(t *testing.T) {
 	pubHex := hex.EncodeToString(pop.PublicKey[:])
 	popHex := hex.EncodeToString(pop.ProofOfPossession[:])
 
-	_, err = buildManualL1Validators("NodeID-not-real", pubHex, popHex, 1)
+	_, err = buildManualL1Validators("NodeID-not-real", pubHex, popHex, 1, nil)
 	if err == nil {
 		t.Fatal("buildManualL1Validators() expected error for invalid NodeID")
 	}
@@ -414,5 +416,145 @@ func TestSortAndValidateL1Validators_DuplicateNodeID(t *testing.T) {
 	err := sortAndValidateL1Validators(validators)
 	if err == nil {
 		t.Fatal("sortAndValidateL1Validators() expected duplicate NodeID error")
+	}
+}
+
+func TestParseValidatorWeights(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    []uint64
+		wantErr bool
+	}{
+		{
+			name:  "single weight",
+			input: "100",
+			want:  []uint64{100},
+		},
+		{
+			name:  "multiple weights",
+			input: "100,200,300",
+			want:  []uint64{100, 200, 300},
+		},
+		{
+			name:  "weights with spaces",
+			input: " 100 , 200 , 300 ",
+			want:  []uint64{100, 200, 300},
+		},
+		{
+			name:  "large weight",
+			input: "18446744073709551615",
+			want:  []uint64{18446744073709551615},
+		},
+		{
+			name:    "zero weight",
+			input:   "100,0,300",
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric",
+			input:   "100,abc,300",
+			wantErr: true,
+		},
+		{
+			name:    "negative value",
+			input:   "100,-1,300",
+			wantErr: true,
+		},
+		{
+			name:  "empty string returns nil",
+			input: "",
+			want:  nil,
+		},
+		{
+			name:  "only commas returns nil",
+			input: " , , ",
+			want:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseValidatorWeights(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("parseValidatorWeights(%q) expected error", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseValidatorWeights(%q) returned error: %v", tt.input, err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("parseValidatorWeights(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildManualL1Validators_WithWeights(t *testing.T) {
+	// Create two validators with different weights
+	blsSigner1, err := localsigner.New()
+	if err != nil {
+		t.Fatalf("localsigner.New() error = %v", err)
+	}
+	pop1, err := signer.NewProofOfPossession(blsSigner1)
+	if err != nil {
+		t.Fatalf("signer.NewProofOfPossession() error = %v", err)
+	}
+
+	blsSigner2, err := localsigner.New()
+	if err != nil {
+		t.Fatalf("localsigner.New() error = %v", err)
+	}
+	pop2, err := signer.NewProofOfPossession(blsSigner2)
+	if err != nil {
+		t.Fatalf("signer.NewProofOfPossession() error = %v", err)
+	}
+
+	nodeID1 := ids.GenerateTestNodeID()
+	nodeID2 := ids.GenerateTestNodeID()
+	pubHex1 := hex.EncodeToString(pop1.PublicKey[:])
+	popHex1 := hex.EncodeToString(pop1.ProofOfPossession[:])
+	pubHex2 := hex.EncodeToString(pop2.PublicKey[:])
+	popHex2 := hex.EncodeToString(pop2.ProofOfPossession[:])
+
+	nodeIDs := nodeID1.String() + "," + nodeID2.String()
+	blsPubs := pubHex1 + "," + pubHex2
+	blsPops := popHex1 + "," + popHex2
+
+	validators, err := buildManualL1Validators(nodeIDs, blsPubs, blsPops, 1.0, []uint64{1000, 2000})
+	if err != nil {
+		t.Fatalf("buildManualL1Validators() error = %v", err)
+	}
+	if len(validators) != 2 {
+		t.Fatalf("buildManualL1Validators() validators length = %d, want 2", len(validators))
+	}
+	if validators[0].Weight != 1000 {
+		t.Fatalf("validator[0].Weight = %d, want 1000", validators[0].Weight)
+	}
+	if validators[1].Weight != 2000 {
+		t.Fatalf("validator[1].Weight = %d, want 2000", validators[1].Weight)
+	}
+}
+
+func TestBuildManualL1Validators_WeightsMismatch(t *testing.T) {
+	blsSigner, err := localsigner.New()
+	if err != nil {
+		t.Fatalf("localsigner.New() error = %v", err)
+	}
+	pop, err := signer.NewProofOfPossession(blsSigner)
+	if err != nil {
+		t.Fatalf("signer.NewProofOfPossession() error = %v", err)
+	}
+
+	nodeID := ids.GenerateTestNodeID()
+	pubHex := hex.EncodeToString(pop.PublicKey[:])
+	popHex := hex.EncodeToString(pop.ProofOfPossession[:])
+
+	// 1 validator but 2 weights => error
+	_, err = buildManualL1Validators(nodeID.String(), pubHex, popHex, 1.0, []uint64{1000, 2000})
+	if err == nil {
+		t.Fatal("buildManualL1Validators() expected error for weights count mismatch")
 	}
 }

@@ -6,12 +6,12 @@ import (
 	"crypto/rand"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
-	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	ethcommon "github.com/ava-labs/libevm/common"
@@ -19,6 +19,8 @@ import (
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
 )
+
+const defaultValidatorWeight uint64 = 100
 
 var (
 	subnetID           string
@@ -29,8 +31,9 @@ var (
 	subnetValidatorIDs string
 	subnetValidatorBLS string
 	subnetValidatorPoP string
-	subnetValBalance   float64
-	subnetMockVal      bool
+	subnetValBalance        float64
+	subnetMockVal           bool
+	subnetValidatorWeights  string
 )
 
 var subnetCmd = &cobra.Command{
@@ -170,11 +173,27 @@ var subnetConvertL1Cmd = &cobra.Command{
 			}
 		}
 
+		// Parse optional per-validator weights
+		var weights []uint64
+		if strings.TrimSpace(subnetValidatorWeights) != "" {
+			weights, err = parseValidatorWeights(subnetValidatorWeights)
+			if err != nil {
+				return fmt.Errorf("invalid --validator-weights: %w", err)
+			}
+		}
+
 		// Gather validator info from IPs or generate mock
 		var validators []*txs.ConvertSubnetToL1Validator
 		if subnetMockVal {
-			// Generate a mock validator with valid BLS credentials for testing
-			mockVal, err := generateMockValidator(subnetValBalance)
+			// For mock, use the first weight if provided, otherwise 0 (default)
+			var mockWeight uint64
+			if weights != nil {
+				if len(weights) != 1 {
+					return fmt.Errorf("--validator-weights must have exactly 1 value when using --mock-validator, got %d", len(weights))
+				}
+				mockWeight = weights[0]
+			}
+			mockVal, err := generateMockValidator(subnetValBalance, mockWeight)
 			if err != nil {
 				return fmt.Errorf("failed to generate mock validator: %w", err)
 			}
@@ -186,12 +205,13 @@ var subnetConvertL1Cmd = &cobra.Command{
 				subnetValidatorBLS,
 				subnetValidatorPoP,
 				subnetValBalance,
+				weights,
 			)
 			if err != nil {
 				return err
 			}
 		} else {
-			validators, err = gatherL1Validators(ctx, validatorAddrs, subnetValBalance)
+			validators, err = gatherL1Validators(ctx, validatorAddrs, subnetValBalance, weights)
 			if err != nil {
 				return err
 			}
@@ -229,9 +249,13 @@ var subnetConvertL1Cmd = &cobra.Command{
 }
 
 // gatherL1Validators queries validator nodes and builds conversion validators.
-func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance float64) ([]*txs.ConvertSubnetToL1Validator, error) {
+// If weights is non-nil, it must have the same length as validatorAddrs.
+func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance float64, weights []uint64) ([]*txs.ConvertSubnetToL1Validator, error) {
 	if len(validatorAddrs) == 0 {
 		return nil, fmt.Errorf("no validator addresses provided")
+	}
+	if weights != nil && len(weights) != len(validatorAddrs) {
+		return nil, fmt.Errorf("validator-weights count (%d) must match validators count (%d)", len(weights), len(validatorAddrs))
 	}
 
 	// Validate balance to prevent overflow
@@ -241,7 +265,7 @@ func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance fl
 	}
 
 	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(validatorAddrs))
-	for _, addr := range validatorAddrs {
+	for i, addr := range validatorAddrs {
 		uri, err := normalizeNodeURI(addr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid validator address %q: %w", addr, err)
@@ -256,9 +280,14 @@ func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance fl
 			return nil, fmt.Errorf("node %s did not return BLS proof of possession from /ext/info", uri)
 		}
 
+		weight := uint64(defaultValidatorWeight)
+		if weights != nil {
+			weight = weights[i]
+		}
+
 		validators = append(validators, &txs.ConvertSubnetToL1Validator{
 			NodeID:  nodeID.Bytes(),
-			Weight:  units.Schmeckle,
+			Weight:  weight,
 			Balance: balanceNAVAX,
 			Signer:  *nodePoP,
 		})
@@ -269,7 +298,8 @@ func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance fl
 
 // buildManualL1Validators builds conversion validators from manually provided data.
 // All inputs are comma-separated lists and must be aligned by index.
-func buildManualL1Validators(nodeIDs, blsPubKeys, blsPoPs string, balance float64) ([]*txs.ConvertSubnetToL1Validator, error) {
+// If weights is non-nil, it must have the same length as the other lists.
+func buildManualL1Validators(nodeIDs, blsPubKeys, blsPoPs string, balance float64, weights []uint64) ([]*txs.ConvertSubnetToL1Validator, error) {
 	if strings.TrimSpace(nodeIDs) == "" || strings.TrimSpace(blsPubKeys) == "" || strings.TrimSpace(blsPoPs) == "" {
 		return nil, fmt.Errorf("manual validator mode requires --validator-node-ids, --validator-bls-public-keys, and --validator-bls-pops")
 	}
@@ -285,6 +315,9 @@ func buildManualL1Validators(nodeIDs, blsPubKeys, blsPoPs string, balance float6
 			"manual validator lists must have matching lengths (node-ids=%d, bls-public-keys=%d, bls-pops=%d)",
 			len(idsList), len(blsList), len(popList),
 		)
+	}
+	if weights != nil && len(weights) != len(idsList) {
+		return nil, fmt.Errorf("validator-weights count (%d) must match validator count (%d)", len(weights), len(idsList))
 	}
 
 	balanceNAVAX, err := avaxToNAVAX(balance)
@@ -303,9 +336,14 @@ func buildManualL1Validators(nodeIDs, blsPubKeys, blsPoPs string, balance float6
 			return nil, fmt.Errorf("invalid validator BLS data at index %d: %w", i, err)
 		}
 
+		weight := uint64(defaultValidatorWeight)
+		if weights != nil {
+			weight = weights[i]
+		}
+
 		validators = append(validators, &txs.ConvertSubnetToL1Validator{
 			NodeID:  nodeID.Bytes(),
-			Weight:  units.Schmeckle,
+			Weight:  weight,
 			Balance: balanceNAVAX,
 			Signer:  *pop,
 		})
@@ -342,16 +380,41 @@ func parseValidatorAddrs(addrList string) []string {
 	return addrs
 }
 
+// parseValidatorWeights splits a comma-separated list of uint64 weights.
+func parseValidatorWeights(weightList string) ([]uint64, error) {
+	var weights []uint64
+	for _, raw := range strings.Split(weightList, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		w, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid weight %q: %w", raw, err)
+		}
+		if w == 0 {
+			return nil, fmt.Errorf("weight must be greater than 0, got %q", raw)
+		}
+		weights = append(weights, w)
+	}
+	return weights, nil
+}
+
 func normalizeNodeURI(addr string) (string, error) {
 	return nodeutil.NormalizeNodeURIWithInsecureHTTP(addr, allowInsecureHTTP)
 }
 
 // generateMockValidator creates a mock validator with valid BLS credentials for testing.
-func generateMockValidator(balance float64) (*txs.ConvertSubnetToL1Validator, error) {
+// If weight is 0, defaultValidatorWeight (100) is used as the default.
+func generateMockValidator(balance float64, weight uint64) (*txs.ConvertSubnetToL1Validator, error) {
 	// Validate balance to prevent overflow
 	balanceNAVAX, err := avaxToNAVAX(balance)
 	if err != nil {
 		return nil, fmt.Errorf("invalid validator balance: %w", err)
+	}
+
+	if weight == 0 {
+		weight = defaultValidatorWeight
 	}
 
 	// Generate random NodeID (20 bytes)
@@ -373,7 +436,7 @@ func generateMockValidator(balance float64) (*txs.ConvertSubnetToL1Validator, er
 
 	return &txs.ConvertSubnetToL1Validator{
 		NodeID:  nodeID,
-		Weight:  units.Schmeckle,
+		Weight:  weight,
 		Balance: balanceNAVAX,
 		Signer:  *pop,
 	}, nil
@@ -400,5 +463,6 @@ func init() {
 	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorBLS, "validator-bls-public-keys", "", "Manual mode: comma-separated validator BLS public keys (hex)")
 	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorPoP, "validator-bls-pops", "", "Manual mode: comma-separated validator BLS proofs of possession (hex)")
 	subnetConvertL1Cmd.Flags().Float64Var(&subnetValBalance, "validator-balance", 1.0, "Balance per validator in AVAX")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorWeights, "validator-weights", "", "Comma-separated validator weights (uint64). Must match validator count. Defaults to 100 per validator if omitted.")
 	subnetConvertL1Cmd.Flags().BoolVar(&subnetMockVal, "mock-validator", false, "Use a mock validator (for testing)")
 }
