@@ -15,8 +15,12 @@ import (
 )
 
 const (
-	// BIP44 root path for Avalanche: m/44'/9000'/0'
+	// BIP44 root path for Avalanche X/P-Chain: m/44'/9000'/0'
 	ledgerRootPath = "m/44'/9000'/0'"
+
+	// BIP44 root path for EVM/C-Chain: m/44'/60'/0'
+	// Core wallet uses this path for C-Chain addresses.
+	ledgerEVMRootPath = "m/44'/60'/0'"
 
 	// Maximum retries for Ledger operations
 	ledgerMaxRetries = 5
@@ -32,8 +36,9 @@ const LedgerEnabled = true
 type LedgerKeychain struct {
 	device    *ledger.LedgerAvalanche
 	index     uint32
-	address   ids.ShortID
-	pubKey    *secp256k1.PublicKey
+	address   ids.ShortID              // P-Chain address (from 9000 path)
+	pubKey    *secp256k1.PublicKey      // Public key from m/44'/9000'/0'/0/{index}
+	evmPubKey *secp256k1.PublicKey      // Public key from m/44'/60'/0'/0/{index}
 	addresses set.Set[ids.ShortID]
 }
 
@@ -48,11 +53,11 @@ func NewLedgerKeychain(addressIndex uint32) (*LedgerKeychain, error) {
 
 	fmt.Println("  Ledger connected successfully")
 
-	// Derive the address at the specified index
-	path := fmt.Sprintf("%s/0/%d", ledgerRootPath, addressIndex)
-	fmt.Printf("  Deriving address at path: %s\n", path)
+	// Derive the P-Chain/X-Chain address at the specified index (coin type 9000)
+	avaxPath := fmt.Sprintf("%s/0/%d", ledgerRootPath, addressIndex)
+	fmt.Printf("  Deriving P-Chain address at path: %s\n", avaxPath)
 
-	addrResp, err := getPublicKeyWithRetry(device, path)
+	addrResp, err := getPublicKeyWithRetry(device, avaxPath)
 	if err != nil {
 		device.Close()
 		return nil, fmt.Errorf("failed to get public key from Ledger: %w", err)
@@ -65,7 +70,25 @@ func NewLedgerKeychain(addressIndex uint32) (*LedgerKeychain, error) {
 	}
 
 	address := pubKey.Address()
-	fmt.Printf("  Ledger address: %s\n", address)
+	fmt.Printf("  P-Chain address: %s\n", address)
+
+	// Derive the C-Chain/EVM address at the specified index (coin type 60)
+	evmPath := fmt.Sprintf("%s/0/%d", ledgerEVMRootPath, addressIndex)
+	fmt.Printf("  Deriving C-Chain address at path: %s\n", evmPath)
+
+	evmAddrResp, err := getPublicKeyWithRetry(device, evmPath)
+	if err != nil {
+		device.Close()
+		return nil, fmt.Errorf("failed to get EVM public key from Ledger: %w", err)
+	}
+
+	evmPubKey, err := secp256k1.ToPublicKey(evmAddrResp.PublicKey)
+	if err != nil {
+		device.Close()
+		return nil, fmt.Errorf("failed to parse EVM public key: %w", err)
+	}
+
+	fmt.Printf("  C-Chain address: %s\n", evmPubKey.EthAddress().Hex())
 
 	addresses := set.NewSet[ids.ShortID](1)
 	addresses.Add(address)
@@ -75,6 +98,7 @@ func NewLedgerKeychain(addressIndex uint32) (*LedgerKeychain, error) {
 		index:     addressIndex,
 		address:   address,
 		pubKey:    pubKey,
+		evmPubKey: evmPubKey,
 		addresses: addresses,
 	}
 
@@ -113,34 +137,40 @@ func (kc *LedgerKeychain) Get(addr ids.ShortID) (keychain.Signer, bool) {
 }
 
 // EthAddresses returns the set of Ethereum addresses managed by this keychain.
+// Uses the m/44'/60'/0' derivation path to match Core wallet.
 func (kc *LedgerKeychain) EthAddresses() set.Set[common.Address] {
 	addrs := set.NewSet[common.Address](1)
-	addrs.Add(kc.pubKey.EthAddress())
+	addrs.Add(kc.evmPubKey.EthAddress())
 	return addrs
 }
 
 // GetEth returns a signer for the given Ethereum address.
+// The signer uses the m/44'/60'/0' path for signing.
 func (kc *LedgerKeychain) GetEth(addr common.Address) (keychain.Signer, bool) {
-	if addr != kc.pubKey.EthAddress() {
+	if addr != kc.evmPubKey.EthAddress() {
 		return nil, false
 	}
-	return &LedgerSigner{kc: kc, addr: kc.address}, true
+	return &LedgerEVMSigner{kc: kc, addr: kc.address}, true
+}
+
+// GetEVMPublicKey returns the EVM public key (from m/44'/60' path).
+func (kc *LedgerKeychain) GetEVMPublicKey() *secp256k1.PublicKey {
+	return kc.evmPubKey
 }
 
 // LedgerSigner implements keychain.Signer using a Ledger device.
+// Signs using the Avalanche path (m/44'/9000'/0') for P-Chain operations.
 type LedgerSigner struct {
 	kc   *LedgerKeychain
 	addr ids.ShortID
 }
 
 // SignHash signs a 32-byte hash using the Ledger device.
-// This is used by the SDK when signHash=true.
 func (s *LedgerSigner) SignHash(hash []byte) ([]byte, error) {
 	return s.kc.SignHash(hash)
 }
 
 // Sign signs a message (full transaction) using the Ledger device.
-// The message is hashed before signing.
 func (s *LedgerSigner) Sign(msg []byte) ([]byte, error) {
 	return s.kc.Sign(msg)
 }
@@ -150,7 +180,29 @@ func (s *LedgerSigner) Address() ids.ShortID {
 	return s.addr
 }
 
-// SignHash signs a 32-byte hash using the Ledger device (blind signing).
+// LedgerEVMSigner implements keychain.Signer using a Ledger device.
+// Signs using the EVM path (m/44'/60'/0') for C-Chain operations.
+type LedgerEVMSigner struct {
+	kc   *LedgerKeychain
+	addr ids.ShortID
+}
+
+// SignHash signs a 32-byte hash using the Ledger device with the EVM path.
+func (s *LedgerEVMSigner) SignHash(hash []byte) ([]byte, error) {
+	return s.kc.SignHashEVM(hash)
+}
+
+// Sign signs a message using the Ledger device with the EVM path.
+func (s *LedgerEVMSigner) Sign(msg []byte) ([]byte, error) {
+	return s.kc.SignEVM(msg)
+}
+
+// Address returns the address associated with this signer.
+func (s *LedgerEVMSigner) Address() ids.ShortID {
+	return s.addr
+}
+
+// SignHash signs a 32-byte hash using the Ledger device (Avalanche path).
 func (kc *LedgerKeychain) SignHash(hash []byte) ([]byte, error) {
 	signerPath := fmt.Sprintf("0/%d", kc.index)
 
@@ -164,8 +216,7 @@ func (kc *LedgerKeychain) SignHash(hash []byte) ([]byte, error) {
 	return sig, nil
 }
 
-// Sign signs a full transaction message using the Ledger device.
-// The Ledger will parse and display the transaction details.
+// Sign signs a full transaction message using the Ledger device (Avalanche path).
 func (kc *LedgerKeychain) Sign(msg []byte) ([]byte, error) {
 	signerPath := fmt.Sprintf("0/%d", kc.index)
 
@@ -174,6 +225,34 @@ func (kc *LedgerKeychain) Sign(msg []byte) ([]byte, error) {
 	sig, err := signWithRetry(kc.device, ledgerRootPath, []string{signerPath}, msg)
 	if err != nil {
 		return nil, fmt.Errorf("Ledger signing failed: %w", err)
+	}
+
+	return sig, nil
+}
+
+// SignHashEVM signs a 32-byte hash using the Ledger device (EVM path).
+func (kc *LedgerKeychain) SignHashEVM(hash []byte) ([]byte, error) {
+	signerPath := fmt.Sprintf("0/%d", kc.index)
+
+	fmt.Printf("\n  >>> Please confirm the transaction on your Ledger device <<<\n\n")
+
+	sig, err := signHashWithRetry(kc.device, ledgerEVMRootPath, []string{signerPath}, hash)
+	if err != nil {
+		return nil, fmt.Errorf("Ledger EVM signing failed: %w", err)
+	}
+
+	return sig, nil
+}
+
+// SignEVM signs a full transaction message using the Ledger device (EVM path).
+func (kc *LedgerKeychain) SignEVM(msg []byte) ([]byte, error) {
+	signerPath := fmt.Sprintf("0/%d", kc.index)
+
+	fmt.Printf("\n  >>> Please confirm the transaction on your Ledger device <<<\n\n")
+
+	sig, err := signWithRetry(kc.device, ledgerEVMRootPath, []string{signerPath}, msg)
+	if err != nil {
+		return nil, fmt.Errorf("Ledger EVM signing failed: %w", err)
 	}
 
 	return sig, nil

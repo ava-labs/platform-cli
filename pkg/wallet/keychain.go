@@ -10,6 +10,19 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 )
 
+// DeriveAddressesFormatted derives both P-Chain and EVM addresses from a private key,
+// formatting the P-Chain address with the proper HRP for the given network.
+func DeriveAddressesFormatted(keyBytes []byte, networkID uint32) (pAddr string, evmAddr string) {
+	key, err := ToPrivateKey(keyBytes)
+	if err != nil {
+		return "", ""
+	}
+
+	pAddr = FormatPChainAddress(key.Address(), networkID)
+	evmAddr = deriveEthAddress(key)
+	return pAddr, evmAddr
+}
+
 // ParsePrivateKey parses a private key from various formats.
 // Supported formats:
 //   - PrivateKey-... (Avalanche CB58 format)

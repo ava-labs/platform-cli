@@ -6,8 +6,10 @@ import (
 	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/keychain"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
+	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/wallet/chain/c"
 	pwallet "github.com/ava-labs/avalanchego/wallet/chain/p/wallet"
@@ -114,6 +116,12 @@ func (w *Wallet) PChainAddress() ids.ShortID {
 	return w.address
 }
 
+// FormattedPChainAddress returns the P-Chain address with chain prefix and HRP
+// (e.g., "P-avax1..." for mainnet, "P-fuji1..." for fuji).
+func (w *Wallet) FormattedPChainAddress() string {
+	return FormatPChainAddress(w.PChainAddress(), w.config.NetworkID)
+}
+
 // OwnerAddress returns the owner address for subnet operations.
 func (w *Wallet) OwnerAddress() ids.ShortID {
 	if w.key != nil {
@@ -192,6 +200,12 @@ func (w *FullWallet) PChainAddress() ids.ShortID {
 	return w.address
 }
 
+// FormattedPChainAddress returns the P-Chain address with chain prefix and HRP
+// (e.g., "P-avax1..." for mainnet, "P-fuji1..." for fuji).
+func (w *FullWallet) FormattedPChainAddress() string {
+	return FormatPChainAddress(w.PChainAddress(), w.config.NetworkID)
+}
+
 // EthAddress returns the Ethereum/C-Chain address.
 func (w *FullWallet) EthAddress() common.Address {
 	if w.key != nil {
@@ -225,4 +239,16 @@ func NewFullWalletFromKeychain(ctx context.Context, kc FullKeychain, address ids
 		address: address,
 		ethAddr: ethAddr,
 	}, nil
+}
+
+// FormatPChainAddress formats a P-Chain address with the proper chain prefix and HRP
+// for the given network (e.g., "P-avax1..." for mainnet, "P-fuji1..." for fuji).
+func FormatPChainAddress(addr ids.ShortID, networkID uint32) string {
+	hrp := constants.GetHRP(networkID)
+	formatted, err := address.Format("P", hrp, addr[:])
+	if err != nil {
+		// Fallback to raw address if formatting fails
+		return addr.String()
+	}
+	return formatted
 }
