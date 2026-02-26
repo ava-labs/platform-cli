@@ -52,7 +52,7 @@ var balanceCmd = &cobra.Command{
 			return fmt.Errorf("failed to get balance: %w", err)
 		}
 
-		fmt.Printf("P-Chain Address: %s\n", w.PChainAddress())
+		fmt.Printf("P-Chain Address: %s\n", w.FormattedPChainAddress())
 		fmt.Printf("Balance: %.9f AVAX\n", float64(balance)/1e9)
 		return nil
 	},
@@ -63,6 +63,14 @@ var addressCmd = &cobra.Command{
 	Short: "Show wallet addresses",
 	Long:  `Display P-Chain and EVM addresses for the specified wallet.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx, cancel := getOperationContext()
+		defer cancel()
+
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
 		if useLedger {
 			if !wallet.LedgerEnabled {
 				return fmt.Errorf("ledger support not compiled. Rebuild with: go build -tags ledger")
@@ -73,8 +81,8 @@ var addressCmd = &cobra.Command{
 			}
 			defer kc.Close()
 
-			fmt.Printf("P-Chain Address: %s\n", kc.GetAddress())
-			fmt.Printf("EVM Address:     %s\n", kc.GetPublicKey().EthAddress().Hex())
+			fmt.Printf("P-Chain Address: %s\n", wallet.FormatPChainAddress(kc.GetAddress(), netConfig.NetworkID))
+			fmt.Printf("EVM Address:     %s\n", kc.GetEVMPublicKey().EthAddress().Hex())
 			return nil
 		}
 
@@ -84,7 +92,7 @@ var addressCmd = &cobra.Command{
 		}
 		defer clearBytesWallet(key)
 
-		pAddr, evmAddr := wallet.DeriveAddresses(key)
+		pAddr, evmAddr := wallet.DeriveAddressesFormatted(key, netConfig.NetworkID)
 
 		fmt.Printf("P-Chain Address: %s\n", pAddr)
 		fmt.Printf("EVM Address:     %s\n", evmAddr)
@@ -282,7 +290,7 @@ func loadFullWallet(ctx context.Context, netConfig network.Config) (*wallet.Full
 		if err != nil {
 			return nil, nil, err
 		}
-		ethAddr := kc.GetPublicKey().EthAddress()
+		ethAddr := kc.GetEVMPublicKey().EthAddress()
 		w, err := wallet.NewFullWalletFromKeychain(ctx, kc, kc.GetAddress(), ethAddr, netConfig)
 		if err != nil {
 			kc.Close()

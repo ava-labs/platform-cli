@@ -46,6 +46,11 @@ func (kc *LedgerKeychain) GetPublicKey() *secp256k1.PublicKey {
 	return nil
 }
 
+// GetEVMPublicKey returns nil for stub.
+func (kc *LedgerKeychain) GetEVMPublicKey() *secp256k1.PublicKey {
+	return nil
+}
+
 // EthAddresses returns empty set for stub.
 func (kc *LedgerKeychain) EthAddresses() set.Set[common.Address] {
 	return set.Set[common.Address]{}

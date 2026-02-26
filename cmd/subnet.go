@@ -62,7 +62,7 @@ var subnetCreateCmd = &cobra.Command{
 		defer cleanup()
 
 		fmt.Println("Creating new subnet...")
-		fmt.Printf("Owner: %s\n", w.PChainAddress())
+		fmt.Printf("Owner: %s\n", w.FormattedPChainAddress())
 		fmt.Println("Submitting transaction...")
 
 		txID, err := pchain.CreateSubnet(ctx, w)

@@ -116,7 +116,7 @@ var transferPToCCmd = &cobra.Command{
 		defer cleanup()
 
 		fmt.Printf("Transferring %d nAVAX (%.9f AVAX) from P-Chain to C-Chain...\n", amountNAVAX, float64(amountNAVAX)/1e9)
-		fmt.Printf("P-Chain Address: %s\n", w.PChainAddress())
+		fmt.Printf("P-Chain Address: %s\n", w.FormattedPChainAddress())
 		fmt.Printf("C-Chain Address: %s\n", w.EthAddress().Hex())
 		fmt.Println("Step 1/2: Exporting from P-Chain...")
 
@@ -159,7 +159,7 @@ var transferCToPCmd = &cobra.Command{
 
 		fmt.Printf("Transferring %d nAVAX (%.9f AVAX) from C-Chain to P-Chain...\n", amountNAVAX, float64(amountNAVAX)/1e9)
 		fmt.Printf("C-Chain Address: %s\n", w.EthAddress().Hex())
-		fmt.Printf("P-Chain Address: %s\n", w.PChainAddress())
+		fmt.Printf("P-Chain Address: %s\n", w.FormattedPChainAddress())
 		fmt.Println("Step 1/2: Exporting from C-Chain...")
 
 		exportTxID, importTxID, err := crosschain.TransferCToP(ctx, w, amountNAVAX)
