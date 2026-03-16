@@ -871,11 +871,11 @@ func TestCreateSubnetWithMultisigOwner(t *testing.T) {
 	pClient := platformvm.NewClient(netConfig.RPCURL)
 	time.Sleep(3 * time.Second)
 
-	owners, err := pClient.GetSubnetOwners(ctx, subnetID)
+	subnetInfo, err := pClient.GetSubnet(ctx, subnetID)
 	if err != nil {
-		t.Logf("Warning: could not verify subnet owner (API may not support GetSubnetOwners): %v", err)
+		t.Logf("Warning: could not verify subnet (GetSubnet): %v", err)
 	} else {
-		t.Logf("Subnet owner verified: %v", owners)
+		t.Logf("Subnet verified: threshold=%d, controlKeys=%v", subnetInfo.Threshold, subnetInfo.ControlKeys)
 	}
 }
 
