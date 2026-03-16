@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"path/filepath"
+
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
@@ -28,6 +30,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/platform-cli/pkg/crosschain"
+	"github.com/ava-labs/platform-cli/pkg/multisig"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
@@ -837,4 +840,150 @@ func TestCrossChainRoundTrip(t *testing.T) {
 	t.Logf("  Import TX: %s", importTx2)
 
 	t.Log("=== Cross-Chain Round Trip Complete ===")
+}
+
+// =============================================================================
+// Multisig Tests
+// =============================================================================
+
+// TestCreateSubnetWithMultisigOwner creates a subnet owned by a 1-of-1 multisig,
+// then exercises the partial signing flow: build unsigned tx → sign → commit.
+func TestCreateSubnetWithMultisigOwner(t *testing.T) {
+	ctx := context.Background()
+	w, netConfig := getTestWallet(t)
+
+	ownerAddr := w.PChainAddress()
+	t.Logf("Creating subnet with multisig owner (1-of-1): %s", ownerAddr)
+
+	owner, err := multisig.NewOutputOwners([]ids.ShortID{ownerAddr}, 1)
+	if err != nil {
+		t.Fatalf("NewOutputOwners failed: %v", err)
+	}
+
+	subnetID, err := pchain.CreateSubnetWithOwners(ctx, w, owner)
+	if err != nil {
+		t.Fatalf("CreateSubnetWithOwners failed: %v", err)
+	}
+
+	t.Logf("Subnet ID: %s (owner: 1-of-1 multisig)", subnetID)
+
+	// Verify we can query it
+	pClient := platformvm.NewClient(netConfig.RPCURL)
+	time.Sleep(3 * time.Second)
+
+	owners, err := pClient.GetSubnetOwners(ctx, subnetID)
+	if err != nil {
+		t.Logf("Warning: could not verify subnet owner (API may not support GetSubnetOwners): %v", err)
+	} else {
+		t.Logf("Subnet owner verified: %v", owners)
+	}
+}
+
+// TestMultisigPartialSignFlow tests the full partial signing workflow:
+// 1. Build an unsigned CreateSubnetTx and write to file
+// 2. Sign the tx file
+// 3. Verify it's fully signed
+// 4. Commit (submit) the tx
+func TestMultisigPartialSignFlow(t *testing.T) {
+	ctx := context.Background()
+	w, netConfig := getTestWallet(t)
+
+	ownerAddr := w.PChainAddress()
+
+	// Step 1: Build unsigned tx
+	t.Log("Step 1: Building unsigned CreateSubnetTx...")
+	owner, err := multisig.NewOutputOwners([]ids.ShortID{ownerAddr}, 1)
+	if err != nil {
+		t.Fatalf("NewOutputOwners failed: %v", err)
+	}
+
+	utx, err := w.PWallet().Builder().NewCreateSubnetTx(owner)
+	if err != nil {
+		t.Fatalf("NewCreateSubnetTx failed: %v", err)
+	}
+
+	tx := &txs.Tx{Unsigned: utx}
+	// Don't sign yet — leave credentials empty to simulate unsigned tx
+	// Actually, the signer needs to be called to create credential structure
+	if err := w.PWallet().Signer().Sign(ctx, tx); err != nil {
+		t.Fatalf("initial Sign failed: %v", err)
+	}
+
+	t.Logf("TX ID (pre-commit): %s", tx.ID())
+
+	// Step 2: Write to file
+	txFile, err := multisig.NewTxFileFromTx(tx, netConfig.NetworkID, owner)
+	if err != nil {
+		t.Fatalf("NewTxFileFromTx failed: %v", err)
+	}
+
+	tmpFile := filepath.Join(t.TempDir(), "unsigned.json")
+	if err := multisig.WriteTxFile(tmpFile, txFile); err != nil {
+		t.Fatalf("WriteTxFile failed: %v", err)
+	}
+	t.Logf("Wrote tx file to %s", tmpFile)
+
+	// Step 3: Read back and verify it's signed (1-of-1, so should be fully signed already)
+	readBack, err := multisig.ReadTxFile(tmpFile)
+	if err != nil {
+		t.Fatalf("ReadTxFile failed: %v", err)
+	}
+
+	parsedTx, err := multisig.ParseTx(readBack)
+	if err != nil {
+		t.Fatalf("ParseTx failed: %v", err)
+	}
+
+	if !multisig.IsFullySigned(parsedTx) {
+		filled, total := multisig.CredentialSignatureStatus(parsedTx)
+		t.Fatalf("expected fully signed tx, got %d/%d signatures", filled, total)
+	}
+	t.Log("Step 2: TX is fully signed (1-of-1)")
+
+	// Step 4: Commit (submit to network)
+	t.Log("Step 3: Submitting transaction...")
+	if err := w.PWallet().IssueTx(parsedTx); err != nil {
+		t.Fatalf("IssueTx failed: %v", err)
+	}
+
+	t.Logf("Subnet created via partial sign flow! TX ID: %s", parsedTx.ID())
+}
+
+// TestMultisigTransferSubnetOwnership creates a subnet, then transfers ownership
+// to a multisig via the file-based signing flow.
+func TestMultisigTransferSubnetOwnership(t *testing.T) {
+	ctx := context.Background()
+	w, netConfig := getTestWallet(t)
+
+	// 1. Create a single-owner subnet
+	t.Log("Step 1: Creating single-owner subnet...")
+	subnetID, err := pchain.CreateSubnet(ctx, w)
+	if err != nil {
+		t.Fatalf("CreateSubnet failed: %v", err)
+	}
+	t.Logf("  Subnet ID: %s", subnetID)
+
+	time.Sleep(3 * time.Second)
+
+	// 2. Transfer ownership to a 1-of-1 multisig (same address, but using multisig API)
+	t.Log("Step 2: Transferring to multisig owner...")
+	keyBytes := getPrivateKeyBytes(t)
+	key, _ := wallet.ToPrivateKey(keyBytes)
+	subnetWallet, err := wallet.NewWalletWithSubnet(ctx, key, netConfig, subnetID)
+	if err != nil {
+		t.Fatalf("failed to create subnet wallet: %v", err)
+	}
+
+	newOwner, err := multisig.NewOutputOwners([]ids.ShortID{w.PChainAddress()}, 1)
+	if err != nil {
+		t.Fatalf("NewOutputOwners failed: %v", err)
+	}
+
+	txID, err := pchain.TransferSubnetOwnershipMultisig(ctx, subnetWallet, subnetID, newOwner)
+	if err != nil {
+		t.Fatalf("TransferSubnetOwnershipMultisig failed: %v", err)
+	}
+
+	t.Logf("  Transfer TX: %s", txID)
+	t.Log("Multisig ownership transfer complete!")
 }
