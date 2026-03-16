@@ -328,12 +328,16 @@ func TestIssueCreateSubnetTx(t *testing.T) {
 	txID := ids.GenerateTestID()
 
 	var gotOwner *secp256k1fx.OutputOwners
+	ownerObj := &secp256k1fx.OutputOwners{
+		Threshold: 1,
+		Addrs:     []ids.ShortID{owner},
+	}
 	gotTxID, err := issueCreateSubnetTx(
 		func(owner *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
 			gotOwner = owner
 			return &txs.Tx{TxID: txID}, nil
 		},
-		owner,
+		ownerObj,
 	)
 	if err != nil {
 		t.Fatalf("issueCreateSubnetTx() returned error: %v", err)
@@ -353,6 +357,10 @@ func TestIssueTransferSubnetOwnershipTx(t *testing.T) {
 
 	var gotSubnetID ids.ID
 	var gotOwner *secp256k1fx.OutputOwners
+	ownerObj := &secp256k1fx.OutputOwners{
+		Threshold: 1,
+		Addrs:     []ids.ShortID{newOwner},
+	}
 	gotTxID, err := issueTransferSubnetOwnershipTx(
 		func(subnetID ids.ID, owner *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
 			gotSubnetID = subnetID
@@ -360,7 +368,7 @@ func TestIssueTransferSubnetOwnershipTx(t *testing.T) {
 			return &txs.Tx{TxID: txID}, nil
 		},
 		subnetID,
-		newOwner,
+		ownerObj,
 	)
 	if err != nil {
 		t.Fatalf("issueTransferSubnetOwnershipTx() returned error: %v", err)
