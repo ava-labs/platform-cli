@@ -17,7 +17,9 @@ jobs:
           - runner: ubuntu-latest
             goos: linux
             goarch: amd64
-            cc: gcc
+            cc: musl-gcc
+            cross_deps: musl-tools
+            static: true
           - runner: ubuntu-latest
             goos: linux
             goarch: arm64
@@ -53,8 +55,12 @@ jobs:
           CGO_CFLAGS: "-O2 -D__BLST_PORTABLE__"
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          LDFLAGS="-s -w -X github.com/ava-labs/platform-cli/cmd.version=${VERSION}"
+          if [ "${{ matrix.static }}" = "true" ]; then
+            LDFLAGS="${LDFLAGS} -linkmode external -extldflags '-static'"
+          fi
           go build -tags ledger \
-            -ldflags "-s -w -X github.com/ava-labs/platform-cli/cmd.version=${VERSION}" \
+            -ldflags "${LDFLAGS}" \
             -o platform .
 
       - name: Package tarball
