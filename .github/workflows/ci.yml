@@ -11,12 +11,12 @@ jobs:
     name: Lint, Test & Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.24.13"
+          go-version: "1.25.9"
 
       - name: Verify go.mod is tidy
         run: |
@@ -28,18 +28,18 @@ jobs:
 
       - name: Run staticcheck
         env:
-          GOTOOLCHAIN: go1.24.13
+          GOTOOLCHAIN: go1.25.9
         run: go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...
 
       - name: Run staticcheck (tagged e2e)
         env:
-          GOTOOLCHAIN: go1.24.13
+          GOTOOLCHAIN: go1.25.9
         run: go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 -tags=clie2e,networke2e ./e2e/...
 
       - name: Run govulncheck
         env:
-          GOTOOLCHAIN: go1.24.13
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.2 ./...
+          GOTOOLCHAIN: go1.25.9
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.2.0 ./...
 
       - name: Run tests
         run: go test -race -coverprofile=coverage.out ./...
@@ -76,7 +76,7 @@ jobs:
         run: go build -tags ledger -o platform-ledger .
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         with:
           files: ./coverage.out
           fail_ci_if_error: false

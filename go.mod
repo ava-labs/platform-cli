@@ -1,6 +1,6 @@
 module github.com/ava-labs/platform-cli
 
-go 1.24.13
+go 1.25.9
 
 require (
 	github.com/ava-labs/avalanchego v1.14.1
