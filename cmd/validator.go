@@ -9,23 +9,27 @@ import (
 
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
+	"github.com/ava-labs/platform-cli/pkg/multisig"
 	nodeutil "github.com/ava-labs/platform-cli/pkg/node"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
 )
 
 var (
-	valNodeID        string
-	valStakeAmount   float64
-	valStartTime     string
-	valDuration      string
-	valDelegationFee float64
-	valRewardAddr    string
-	valNodeEndpoint  string
-	valBLSPublicKey  string
-	valBLSPoP        string
+	valNodeID          string
+	valStakeAmount     float64
+	valStartTime       string
+	valDuration        string
+	valDelegationFee   float64
+	valRewardAddr      string
+	valRewardAddresses string // comma-separated reward addresses for multisig
+	valRewardThreshold uint32 // threshold for multisig reward owner
+	valNodeEndpoint    string
+	valBLSPublicKey    string
+	valBLSPoP          string
 )
 
 var validatorCmd = &cobra.Command{
@@ -78,11 +82,39 @@ var validatorAddCmd = &cobra.Command{
 		defer cleanup()
 
 		rewardAddr := w.PChainAddress()
+		if valRewardAddr != "" && valRewardAddresses != "" {
+			return fmt.Errorf("use either --reward-address (single) or --reward-addresses (multisig), not both")
+		}
 		if valRewardAddr != "" {
 			rewardAddr, err = ids.ShortFromString(valRewardAddr)
 			if err != nil {
 				return fmt.Errorf("invalid reward address: %w", err)
 			}
+		}
+
+		// Build reward owner (multisig or single)
+		cfg := pchain.AddPermissionlessValidatorConfig{
+			NodeID:    nodeID,
+			Start:     start,
+			End:       end,
+			RewardAddr: rewardAddr,
+		}
+
+		if valRewardAddresses != "" {
+			hrp := constants.GetHRP(netConfig.NetworkID)
+			addrs, err := multisig.ParseAddresses(valRewardAddresses, hrp)
+			if err != nil {
+				return fmt.Errorf("invalid --reward-addresses: %w", err)
+			}
+			threshold := valRewardThreshold
+			if threshold == 0 {
+				threshold = uint32(len(addrs))
+			}
+			rewardOwner, err := multisig.NewOutputOwners(addrs, threshold)
+			if err != nil {
+				return fmt.Errorf("invalid multisig reward config: %w", err)
+			}
+			cfg.RewardOwner = rewardOwner
 		}
 
 		stakeNAVAX, err := avaxToNAVAX(valStakeAmount)
@@ -98,10 +130,17 @@ var validatorAddCmd = &cobra.Command{
 			return fmt.Errorf("invalid delegation fee: %w", err)
 		}
 
+		cfg.StakeAmt = stakeNAVAX
+		cfg.DelegationFee = delegationFeeShares
+		cfg.BLSSigner = nodePoP
+
 		fmt.Printf("Adding validator %s with %.9f AVAX stake...\n", nodeID, valStakeAmount)
 		fmt.Printf("  Start: %s\n", start.UTC().Format("2006-01-02 15:04:05 MST"))
 		fmt.Printf("  End: %s\n", end.UTC().Format("2006-01-02 15:04:05 MST"))
 		fmt.Printf("  Delegation Fee: %.2f%%\n", valDelegationFee*100)
+		if cfg.RewardOwner != nil {
+			fmt.Printf("  Reward Owner: %d-of-%d multisig\n", cfg.RewardOwner.Threshold, len(cfg.RewardOwner.Addrs))
+		}
 		if nodeURI != "" {
 			fmt.Printf("  Node Endpoint: %s\n", nodeURI)
 		} else {
@@ -109,15 +148,7 @@ var validatorAddCmd = &cobra.Command{
 		}
 		fmt.Println("Submitting transaction...")
 
-		txID, err := pchain.AddPermissionlessValidator(ctx, w, pchain.AddPermissionlessValidatorConfig{
-			NodeID:        nodeID,
-			Start:         start,
-			End:           end,
-			StakeAmt:      stakeNAVAX,
-			RewardAddr:    rewardAddr,
-			DelegationFee: delegationFeeShares,
-			BLSSigner:     nodePoP,
-		})
+		txID, err := pchain.AddPermissionlessValidator(ctx, w, cfg)
 		if err != nil {
 			return err
 		}
@@ -167,11 +198,38 @@ var validatorDelegateCmd = &cobra.Command{
 		defer cleanup()
 
 		rewardAddr := w.PChainAddress()
+		if valRewardAddr != "" && valRewardAddresses != "" {
+			return fmt.Errorf("use either --reward-address (single) or --reward-addresses (multisig), not both")
+		}
 		if valRewardAddr != "" {
 			rewardAddr, err = ids.ShortFromString(valRewardAddr)
 			if err != nil {
 				return fmt.Errorf("invalid reward address: %w", err)
 			}
+		}
+
+		cfg := pchain.AddPermissionlessDelegatorConfig{
+			NodeID:     nodeID,
+			Start:      start,
+			End:        end,
+			RewardAddr: rewardAddr,
+		}
+
+		if valRewardAddresses != "" {
+			hrp := constants.GetHRP(netConfig.NetworkID)
+			addrs, err := multisig.ParseAddresses(valRewardAddresses, hrp)
+			if err != nil {
+				return fmt.Errorf("invalid --reward-addresses: %w", err)
+			}
+			threshold := valRewardThreshold
+			if threshold == 0 {
+				threshold = uint32(len(addrs))
+			}
+			rewardOwner, err := multisig.NewOutputOwners(addrs, threshold)
+			if err != nil {
+				return fmt.Errorf("invalid multisig reward config: %w", err)
+			}
+			cfg.RewardOwner = rewardOwner
 		}
 
 		stakeNAVAX, err := avaxToNAVAX(valStakeAmount)
@@ -181,19 +239,17 @@ var validatorDelegateCmd = &cobra.Command{
 		if stakeNAVAX < netConfig.MinDelegatorStake {
 			return fmt.Errorf("stake too low for %s: minimum is %.9f AVAX", netConfig.Name, float64(netConfig.MinDelegatorStake)/1e9)
 		}
+		cfg.StakeAmt = stakeNAVAX
 
 		fmt.Printf("Delegating %.9f AVAX to validator %s...\n", valStakeAmount, nodeID)
 		fmt.Printf("  Start: %s\n", start.UTC().Format("2006-01-02 15:04:05 MST"))
 		fmt.Printf("  End: %s\n", end.UTC().Format("2006-01-02 15:04:05 MST"))
+		if cfg.RewardOwner != nil {
+			fmt.Printf("  Reward Owner: %d-of-%d multisig\n", cfg.RewardOwner.Threshold, len(cfg.RewardOwner.Addrs))
+		}
 		fmt.Println("Submitting transaction...")
 
-		txID, err := pchain.AddPermissionlessDelegator(ctx, w, pchain.AddPermissionlessDelegatorConfig{
-			NodeID:     nodeID,
-			Start:      start,
-			End:        end,
-			StakeAmt:   stakeNAVAX,
-			RewardAddr: rewardAddr,
-		})
+		txID, err := pchain.AddPermissionlessDelegator(ctx, w, cfg)
 		if err != nil {
 			return err
 		}
@@ -313,6 +369,8 @@ func init() {
 	validatorAddCmd.Flags().StringVar(&valDuration, "duration", "336h", "Validation duration (min 14 days)")
 	validatorAddCmd.Flags().Float64Var(&valDelegationFee, "delegation-fee", 0.02, "Delegation fee (0.02 = 2%)")
 	validatorAddCmd.Flags().StringVar(&valRewardAddr, "reward-address", "", "Reward address (default: own address)")
+	validatorAddCmd.Flags().StringVar(&valRewardAddresses, "reward-addresses", "", "Comma-separated reward addresses (for multisig)")
+	validatorAddCmd.Flags().Uint32Var(&valRewardThreshold, "reward-threshold", 0, "Reward address signature threshold (default: all must sign)")
 
 	// Delegate flags
 	validatorDelegateCmd.Flags().StringVar(&valNodeID, "node-id", "", "Node ID to delegate to")
@@ -320,4 +378,6 @@ func init() {
 	validatorDelegateCmd.Flags().StringVar(&valStartTime, "start", "now", "Start time (RFC3339 or 'now')")
 	validatorDelegateCmd.Flags().StringVar(&valDuration, "duration", "336h", "Delegation duration (min 14 days)")
 	validatorDelegateCmd.Flags().StringVar(&valRewardAddr, "reward-address", "", "Reward address (default: own address)")
+	validatorDelegateCmd.Flags().StringVar(&valRewardAddresses, "reward-addresses", "", "Comma-separated reward addresses (for multisig)")
+	validatorDelegateCmd.Flags().Uint32Var(&valRewardThreshold, "reward-threshold", 0, "Reward address signature threshold (default: all must sign)")
 }

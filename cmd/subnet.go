@@ -11,10 +11,13 @@ import (
 
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
+	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	ethcommon "github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/platform-cli/pkg/multisig"
 	nodeutil "github.com/ava-labs/platform-cli/pkg/node"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
@@ -34,6 +37,11 @@ var (
 	subnetValBalance        float64
 	subnetMockVal           bool
 	subnetValidatorWeights  string
+
+	// Multisig flags
+	subnetOwners    string // comma-separated P-Chain addresses for multisig ownership
+	subnetThreshold uint32 // signature threshold for multisig
+	outputTxFile    string // output unsigned tx to file instead of submitting
 )
 
 var subnetCmd = &cobra.Command{
@@ -45,7 +53,13 @@ var subnetCmd = &cobra.Command{
 var subnetCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new subnet",
-	Long:  `Create a new subnet on the P-Chain.`,
+	Long: `Create a new subnet on the P-Chain.
+
+For multisig ownership, use --owners and --threshold:
+  platform subnet create --owners addr1,addr2,addr3 --threshold 2
+
+To create an unsigned tx for offline signing:
+  platform subnet create --owners addr1,addr2 --threshold 2 --output-tx unsigned.json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
 		defer cancel()
@@ -61,11 +75,68 @@ var subnetCreateCmd = &cobra.Command{
 		}
 		defer cleanup()
 
-		fmt.Println("Creating new subnet...")
-		fmt.Printf("Owner: %s\n", w.FormattedPChainAddress())
+		// Build the owner
+		var owner *secp256k1fx.OutputOwners
+		if subnetOwners != "" {
+			owner, err = buildMultisigOwner(subnetOwners, subnetThreshold, netConfig.NetworkID)
+			if err != nil {
+				return err
+			}
+		}
+
+		if owner != nil {
+			fmt.Println("Creating new subnet with multisig ownership...")
+			fmt.Printf("Threshold: %d of %d\n", owner.Threshold, len(owner.Addrs))
+		} else {
+			fmt.Println("Creating new subnet...")
+			fmt.Printf("Owner: %s\n", w.FormattedPChainAddress())
+		}
+
+		if outputTxFile != "" {
+			// Build unsigned tx via the wallet builder, sign partially, and write to file
+			var ownerForTx *secp256k1fx.OutputOwners
+			if owner != nil {
+				ownerForTx = owner
+			} else {
+				ownerForTx = &secp256k1fx.OutputOwners{
+					Threshold: 1,
+					Addrs:     []ids.ShortID{w.PChainAddress()},
+				}
+			}
+
+			utx, err := w.PWallet().Builder().NewCreateSubnetTx(ownerForTx)
+			if err != nil {
+				return fmt.Errorf("failed to build CreateSubnetTx: %w", err)
+			}
+
+			tx := &txs.Tx{Unsigned: utx}
+			// Partially sign with available keys
+			if err := w.PWallet().Signer().Sign(ctx, tx); err != nil {
+				return fmt.Errorf("failed to sign tx: %w", err)
+			}
+
+			tf, err := multisig.NewTxFileFromTx(tx, netConfig.NetworkID, ownerForTx)
+			if err != nil {
+				return fmt.Errorf("failed to create tx file: %w", err)
+			}
+
+			if err := multisig.WriteTxFile(outputTxFile, tf); err != nil {
+				return err
+			}
+
+			fmt.Printf("Unsigned transaction written to %s\n", outputTxFile)
+			fmt.Printf("TX ID (may change after signing): %s\n", tx.ID())
+			return nil
+		}
+
 		fmt.Println("Submitting transaction...")
 
-		txID, err := pchain.CreateSubnet(ctx, w)
+		var txID ids.ID
+		if owner != nil {
+			txID, err = pchain.CreateSubnetWithOwners(ctx, w, owner)
+		} else {
+			txID, err = pchain.CreateSubnet(ctx, w)
+		}
 		if err != nil {
 			return err
 		}
@@ -79,7 +150,16 @@ var subnetCreateCmd = &cobra.Command{
 var subnetTransferOwnershipCmd = &cobra.Command{
 	Use:   "transfer-ownership",
 	Short: "Transfer subnet ownership",
-	Long:  `Transfer ownership of a subnet to a new address.`,
+	Long: `Transfer ownership of a subnet to a new address or multisig.
+
+Single owner:
+  platform subnet transfer-ownership --subnet-id <id> --new-owner <addr>
+
+Multisig:
+  platform subnet transfer-ownership --subnet-id <id> --owners addr1,addr2,addr3 --threshold 2
+
+Offline signing:
+  platform subnet transfer-ownership --subnet-id <id> --owners addr1,addr2 --threshold 2 --output-tx unsigned.json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
 		defer cancel()
@@ -87,8 +167,11 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 		if subnetID == "" {
 			return fmt.Errorf("--subnet-id is required")
 		}
-		if subnetNewOwner == "" {
-			return fmt.Errorf("--new-owner is required")
+		if subnetNewOwner == "" && subnetOwners == "" {
+			return fmt.Errorf("--new-owner or --owners is required")
+		}
+		if subnetNewOwner != "" && subnetOwners != "" {
+			return fmt.Errorf("use either --new-owner (single) or --owners (multisig), not both")
 		}
 
 		sid, err := ids.FromString(subnetID)
@@ -96,14 +179,27 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 			return fmt.Errorf("invalid subnet ID: %w", err)
 		}
 
-		newOwner, err := ids.ShortFromString(subnetNewOwner)
-		if err != nil {
-			return fmt.Errorf("invalid new owner address: %w", err)
-		}
-
 		netConfig, err := getNetworkConfig(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
+		// Build the new owner
+		var newOwnerObj *secp256k1fx.OutputOwners
+		if subnetOwners != "" {
+			newOwnerObj, err = buildMultisigOwner(subnetOwners, subnetThreshold, netConfig.NetworkID)
+			if err != nil {
+				return err
+			}
+		} else {
+			newOwner, err := ids.ShortFromString(subnetNewOwner)
+			if err != nil {
+				return fmt.Errorf("invalid new owner address: %w", err)
+			}
+			newOwnerObj = &secp256k1fx.OutputOwners{
+				Threshold: 1,
+				Addrs:     []ids.ShortID{newOwner},
+			}
 		}
 
 		w, cleanup, err := loadPChainWalletWithSubnet(ctx, netConfig, sid)
@@ -112,7 +208,31 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 		}
 		defer cleanup()
 
-		txID, err := pchain.TransferSubnetOwnership(ctx, w, sid, newOwner)
+		if outputTxFile != "" {
+			utx, err := w.PWallet().Builder().NewTransferSubnetOwnershipTx(sid, newOwnerObj)
+			if err != nil {
+				return fmt.Errorf("failed to build TransferSubnetOwnershipTx: %w", err)
+			}
+
+			tx := &txs.Tx{Unsigned: utx}
+			if err := w.PWallet().Signer().Sign(ctx, tx); err != nil {
+				return fmt.Errorf("failed to sign tx: %w", err)
+			}
+
+			tf, err := multisig.NewTxFileFromTx(tx, netConfig.NetworkID, newOwnerObj)
+			if err != nil {
+				return fmt.Errorf("failed to create tx file: %w", err)
+			}
+
+			if err := multisig.WriteTxFile(outputTxFile, tf); err != nil {
+				return err
+			}
+
+			fmt.Printf("Unsigned transaction written to %s\n", outputTxFile)
+			return nil
+		}
+
+		txID, err := pchain.TransferSubnetOwnershipMultisig(ctx, w, sid, newOwnerObj)
 		if err != nil {
 			return err
 		}
@@ -442,6 +562,26 @@ func generateMockValidator(balance float64, weight uint64) (*txs.ConvertSubnetTo
 	}, nil
 }
 
+// buildMultisigOwner builds an OutputOwners from --owners and --threshold flags.
+func buildMultisigOwner(owners string, threshold uint32, networkID uint32) (*secp256k1fx.OutputOwners, error) {
+	hrp := constants.GetHRP(networkID)
+	addrs, err := multisig.ParseAddresses(owners, hrp)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --owners: %w", err)
+	}
+
+	if threshold == 0 {
+		threshold = uint32(len(addrs))
+	}
+
+	owner, err := multisig.NewOutputOwners(addrs, threshold)
+	if err != nil {
+		return nil, fmt.Errorf("invalid multisig configuration: %w", err)
+	}
+
+	return owner, nil
+}
+
 func init() {
 	rootCmd.AddCommand(subnetCmd)
 
@@ -449,9 +589,17 @@ func init() {
 	subnetCmd.AddCommand(subnetTransferOwnershipCmd)
 	subnetCmd.AddCommand(subnetConvertL1Cmd)
 
+	// Create subnet flags (multisig)
+	subnetCreateCmd.Flags().StringVar(&subnetOwners, "owners", "", "Comma-separated P-Chain owner addresses (for multisig)")
+	subnetCreateCmd.Flags().Uint32Var(&subnetThreshold, "threshold", 0, "Signature threshold (default: all owners must sign)")
+	subnetCreateCmd.Flags().StringVar(&outputTxFile, "output-tx", "", "Write unsigned tx to file instead of submitting")
+
 	// Transfer ownership flags
 	subnetTransferOwnershipCmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID")
-	subnetTransferOwnershipCmd.Flags().StringVar(&subnetNewOwner, "new-owner", "", "New owner P-Chain address")
+	subnetTransferOwnershipCmd.Flags().StringVar(&subnetNewOwner, "new-owner", "", "New owner P-Chain address (single)")
+	subnetTransferOwnershipCmd.Flags().StringVar(&subnetOwners, "owners", "", "Comma-separated new owner addresses (for multisig)")
+	subnetTransferOwnershipCmd.Flags().Uint32Var(&subnetThreshold, "threshold", 0, "Signature threshold (default: all owners must sign)")
+	subnetTransferOwnershipCmd.Flags().StringVar(&outputTxFile, "output-tx", "", "Write unsigned tx to file instead of submitting")
 
 	// Convert L1 flags
 	subnetConvertL1Cmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID to convert")

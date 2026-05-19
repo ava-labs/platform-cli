@@ -115,6 +115,7 @@ type AddValidatorConfig struct {
 	End           time.Time
 	StakeAmt      uint64 // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 2000 AVAX)
 	RewardAddr    ids.ShortID
+	RewardOwner   *secp256k1fx.OutputOwners // optional multisig reward owner (overrides RewardAddr)
 	DelegationFee uint32 // in basis points (10000 = 100%, 200 = 2%)
 }
 
@@ -122,9 +123,12 @@ type AddValidatorConfig struct {
 // NOTE: This uses the legacy AddValidatorTx which is deprecated post-Etna.
 // Use AddPermissionlessValidator for post-Etna networks.
 func AddValidator(ctx context.Context, w *wallet.Wallet, cfg AddValidatorConfig) (ids.ID, error) {
-	rewardsOwner := &secp256k1fx.OutputOwners{
-		Threshold: 1,
-		Addrs:     []ids.ShortID{cfg.RewardAddr},
+	rewardsOwner := cfg.RewardOwner
+	if rewardsOwner == nil {
+		rewardsOwner = &secp256k1fx.OutputOwners{
+			Threshold: 1,
+			Addrs:     []ids.ShortID{cfg.RewardAddr},
+		}
 	}
 
 	tx, err := w.PWallet().IssueAddValidatorTx(
@@ -151,6 +155,7 @@ type AddPermissionlessValidatorConfig struct {
 	End           time.Time
 	StakeAmt      uint64 // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 2000 AVAX for primary network)
 	RewardAddr    ids.ShortID
+	RewardOwner   *secp256k1fx.OutputOwners // optional multisig reward owner (overrides RewardAddr)
 	DelegationFee uint32                    // in parts per million (1_000_000 = 100%)
 	BLSSigner     *signer.ProofOfPossession // BLS proof of possession for the validator (required for primary network)
 }
@@ -181,9 +186,12 @@ func issueAddPermissionlessValidatorTx(
 	cfg AddPermissionlessValidatorConfig,
 	options ...common.Option,
 ) (ids.ID, error) {
-	rewardsOwner := &secp256k1fx.OutputOwners{
-		Threshold: 1,
-		Addrs:     []ids.ShortID{cfg.RewardAddr},
+	rewardsOwner := cfg.RewardOwner
+	if rewardsOwner == nil {
+		rewardsOwner = &secp256k1fx.OutputOwners{
+			Threshold: 1,
+			Addrs:     []ids.ShortID{cfg.RewardAddr},
+		}
 	}
 
 	tx, err := issueTxFn(
@@ -211,20 +219,24 @@ func issueAddPermissionlessValidatorTx(
 
 // AddDelegatorConfig holds configuration for adding a delegator.
 type AddDelegatorConfig struct {
-	NodeID     ids.NodeID
-	Start      time.Time
-	End        time.Time
-	StakeAmt   uint64 // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 25 AVAX)
-	RewardAddr ids.ShortID
+	NodeID      ids.NodeID
+	Start       time.Time
+	End         time.Time
+	StakeAmt    uint64 // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 25 AVAX)
+	RewardAddr  ids.ShortID
+	RewardOwner *secp256k1fx.OutputOwners // optional multisig reward owner (overrides RewardAddr)
 }
 
 // AddDelegator adds a delegator to the primary network (IssueAddDelegatorTx).
 // NOTE: This uses the legacy AddDelegatorTx which is deprecated post-Etna.
 // Use AddPermissionlessDelegator for post-Etna networks.
 func AddDelegator(ctx context.Context, w *wallet.Wallet, cfg AddDelegatorConfig) (ids.ID, error) {
-	rewardsOwner := &secp256k1fx.OutputOwners{
-		Threshold: 1,
-		Addrs:     []ids.ShortID{cfg.RewardAddr},
+	rewardsOwner := cfg.RewardOwner
+	if rewardsOwner == nil {
+		rewardsOwner = &secp256k1fx.OutputOwners{
+			Threshold: 1,
+			Addrs:     []ids.ShortID{cfg.RewardAddr},
+		}
 	}
 
 	tx, err := w.PWallet().IssueAddDelegatorTx(
@@ -245,11 +257,12 @@ func AddDelegator(ctx context.Context, w *wallet.Wallet, cfg AddDelegatorConfig)
 
 // AddPermissionlessDelegatorConfig holds configuration for adding a permissionless delegator.
 type AddPermissionlessDelegatorConfig struct {
-	NodeID     ids.NodeID
-	Start      time.Time
-	End        time.Time
-	StakeAmt   uint64 // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 25 AVAX)
-	RewardAddr ids.ShortID
+	NodeID      ids.NodeID
+	Start       time.Time
+	End         time.Time
+	StakeAmt    uint64 // in nAVAX (Fuji: min 1 AVAX, Mainnet: min 25 AVAX)
+	RewardAddr  ids.ShortID
+	RewardOwner *secp256k1fx.OutputOwners // optional multisig reward owner (overrides RewardAddr)
 }
 
 // AddPermissionlessDelegator adds a permissionless delegator to the primary network.
@@ -275,9 +288,12 @@ func issueAddPermissionlessDelegatorTx(
 	cfg AddPermissionlessDelegatorConfig,
 	options ...common.Option,
 ) (ids.ID, error) {
-	rewardsOwner := &secp256k1fx.OutputOwners{
-		Threshold: 1,
-		Addrs:     []ids.ShortID{cfg.RewardAddr},
+	rewardsOwner := cfg.RewardOwner
+	if rewardsOwner == nil {
+		rewardsOwner = &secp256k1fx.OutputOwners{
+			Threshold: 1,
+			Addrs:     []ids.ShortID{cfg.RewardAddr},
+		}
 	}
 
 	tx, err := issueTxFn(
@@ -306,19 +322,23 @@ func issueAddPermissionlessDelegatorTx(
 
 // CreateSubnet creates a new subnet (IssueCreateSubnetTx).
 func CreateSubnet(ctx context.Context, w *wallet.Wallet) (ids.ID, error) {
-	return issueCreateSubnetTx(w.PWallet().IssueCreateSubnetTx, w.PChainAddress(), common.WithContext(ctx))
+	owner := &secp256k1fx.OutputOwners{
+		Threshold: 1,
+		Addrs:     []ids.ShortID{w.PChainAddress()},
+	}
+	return CreateSubnetWithOwners(ctx, w, owner)
+}
+
+// CreateSubnetWithOwners creates a new subnet with the specified owner(s).
+func CreateSubnetWithOwners(ctx context.Context, w *wallet.Wallet, owner *secp256k1fx.OutputOwners) (ids.ID, error) {
+	return issueCreateSubnetTx(w.PWallet().IssueCreateSubnetTx, owner, common.WithContext(ctx))
 }
 
 func issueCreateSubnetTx(
 	issueTxFn func(owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error),
-	ownerAddr ids.ShortID,
+	owner *secp256k1fx.OutputOwners,
 	options ...common.Option,
 ) (ids.ID, error) {
-	owner := &secp256k1fx.OutputOwners{
-		Threshold: 1,
-		Addrs:     []ids.ShortID{ownerAddr},
-	}
-
 	tx, err := issueTxFn(owner, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue CreateSubnetTx: %w", err)
@@ -328,21 +348,25 @@ func issueCreateSubnetTx(
 
 // TransferSubnetOwnership transfers subnet ownership (IssueTransferSubnetOwnershipTx).
 func TransferSubnetOwnership(ctx context.Context, w *wallet.Wallet, subnetID ids.ID, newOwner ids.ShortID) (ids.ID, error) {
+	owner := &secp256k1fx.OutputOwners{
+		Threshold: 1,
+		Addrs:     []ids.ShortID{newOwner},
+	}
+	return TransferSubnetOwnershipMultisig(ctx, w, subnetID, owner)
+}
+
+// TransferSubnetOwnershipMultisig transfers subnet ownership to a multisig owner.
+func TransferSubnetOwnershipMultisig(ctx context.Context, w *wallet.Wallet, subnetID ids.ID, newOwner *secp256k1fx.OutputOwners) (ids.ID, error) {
 	return issueTransferSubnetOwnershipTx(w.PWallet().IssueTransferSubnetOwnershipTx, subnetID, newOwner, common.WithContext(ctx))
 }
 
 func issueTransferSubnetOwnershipTx(
 	issueTxFn func(subnetID ids.ID, owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error),
 	subnetID ids.ID,
-	newOwner ids.ShortID,
+	newOwner *secp256k1fx.OutputOwners,
 	options ...common.Option,
 ) (ids.ID, error) {
-	owner := &secp256k1fx.OutputOwners{
-		Threshold: 1,
-		Addrs:     []ids.ShortID{newOwner},
-	}
-
-	tx, err := issueTxFn(subnetID, owner, options...)
+	tx, err := issueTxFn(subnetID, newOwner, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue TransferSubnetOwnershipTx: %w", err)
 	}
