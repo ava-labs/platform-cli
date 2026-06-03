@@ -264,6 +264,105 @@ func TestIssueAddPermissionlessValidatorTx(t *testing.T) {
 	}
 }
 
+func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
+	nodeID := ids.GenerateTestNodeID()
+	rewardAddr := ids.GenerateTestShortID()
+	authorityAddr := ids.GenerateTestShortID()
+	assetID := ids.GenerateTestID()
+	pop := &signer.ProofOfPossession{}
+	cfg := AddAutoRenewedValidatorConfig{
+		NodeID:                   nodeID,
+		StakeAmt:                 123,
+		RewardAddr:               rewardAddr,
+		ValidatorAuthorityAddr:   authorityAddr,
+		DelegationFee:            20_000,
+		AutoCompoundRewardShares: 500_000,
+		Period:                   14 * 24 * time.Hour,
+		BLSSigner:                pop,
+	}
+	txID := ids.GenerateTestID()
+
+	var gotNodeID ids.NodeID
+	var gotWeight uint64
+	var gotSigner signer.Signer
+	var gotAssetID ids.ID
+	var gotValidationRewardsOwner *secp256k1fx.OutputOwners
+	var gotDelegationRewardsOwner *secp256k1fx.OutputOwners
+	var gotValidatorAuthority *secp256k1fx.OutputOwners
+	var gotDelegationShares uint32
+	var gotAutoCompoundRewardShares uint32
+	var gotPeriodSeconds uint64
+	gotTxID, err := issueAddAutoRenewedValidatorTx(
+		func(
+			validatorNodeID ids.NodeID,
+			weight uint64,
+			signer signer.Signer,
+			assetID ids.ID,
+			validationRewardsOwner *secp256k1fx.OutputOwners,
+			delegationRewardsOwner *secp256k1fx.OutputOwners,
+			validatorAuthority *secp256k1fx.OutputOwners,
+			delegationShares uint32,
+			autoCompoundRewardShares uint32,
+			periodSeconds uint64,
+			_ ...common.Option,
+		) (*txs.Tx, error) {
+			gotNodeID = validatorNodeID
+			gotWeight = weight
+			gotSigner = signer
+			gotAssetID = assetID
+			gotValidationRewardsOwner = validationRewardsOwner
+			gotDelegationRewardsOwner = delegationRewardsOwner
+			gotValidatorAuthority = validatorAuthority
+			gotDelegationShares = delegationShares
+			gotAutoCompoundRewardShares = autoCompoundRewardShares
+			gotPeriodSeconds = periodSeconds
+			return &txs.Tx{TxID: txID}, nil
+		},
+		assetID,
+		cfg,
+	)
+	if err != nil {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() returned error: %v", err)
+	}
+	if gotTxID != txID {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() txID = %s, want %s", gotTxID, txID)
+	}
+	if gotNodeID != cfg.NodeID {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() nodeID = %s, want %s", gotNodeID, cfg.NodeID)
+	}
+	if gotWeight != cfg.StakeAmt {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() weight = %d, want %d", gotWeight, cfg.StakeAmt)
+	}
+	gotPop, ok := gotSigner.(*signer.ProofOfPossession)
+	if !ok {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() signer type = %T, want *signer.ProofOfPossession", gotSigner)
+	}
+	if gotPop != pop {
+		t.Fatal("issueAddAutoRenewedValidatorTx() signer pointer mismatch")
+	}
+	if gotAssetID != assetID {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() assetID = %s, want %s", gotAssetID, assetID)
+	}
+	if gotValidationRewardsOwner == nil || len(gotValidationRewardsOwner.Addrs) != 1 || gotValidationRewardsOwner.Addrs[0] != rewardAddr {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() validation owner addrs = %#v, want [%s]", gotValidationRewardsOwner, rewardAddr)
+	}
+	if gotDelegationRewardsOwner == nil || len(gotDelegationRewardsOwner.Addrs) != 1 || gotDelegationRewardsOwner.Addrs[0] != rewardAddr {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() delegation owner addrs = %#v, want [%s]", gotDelegationRewardsOwner, rewardAddr)
+	}
+	if gotValidatorAuthority == nil || len(gotValidatorAuthority.Addrs) != 1 || gotValidatorAuthority.Addrs[0] != authorityAddr {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() authority addrs = %#v, want [%s]", gotValidatorAuthority, authorityAddr)
+	}
+	if gotDelegationShares != cfg.DelegationFee {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() delegation shares = %d, want %d", gotDelegationShares, cfg.DelegationFee)
+	}
+	if gotAutoCompoundRewardShares != cfg.AutoCompoundRewardShares {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() auto-compound shares = %d, want %d", gotAutoCompoundRewardShares, cfg.AutoCompoundRewardShares)
+	}
+	if gotPeriodSeconds != uint64(cfg.Period/time.Second) {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() period seconds = %d, want %d", gotPeriodSeconds, uint64(cfg.Period/time.Second))
+	}
+}
+
 func TestIssueAddPermissionlessDelegatorTx(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
 	rewardAddr := ids.GenerateTestShortID()

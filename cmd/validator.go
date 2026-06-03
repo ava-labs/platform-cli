@@ -26,6 +26,9 @@ var (
 	valNodeEndpoint  string
 	valBLSPublicKey  string
 	valBLSPoP        string
+	valAutoPeriod    string
+	valAutoCompound  float64
+	valOwnerAddr     string
 )
 
 var validatorCmd = &cobra.Command{
@@ -203,6 +206,113 @@ var validatorDelegateCmd = &cobra.Command{
 	},
 }
 
+var validatorAddAutoRenewedCmd = &cobra.Command{
+	Use:   "add-auto-renewed",
+	Short: "Add an auto-renewed primary network validator",
+	Long:  `Add an auto-renewed validator to the Avalanche primary network.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx, cancel := getOperationContext()
+		defer cancel()
+
+		if valStakeAmount <= 0 {
+			return fmt.Errorf("--stake is required and must be positive")
+		}
+		if valNodeID == "" {
+			return fmt.Errorf("--node-id is required")
+		}
+		nodeID, err := ids.NodeIDFromString(valNodeID)
+		if err != nil {
+			return fmt.Errorf("invalid node ID: %w", err)
+		}
+
+		period, err := parseAutoRenewPeriod(valAutoPeriod)
+		if err != nil {
+			return err
+		}
+
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+		if period < netConfig.MinStakeDuration {
+			return fmt.Errorf("period too short for %s: minimum is %s", netConfig.Name, netConfig.MinStakeDuration)
+		}
+
+		nodePoP, nodeURI, err := getValidatorPoP(ctx, nodeID)
+		if err != nil {
+			return err
+		}
+
+		w, cleanup, err := loadPChainWallet(ctx, netConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create wallet: %w", err)
+		}
+		defer cleanup()
+
+		rewardAddr := w.PChainAddress()
+		if valRewardAddr != "" {
+			rewardAddr, err = ids.ShortFromString(valRewardAddr)
+			if err != nil {
+				return fmt.Errorf("invalid reward address: %w", err)
+			}
+		}
+
+		authorityAddr := w.PChainAddress()
+		if valOwnerAddr != "" {
+			authorityAddr, err = ids.ShortFromString(valOwnerAddr)
+			if err != nil {
+				return fmt.Errorf("invalid owner address: %w", err)
+			}
+		}
+
+		stakeNAVAX, err := avaxToNAVAX(valStakeAmount)
+		if err != nil {
+			return fmt.Errorf("invalid stake amount: %w", err)
+		}
+		if stakeNAVAX < netConfig.MinValidatorStake {
+			return fmt.Errorf("stake too low for %s: minimum is %.9f AVAX", netConfig.Name, float64(netConfig.MinValidatorStake)/1e9)
+		}
+
+		delegationFeeShares, err := feeToShares(valDelegationFee)
+		if err != nil {
+			return fmt.Errorf("invalid delegation fee: %w", err)
+		}
+		autoCompoundShares, err := fractionToShares("auto-compound", valAutoCompound)
+		if err != nil {
+			return fmt.Errorf("invalid auto-compound: %w", err)
+		}
+
+		fmt.Printf("Adding auto-renewed validator %s with %.9f AVAX stake...\n", nodeID, valStakeAmount)
+		fmt.Printf("  Period: %s\n", period)
+		fmt.Printf("  Delegation Fee: %.2f%%\n", valDelegationFee*100)
+		fmt.Printf("  Auto-Compound Rewards: %.2f%%\n", valAutoCompound*100)
+		fmt.Printf("  Validator Authority: %s\n", authorityAddr)
+		if nodeURI != "" {
+			fmt.Printf("  Node Endpoint: %s\n", nodeURI)
+		} else {
+			fmt.Println("  BLS PoP Source: --bls-public-key/--bls-pop flags")
+		}
+		fmt.Println("Submitting transaction...")
+
+		txID, err := pchain.AddAutoRenewedValidator(ctx, w, pchain.AddAutoRenewedValidatorConfig{
+			NodeID:                   nodeID,
+			StakeAmt:                 stakeNAVAX,
+			RewardAddr:               rewardAddr,
+			ValidatorAuthorityAddr:   authorityAddr,
+			DelegationFee:            delegationFeeShares,
+			AutoCompoundRewardShares: autoCompoundShares,
+			Period:                   period,
+			BLSSigner:                nodePoP,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("TX ID: %s\n", txID)
+		return nil
+	},
+}
+
 func parseTimeRange(startStr, durationStr string) (time.Time, time.Time, error) {
 	var start time.Time
 	var err error
@@ -227,6 +337,20 @@ func parseTimeRange(startStr, durationStr string) (time.Time, time.Time, error) 
 
 	end := start.Add(duration)
 	return start, end, nil
+}
+
+func parseAutoRenewPeriod(periodStr string) (time.Duration, error) {
+	period, err := time.ParseDuration(periodStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid period: %w", err)
+	}
+	if period <= 0 {
+		return 0, fmt.Errorf("period must be positive")
+	}
+	if period%time.Second != 0 {
+		return 0, fmt.Errorf("period must be a whole number of seconds")
+	}
+	return period, nil
 }
 
 // getValidatorPoP returns a BLS proof of possession for validator registration.
@@ -301,6 +425,7 @@ func normalizeValidatorNodeURI(addr string) (string, error) {
 func init() {
 	rootCmd.AddCommand(validatorCmd)
 	validatorCmd.AddCommand(validatorAddCmd)
+	validatorCmd.AddCommand(validatorAddAutoRenewedCmd)
 	validatorCmd.AddCommand(validatorDelegateCmd)
 
 	// Add validator flags
@@ -313,6 +438,18 @@ func init() {
 	validatorAddCmd.Flags().StringVar(&valDuration, "duration", "336h", "Validation duration (min 14 days)")
 	validatorAddCmd.Flags().Float64Var(&valDelegationFee, "delegation-fee", 0.02, "Delegation fee (0.02 = 2%)")
 	validatorAddCmd.Flags().StringVar(&valRewardAddr, "reward-address", "", "Reward address (default: own address)")
+
+	// Add auto-renewed validator flags
+	validatorAddAutoRenewedCmd.Flags().StringVar(&valNodeID, "node-id", "", "Node ID to validate (required)")
+	validatorAddAutoRenewedCmd.Flags().StringVar(&valNodeEndpoint, "node-endpoint", "", "Validator node endpoint (fallback mode) to fetch BLS proof of possession")
+	validatorAddAutoRenewedCmd.Flags().StringVar(&valBLSPublicKey, "bls-public-key", "", "Validator BLS public key (hex, recommended/manual mode)")
+	validatorAddAutoRenewedCmd.Flags().StringVar(&valBLSPoP, "bls-pop", "", "Validator BLS proof of possession signature (hex, recommended/manual mode)")
+	validatorAddAutoRenewedCmd.Flags().Float64Var(&valStakeAmount, "stake", 0, "Stake amount in AVAX (min 2000)")
+	validatorAddAutoRenewedCmd.Flags().StringVar(&valAutoPeriod, "period", "336h", "Auto-renewal cycle duration (for example, 336h for 14 days)")
+	validatorAddAutoRenewedCmd.Flags().Float64Var(&valDelegationFee, "delegation-fee", 0.02, "Delegation fee (0.02 = 2%)")
+	validatorAddAutoRenewedCmd.Flags().Float64Var(&valAutoCompound, "auto-compound", 1, "Fraction of rewards to auto-compound (0.3 = 30%, 1 = 100%)")
+	validatorAddAutoRenewedCmd.Flags().StringVar(&valRewardAddr, "reward-address", "", "Reward address (default: own address)")
+	validatorAddAutoRenewedCmd.Flags().StringVar(&valOwnerAddr, "owner-address", "", "Address authorized to update auto-renew config (default: own address)")
 
 	// Delegate flags
 	validatorDelegateCmd.Flags().StringVar(&valNodeID, "node-id", "", "Node ID to delegate to")

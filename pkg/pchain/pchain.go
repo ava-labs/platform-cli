@@ -209,6 +209,96 @@ func issueAddPermissionlessValidatorTx(
 	return tx.ID(), nil
 }
 
+// AddAutoRenewedValidatorConfig holds configuration for adding an auto-renewed
+// primary network validator.
+type AddAutoRenewedValidatorConfig struct {
+	NodeID                   ids.NodeID
+	StakeAmt                 uint64 // in nAVAX
+	RewardAddr               ids.ShortID
+	ValidatorAuthorityAddr   ids.ShortID
+	DelegationFee            uint32                    // in parts per million (1_000_000 = 100%)
+	AutoCompoundRewardShares uint32                    // in parts per million (1_000_000 = 100%)
+	Period                   time.Duration             // auto-renewal cycle duration
+	BLSSigner                *signer.ProofOfPossession // BLS proof of possession for the validator
+}
+
+type addAutoRenewedValidatorTxIssuer interface {
+	IssueAddAutoRenewedValidatorTx(
+		validatorNodeID ids.NodeID,
+		weight uint64,
+		signer signer.Signer,
+		assetID ids.ID,
+		validationRewardsOwner *secp256k1fx.OutputOwners,
+		delegationRewardsOwner *secp256k1fx.OutputOwners,
+		validatorAuthority *secp256k1fx.OutputOwners,
+		delegationShares uint32,
+		autoCompoundRewardShares uint32,
+		periodSeconds uint64,
+		options ...common.Option,
+	) (*txs.Tx, error)
+}
+
+// AddAutoRenewedValidator adds an auto-renewed validator to the primary network.
+func AddAutoRenewedValidator(ctx context.Context, w *wallet.Wallet, cfg AddAutoRenewedValidatorConfig) (ids.ID, error) {
+	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
+	issuer, ok := w.PWallet().(addAutoRenewedValidatorTxIssuer)
+	if !ok {
+		return ids.Empty, fmt.Errorf("AddAutoRenewedValidatorTx requires upstream avalanchego wallet support for ACP-236")
+	}
+	return issueAddAutoRenewedValidatorTx(
+		issuer.IssueAddAutoRenewedValidatorTx,
+		avaxAssetID,
+		cfg,
+		common.WithContext(ctx),
+	)
+}
+
+func issueAddAutoRenewedValidatorTx(
+	issueTxFn func(
+		validatorNodeID ids.NodeID,
+		weight uint64,
+		signer signer.Signer,
+		assetID ids.ID,
+		validationRewardsOwner *secp256k1fx.OutputOwners,
+		delegationRewardsOwner *secp256k1fx.OutputOwners,
+		validatorAuthority *secp256k1fx.OutputOwners,
+		delegationShares uint32,
+		autoCompoundRewardShares uint32,
+		periodSeconds uint64,
+		options ...common.Option,
+	) (*txs.Tx, error),
+	avaxAssetID ids.ID,
+	cfg AddAutoRenewedValidatorConfig,
+	options ...common.Option,
+) (ids.ID, error) {
+	rewardsOwner := &secp256k1fx.OutputOwners{
+		Threshold: 1,
+		Addrs:     []ids.ShortID{cfg.RewardAddr},
+	}
+	validatorAuthority := &secp256k1fx.OutputOwners{
+		Threshold: 1,
+		Addrs:     []ids.ShortID{cfg.ValidatorAuthorityAddr},
+	}
+
+	tx, err := issueTxFn(
+		cfg.NodeID,
+		cfg.StakeAmt,
+		cfg.BLSSigner,
+		avaxAssetID,
+		rewardsOwner,
+		rewardsOwner,
+		validatorAuthority,
+		cfg.DelegationFee,
+		cfg.AutoCompoundRewardShares,
+		uint64(cfg.Period/time.Second),
+		options...,
+	)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to issue AddAutoRenewedValidatorTx: %w", err)
+	}
+	return tx.ID(), nil
+}
+
 // AddDelegatorConfig holds configuration for adding a delegator.
 type AddDelegatorConfig struct {
 	NodeID     ids.NodeID
