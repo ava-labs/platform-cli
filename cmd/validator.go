@@ -507,6 +507,9 @@ func parseRewardAutoTimestamp(timestampStr string) (uint64, time.Time, error) {
 		if timestamp == 0 {
 			return 0, time.Time{}, fmt.Errorf("timestamp must be positive")
 		}
+		if timestamp > uint64(1<<63-1) {
+			return 0, time.Time{}, fmt.Errorf("timestamp is too large")
+		}
 		return timestamp, time.Unix(int64(timestamp), 0).UTC(), nil
 	}
 

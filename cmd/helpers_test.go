@@ -335,6 +335,11 @@ func TestParseRewardAutoTimestamp(t *testing.T) {
 			wantError: true,
 		},
 		{
+			name:      "too large",
+			input:     "9223372036854775808",
+			wantError: true,
+		},
+		{
 			name:      "invalid",
 			input:     "bad-timestamp",
 			wantError: true,
