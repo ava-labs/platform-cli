@@ -363,6 +363,77 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 	}
 }
 
+func TestIssueSetAutoRenewedValidatorConfigTx(t *testing.T) {
+	validatorTxID := ids.GenerateTestID()
+	issuedTxID := ids.GenerateTestID()
+	cfg := SetAutoRenewedValidatorConfigTxConfig{
+		TxID:                     validatorTxID,
+		AutoCompoundRewardShares: 250_000,
+		Period:                   7 * 24 * time.Hour,
+	}
+
+	var gotValidatorTxID ids.ID
+	var gotAutoCompoundRewardShares uint32
+	var gotPeriodSeconds uint64
+	gotTxID, err := issueSetAutoRenewedValidatorConfigTx(
+		func(
+			txID ids.ID,
+			autoCompoundRewardShares uint32,
+			periodSeconds uint64,
+			_ ...common.Option,
+		) (*txs.Tx, error) {
+			gotValidatorTxID = txID
+			gotAutoCompoundRewardShares = autoCompoundRewardShares
+			gotPeriodSeconds = periodSeconds
+			return &txs.Tx{TxID: issuedTxID}, nil
+		},
+		cfg,
+	)
+	if err != nil {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() returned error: %v", err)
+	}
+	if gotTxID != issuedTxID {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() txID = %s, want %s", gotTxID, issuedTxID)
+	}
+	if gotValidatorTxID != validatorTxID {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() validator txID = %s, want %s", gotValidatorTxID, validatorTxID)
+	}
+	if gotAutoCompoundRewardShares != cfg.AutoCompoundRewardShares {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() auto-compound shares = %d, want %d", gotAutoCompoundRewardShares, cfg.AutoCompoundRewardShares)
+	}
+	if gotPeriodSeconds != uint64(cfg.Period/time.Second) {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() period seconds = %d, want %d", gotPeriodSeconds, uint64(cfg.Period/time.Second))
+	}
+}
+
+func TestIssueSetAutoRenewedValidatorConfigTxAllowsZeroPeriod(t *testing.T) {
+	cfg := SetAutoRenewedValidatorConfigTxConfig{
+		TxID:                     ids.GenerateTestID(),
+		AutoCompoundRewardShares: 0,
+		Period:                   0,
+	}
+
+	var gotPeriodSeconds uint64
+	_, err := issueSetAutoRenewedValidatorConfigTx(
+		func(
+			_ ids.ID,
+			_ uint32,
+			periodSeconds uint64,
+			_ ...common.Option,
+		) (*txs.Tx, error) {
+			gotPeriodSeconds = periodSeconds
+			return &txs.Tx{TxID: ids.GenerateTestID()}, nil
+		},
+		cfg,
+	)
+	if err != nil {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() returned error: %v", err)
+	}
+	if gotPeriodSeconds != 0 {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() period seconds = %d, want 0", gotPeriodSeconds)
+	}
+}
+
 func TestIssueAddPermissionlessDelegatorTx(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
 	rewardAddr := ids.GenerateTestShortID()

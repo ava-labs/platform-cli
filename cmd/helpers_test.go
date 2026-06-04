@@ -246,6 +246,64 @@ func TestParseAutoRenewPeriod(t *testing.T) {
 	}
 }
 
+func TestParseAutoRenewConfigPeriod(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    time.Duration
+		wantErr bool
+	}{
+		{
+			name:  "zero duration",
+			input: "0",
+			want:  0,
+		},
+		{
+			name:  "zero seconds",
+			input: "0s",
+			want:  0,
+		},
+		{
+			name:  "non-zero duration",
+			input: "336h",
+			want:  14 * 24 * time.Hour,
+		},
+		{
+			name:    "negative duration",
+			input:   "-1s",
+			wantErr: true,
+		},
+		{
+			name:    "sub-second duration",
+			input:   "1.5s",
+			wantErr: true,
+		},
+		{
+			name:    "invalid duration",
+			input:   "bad-period",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseAutoRenewConfigPeriod(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("parseAutoRenewConfigPeriod(%q) expected error", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseAutoRenewConfigPeriod(%q) returned error: %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Fatalf("parseAutoRenewConfigPeriod(%q) = %s, want %s", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseValidatorAddrs(t *testing.T) {
 	got := parseValidatorAddrs(" 127.0.0.1 , node.example.com:9650 ,,https://node.example.com ")
 	want := []string{"127.0.0.1", "node.example.com:9650", "https://node.example.com"}

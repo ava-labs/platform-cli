@@ -17,18 +17,21 @@ import (
 )
 
 var (
-	valNodeID        string
-	valStakeAmount   float64
-	valStartTime     string
-	valDuration      string
-	valDelegationFee float64
-	valRewardAddr    string
-	valNodeEndpoint  string
-	valBLSPublicKey  string
-	valBLSPoP        string
-	valAutoPeriod    string
-	valAutoCompound  float64
-	valOwnerAddr     string
+	valNodeID          string
+	valStakeAmount     float64
+	valStartTime       string
+	valDuration        string
+	valDelegationFee   float64
+	valRewardAddr      string
+	valNodeEndpoint    string
+	valBLSPublicKey    string
+	valBLSPoP          string
+	valAutoPeriod      string
+	valAutoCompound    float64
+	valOwnerAddr       string
+	valSetAutoTxID     string
+	valSetAutoPeriod   string
+	valSetAutoCompound float64
 )
 
 var validatorCmd = &cobra.Command{
@@ -313,6 +316,75 @@ var validatorAddAutoRenewedCmd = &cobra.Command{
 	},
 }
 
+var validatorSetAutoConfigCmd = &cobra.Command{
+	Use:   "set-auto-config",
+	Short: "Set auto-renewed validator config",
+	Long:  `Set the next-cycle configuration for an auto-renewed validator.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx, cancel := getOperationContext()
+		defer cancel()
+
+		if valSetAutoTxID == "" {
+			return fmt.Errorf("--tx-id is required")
+		}
+		autoRenewedTxID, err := ids.FromString(valSetAutoTxID)
+		if err != nil {
+			return fmt.Errorf("invalid tx ID: %w", err)
+		}
+
+		if !cmd.Flags().Changed("period") {
+			return fmt.Errorf("--period is required")
+		}
+		period, err := parseAutoRenewConfigPeriod(valSetAutoPeriod)
+		if err != nil {
+			return err
+		}
+
+		if !cmd.Flags().Changed("auto-compound") {
+			return fmt.Errorf("--auto-compound is required")
+		}
+		autoCompoundShares, err := fractionToShares("auto-compound", valSetAutoCompound)
+		if err != nil {
+			return fmt.Errorf("invalid auto-compound: %w", err)
+		}
+
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+		if period > 0 && period < netConfig.MinStakeDuration {
+			return fmt.Errorf("period too short for %s: minimum is %s", netConfig.Name, netConfig.MinStakeDuration)
+		}
+
+		w, cleanup, err := loadPChainWallet(ctx, netConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create wallet: %w", err)
+		}
+		defer cleanup()
+
+		fmt.Printf("Setting auto-renewed validator config for %s...\n", autoRenewedTxID)
+		if period == 0 {
+			fmt.Println("  Period: 0s (exit after current cycle)")
+		} else {
+			fmt.Printf("  Period: %s\n", period)
+		}
+		fmt.Printf("  Auto-Compound Rewards: %.2f%%\n", valSetAutoCompound*100)
+		fmt.Println("Submitting transaction...")
+
+		txID, err := pchain.SetAutoRenewedValidatorConfig(ctx, w, pchain.SetAutoRenewedValidatorConfigTxConfig{
+			TxID:                     autoRenewedTxID,
+			AutoCompoundRewardShares: autoCompoundShares,
+			Period:                   period,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("TX ID: %s\n", txID)
+		return nil
+	},
+}
+
 func parseTimeRange(startStr, durationStr string) (time.Time, time.Time, error) {
 	var start time.Time
 	var err error
@@ -346,6 +418,23 @@ func parseAutoRenewPeriod(periodStr string) (time.Duration, error) {
 	}
 	if period <= 0 {
 		return 0, fmt.Errorf("period must be positive")
+	}
+	if period%time.Second != 0 {
+		return 0, fmt.Errorf("period must be a whole number of seconds")
+	}
+	return period, nil
+}
+
+func parseAutoRenewConfigPeriod(periodStr string) (time.Duration, error) {
+	if strings.TrimSpace(periodStr) == "0" {
+		return 0, nil
+	}
+	period, err := time.ParseDuration(periodStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid period: %w", err)
+	}
+	if period < 0 {
+		return 0, fmt.Errorf("period cannot be negative")
 	}
 	if period%time.Second != 0 {
 		return 0, fmt.Errorf("period must be a whole number of seconds")
@@ -426,6 +515,7 @@ func init() {
 	rootCmd.AddCommand(validatorCmd)
 	validatorCmd.AddCommand(validatorAddCmd)
 	validatorCmd.AddCommand(validatorAddAutoRenewedCmd)
+	validatorCmd.AddCommand(validatorSetAutoConfigCmd)
 	validatorCmd.AddCommand(validatorDelegateCmd)
 
 	// Add validator flags
@@ -450,6 +540,11 @@ func init() {
 	validatorAddAutoRenewedCmd.Flags().Float64Var(&valAutoCompound, "auto-compound", 1, "Fraction of rewards to auto-compound (0.3 = 30%, 1 = 100%)")
 	validatorAddAutoRenewedCmd.Flags().StringVar(&valRewardAddr, "reward-address", "", "Reward address (default: own address)")
 	validatorAddAutoRenewedCmd.Flags().StringVar(&valOwnerAddr, "owner-address", "", "Address authorized to update auto-renew config (default: own address)")
+
+	// Set auto-renewed validator config flags
+	validatorSetAutoConfigCmd.Flags().StringVar(&valSetAutoTxID, "tx-id", "", "Original AddAutoRenewedValidatorTx ID (required)")
+	validatorSetAutoConfigCmd.Flags().StringVar(&valSetAutoPeriod, "period", "", "Next auto-renewal cycle duration, or 0 to exit after the current cycle (required)")
+	validatorSetAutoConfigCmd.Flags().Float64Var(&valSetAutoCompound, "auto-compound", 0, "Fraction of rewards to auto-compound (0.3 = 30%, 1 = 100%) (required)")
 
 	// Delegate flags
 	validatorDelegateCmd.Flags().StringVar(&valNodeID, "node-id", "", "Node ID to delegate to")

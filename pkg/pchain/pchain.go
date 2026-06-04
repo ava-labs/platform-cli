@@ -238,6 +238,15 @@ type addAutoRenewedValidatorTxIssuer interface {
 	) (*txs.Tx, error)
 }
 
+type setAutoRenewedValidatorConfigTxIssuer interface {
+	IssueSetAutoRenewedValidatorConfigTx(
+		txID ids.ID,
+		autoCompoundRewardShares uint32,
+		periodSeconds uint64,
+		options ...common.Option,
+	) (*txs.Tx, error)
+}
+
 // AddAutoRenewedValidator adds an auto-renewed validator to the primary network.
 func AddAutoRenewedValidator(ctx context.Context, w *wallet.Wallet, cfg AddAutoRenewedValidatorConfig) (ids.ID, error) {
 	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
@@ -295,6 +304,50 @@ func issueAddAutoRenewedValidatorTx(
 	)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue AddAutoRenewedValidatorTx: %w", err)
+	}
+	return tx.ID(), nil
+}
+
+// SetAutoRenewedValidatorConfigTxConfig holds configuration for updating an
+// auto-renewed validator's next-cycle configuration.
+type SetAutoRenewedValidatorConfigTxConfig struct {
+	TxID                     ids.ID
+	AutoCompoundRewardShares uint32        // in parts per million (1_000_000 = 100%)
+	Period                   time.Duration // 0 means exit after the current cycle
+}
+
+// SetAutoRenewedValidatorConfig updates an auto-renewed validator's next-cycle
+// configuration.
+func SetAutoRenewedValidatorConfig(ctx context.Context, w *wallet.Wallet, cfg SetAutoRenewedValidatorConfigTxConfig) (ids.ID, error) {
+	issuer, ok := w.PWallet().(setAutoRenewedValidatorConfigTxIssuer)
+	if !ok {
+		return ids.Empty, fmt.Errorf("SetAutoRenewedValidatorConfigTx requires upstream avalanchego wallet support for ACP-236")
+	}
+	return issueSetAutoRenewedValidatorConfigTx(
+		issuer.IssueSetAutoRenewedValidatorConfigTx,
+		cfg,
+		common.WithContext(ctx),
+	)
+}
+
+func issueSetAutoRenewedValidatorConfigTx(
+	issueTxFn func(
+		txID ids.ID,
+		autoCompoundRewardShares uint32,
+		periodSeconds uint64,
+		options ...common.Option,
+	) (*txs.Tx, error),
+	cfg SetAutoRenewedValidatorConfigTxConfig,
+	options ...common.Option,
+) (ids.ID, error) {
+	tx, err := issueTxFn(
+		cfg.TxID,
+		cfg.AutoCompoundRewardShares,
+		uint64(cfg.Period/time.Second),
+		options...,
+	)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to issue SetAutoRenewedValidatorConfigTx: %w", err)
 	}
 	return tx.ID(), nil
 }
