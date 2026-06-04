@@ -434,6 +434,42 @@ func TestIssueSetAutoRenewedValidatorConfigTxAllowsZeroPeriod(t *testing.T) {
 	}
 }
 
+func TestIssueRewardAutoRenewedValidatorTx(t *testing.T) {
+	validatorTxID := ids.GenerateTestID()
+	issuedTxID := ids.GenerateTestID()
+	cfg := RewardAutoRenewedValidatorConfig{
+		TxID:      validatorTxID,
+		Timestamp: 1780576200,
+	}
+
+	var gotValidatorTxID ids.ID
+	var gotTimestamp uint64
+	gotTxID, err := issueRewardAutoRenewedValidatorTx(
+		func(
+			txID ids.ID,
+			timestamp uint64,
+			_ ...common.Option,
+		) (*txs.Tx, error) {
+			gotValidatorTxID = txID
+			gotTimestamp = timestamp
+			return &txs.Tx{TxID: issuedTxID}, nil
+		},
+		cfg,
+	)
+	if err != nil {
+		t.Fatalf("issueRewardAutoRenewedValidatorTx() returned error: %v", err)
+	}
+	if gotTxID != issuedTxID {
+		t.Fatalf("issueRewardAutoRenewedValidatorTx() txID = %s, want %s", gotTxID, issuedTxID)
+	}
+	if gotValidatorTxID != validatorTxID {
+		t.Fatalf("issueRewardAutoRenewedValidatorTx() validator txID = %s, want %s", gotValidatorTxID, validatorTxID)
+	}
+	if gotTimestamp != cfg.Timestamp {
+		t.Fatalf("issueRewardAutoRenewedValidatorTx() timestamp = %d, want %d", gotTimestamp, cfg.Timestamp)
+	}
+}
+
 func TestIssueAddPermissionlessDelegatorTx(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
 	rewardAddr := ids.GenerateTestShortID()

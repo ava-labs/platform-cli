@@ -247,6 +247,14 @@ type setAutoRenewedValidatorConfigTxIssuer interface {
 	) (*txs.Tx, error)
 }
 
+type rewardAutoRenewedValidatorTxIssuer interface {
+	IssueRewardAutoRenewedValidatorTx(
+		txID ids.ID,
+		timestamp uint64,
+		options ...common.Option,
+	) (*txs.Tx, error)
+}
+
 // AddAutoRenewedValidator adds an auto-renewed validator to the primary network.
 func AddAutoRenewedValidator(ctx context.Context, w *wallet.Wallet, cfg AddAutoRenewedValidatorConfig) (ids.ID, error) {
 	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
@@ -348,6 +356,47 @@ func issueSetAutoRenewedValidatorConfigTx(
 	)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue SetAutoRenewedValidatorConfigTx: %w", err)
+	}
+	return tx.ID(), nil
+}
+
+// RewardAutoRenewedValidatorConfig holds configuration for rewarding or exiting
+// an auto-renewed validator at the end of a validation cycle.
+type RewardAutoRenewedValidatorConfig struct {
+	TxID      ids.ID
+	Timestamp uint64 // cycle end timestamp in Unix seconds
+}
+
+// RewardAutoRenewedValidator rewards or exits an auto-renewed validator at the
+// end of a validation cycle.
+func RewardAutoRenewedValidator(ctx context.Context, w *wallet.Wallet, cfg RewardAutoRenewedValidatorConfig) (ids.ID, error) {
+	issuer, ok := w.PWallet().(rewardAutoRenewedValidatorTxIssuer)
+	if !ok {
+		return ids.Empty, fmt.Errorf("RewardAutoRenewedValidatorTx requires upstream avalanchego wallet support for ACP-236")
+	}
+	return issueRewardAutoRenewedValidatorTx(
+		issuer.IssueRewardAutoRenewedValidatorTx,
+		cfg,
+		common.WithContext(ctx),
+	)
+}
+
+func issueRewardAutoRenewedValidatorTx(
+	issueTxFn func(
+		txID ids.ID,
+		timestamp uint64,
+		options ...common.Option,
+	) (*txs.Tx, error),
+	cfg RewardAutoRenewedValidatorConfig,
+	options ...common.Option,
+) (ids.ID, error) {
+	tx, err := issueTxFn(
+		cfg.TxID,
+		cfg.Timestamp,
+		options...,
+	)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to issue RewardAutoRenewedValidatorTx: %w", err)
 	}
 	return tx.ID(), nil
 }

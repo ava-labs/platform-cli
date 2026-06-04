@@ -304,6 +304,65 @@ func TestParseAutoRenewConfigPeriod(t *testing.T) {
 	}
 }
 
+func TestParseRewardAutoTimestamp(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantUnix  uint64
+		wantRFC   string
+		wantError bool
+	}{
+		{
+			name:     "RFC3339",
+			input:    "2026-06-04T12:30:00Z",
+			wantUnix: 1780576200,
+			wantRFC:  "2026-06-04T12:30:00Z",
+		},
+		{
+			name:     "Unix seconds",
+			input:    "1780576200",
+			wantUnix: 1780576200,
+			wantRFC:  "2026-06-04T12:30:00Z",
+		},
+		{
+			name:      "empty",
+			input:     "",
+			wantError: true,
+		},
+		{
+			name:      "zero",
+			input:     "0",
+			wantError: true,
+		},
+		{
+			name:      "invalid",
+			input:     "bad-timestamp",
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotUnix, gotTime, err := parseRewardAutoTimestamp(tt.input)
+			if tt.wantError {
+				if err == nil {
+					t.Fatalf("parseRewardAutoTimestamp(%q) expected error", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseRewardAutoTimestamp(%q) returned error: %v", tt.input, err)
+			}
+			if gotUnix != tt.wantUnix {
+				t.Fatalf("parseRewardAutoTimestamp(%q) unix = %d, want %d", tt.input, gotUnix, tt.wantUnix)
+			}
+			if gotTime.Format(time.RFC3339) != tt.wantRFC {
+				t.Fatalf("parseRewardAutoTimestamp(%q) time = %s, want %s", tt.input, gotTime.Format(time.RFC3339), tt.wantRFC)
+			}
+		})
+	}
+}
+
 func TestParseValidatorAddrs(t *testing.T) {
 	got := parseValidatorAddrs(" 127.0.0.1 , node.example.com:9650 ,,https://node.example.com ")
 	want := []string{"127.0.0.1", "node.example.com:9650", "https://node.example.com"}
