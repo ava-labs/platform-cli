@@ -1,6 +1,7 @@
 package pchain
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -281,41 +282,45 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 		BLSSigner:                pop,
 	}
 	txID := ids.GenerateTestID()
+	stakeOuts := []*avax.TransferableOutput{{
+		Asset: avax.Asset{ID: assetID},
+		Out: &secp256k1fx.TransferOutput{
+			Amt: cfg.StakeAmt,
+		},
+	}}
 
-	var gotNodeID ids.NodeID
-	var gotWeight uint64
+	var gotVdr *txs.SubnetValidator
 	var gotSigner signer.Signer
 	var gotAssetID ids.ID
 	var gotValidationRewardsOwner *secp256k1fx.OutputOwners
 	var gotDelegationRewardsOwner *secp256k1fx.OutputOwners
-	var gotValidatorAuthority *secp256k1fx.OutputOwners
 	var gotDelegationShares uint32
-	var gotAutoCompoundRewardShares uint32
-	var gotPeriodSeconds uint64
+	var gotUnsignedTx txs.UnsignedTx
 	gotTxID, err := issueAddAutoRenewedValidatorTx(
 		func(
-			validatorNodeID ids.NodeID,
-			weight uint64,
+			vdr *txs.SubnetValidator,
 			signer signer.Signer,
 			assetID ids.ID,
 			validationRewardsOwner *secp256k1fx.OutputOwners,
 			delegationRewardsOwner *secp256k1fx.OutputOwners,
-			validatorAuthority *secp256k1fx.OutputOwners,
-			delegationShares uint32,
-			autoCompoundRewardShares uint32,
-			periodSeconds uint64,
+			shares uint32,
 			_ ...common.Option,
-		) (*txs.Tx, error) {
-			gotNodeID = validatorNodeID
-			gotWeight = weight
+		) (*txs.AddPermissionlessValidatorTx, error) {
+			gotVdr = vdr
 			gotSigner = signer
 			gotAssetID = assetID
 			gotValidationRewardsOwner = validationRewardsOwner
 			gotDelegationRewardsOwner = delegationRewardsOwner
-			gotValidatorAuthority = validatorAuthority
-			gotDelegationShares = delegationShares
-			gotAutoCompoundRewardShares = autoCompoundRewardShares
-			gotPeriodSeconds = periodSeconds
+			gotDelegationShares = shares
+			return &txs.AddPermissionlessValidatorTx{
+				BaseTx: txs.BaseTx{BaseTx: avax.BaseTx{
+					NetworkID: 1,
+				}},
+				StakeOuts: stakeOuts,
+			}, nil
+		},
+		func(utx txs.UnsignedTx, _ ...common.Option) (*txs.Tx, error) {
+			gotUnsignedTx = utx
 			return &txs.Tx{TxID: txID}, nil
 		},
 		assetID,
@@ -327,64 +332,100 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 	if gotTxID != txID {
 		t.Fatalf("issueAddAutoRenewedValidatorTx() txID = %s, want %s", gotTxID, txID)
 	}
-	if gotNodeID != cfg.NodeID {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() nodeID = %s, want %s", gotNodeID, cfg.NodeID)
+	if gotVdr == nil {
+		t.Fatal("issueAddAutoRenewedValidatorTx() builder validator is nil")
 	}
-	if gotWeight != cfg.StakeAmt {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() weight = %d, want %d", gotWeight, cfg.StakeAmt)
+	if gotVdr.Validator.NodeID != cfg.NodeID {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder nodeID = %s, want %s", gotVdr.Validator.NodeID, cfg.NodeID)
+	}
+	if gotVdr.Validator.Wght != cfg.StakeAmt {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder weight = %d, want %d", gotVdr.Validator.Wght, cfg.StakeAmt)
+	}
+	if gotVdr.Subnet != ids.Empty {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder subnet = %s, want Primary Network (ids.Empty)", gotVdr.Subnet)
 	}
 	gotPop, ok := gotSigner.(*signer.ProofOfPossession)
 	if !ok {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() signer type = %T, want *signer.ProofOfPossession", gotSigner)
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder signer type = %T, want *signer.ProofOfPossession", gotSigner)
 	}
 	if gotPop != pop {
-		t.Fatal("issueAddAutoRenewedValidatorTx() signer pointer mismatch")
+		t.Fatal("issueAddAutoRenewedValidatorTx() builder signer pointer mismatch")
 	}
 	if gotAssetID != assetID {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() assetID = %s, want %s", gotAssetID, assetID)
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder assetID = %s, want %s", gotAssetID, assetID)
 	}
 	if gotValidationRewardsOwner == nil || len(gotValidationRewardsOwner.Addrs) != 1 || gotValidationRewardsOwner.Addrs[0] != rewardAddr {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() validation owner addrs = %#v, want [%s]", gotValidationRewardsOwner, rewardAddr)
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder validation owner addrs = %#v, want [%s]", gotValidationRewardsOwner, rewardAddr)
 	}
 	if gotDelegationRewardsOwner == nil || len(gotDelegationRewardsOwner.Addrs) != 1 || gotDelegationRewardsOwner.Addrs[0] != rewardAddr {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() delegation owner addrs = %#v, want [%s]", gotDelegationRewardsOwner, rewardAddr)
-	}
-	if gotValidatorAuthority == nil || len(gotValidatorAuthority.Addrs) != 1 || gotValidatorAuthority.Addrs[0] != authorityAddr {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() authority addrs = %#v, want [%s]", gotValidatorAuthority, authorityAddr)
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder delegation owner addrs = %#v, want [%s]", gotDelegationRewardsOwner, rewardAddr)
 	}
 	if gotDelegationShares != cfg.DelegationFee {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() delegation shares = %d, want %d", gotDelegationShares, cfg.DelegationFee)
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder delegation shares = %d, want %d", gotDelegationShares, cfg.DelegationFee)
 	}
-	if gotAutoCompoundRewardShares != cfg.AutoCompoundRewardShares {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() auto-compound shares = %d, want %d", gotAutoCompoundRewardShares, cfg.AutoCompoundRewardShares)
+
+	autoTx, ok := gotUnsignedTx.(*txs.AddAutoRenewedValidatorTx)
+	if !ok {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() unsigned type = %T, want *txs.AddAutoRenewedValidatorTx", gotUnsignedTx)
 	}
-	if gotPeriodSeconds != uint64(cfg.Period/time.Second) {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() period seconds = %d, want %d", gotPeriodSeconds, uint64(cfg.Period/time.Second))
+	if !bytes.Equal(autoTx.ValidatorNodeID, cfg.NodeID.Bytes()) {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() nodeID bytes = %x, want %x", []byte(autoTx.ValidatorNodeID), cfg.NodeID.Bytes())
+	}
+	if autoTx.Signer != pop {
+		t.Fatal("issueAddAutoRenewedValidatorTx() auto-renew signer pointer mismatch")
+	}
+	if len(autoTx.StakeOuts) != 1 || autoTx.StakeOuts[0] != stakeOuts[0] {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() stake outs = %#v, want builder stake outs", autoTx.StakeOuts)
+	}
+	if autoTx.ValidatorRewardsOwner != gotValidationRewardsOwner {
+		t.Fatal("issueAddAutoRenewedValidatorTx() validation rewards owner was not reused")
+	}
+	if autoTx.DelegatorRewardsOwner != gotDelegationRewardsOwner {
+		t.Fatal("issueAddAutoRenewedValidatorTx() delegation rewards owner was not reused")
+	}
+	validatorAuthority, ok := autoTx.ValidatorAuthority.(*secp256k1fx.OutputOwners)
+	if !ok {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() authority type = %T, want *secp256k1fx.OutputOwners", autoTx.ValidatorAuthority)
+	}
+	if len(validatorAuthority.Addrs) != 1 || validatorAuthority.Addrs[0] != authorityAddr {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() authority addrs = %#v, want [%s]", validatorAuthority.Addrs, authorityAddr)
+	}
+	if autoTx.DelegationShares != cfg.DelegationFee {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() delegation shares = %d, want %d", autoTx.DelegationShares, cfg.DelegationFee)
+	}
+	if autoTx.AutoCompoundRewardShares != cfg.AutoCompoundRewardShares {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() auto-compound shares = %d, want %d", autoTx.AutoCompoundRewardShares, cfg.AutoCompoundRewardShares)
+	}
+	if autoTx.Period != uint64(cfg.Period/time.Second) {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() period seconds = %d, want %d", autoTx.Period, uint64(cfg.Period/time.Second))
 	}
 }
 
 func TestIssueSetAutoRenewedValidatorConfigTx(t *testing.T) {
 	validatorTxID := ids.GenerateTestID()
 	issuedTxID := ids.GenerateTestID()
+	auth := &secp256k1fx.Input{SigIndices: []uint32{0}}
 	cfg := SetAutoRenewedValidatorConfigTxConfig{
 		TxID:                     validatorTxID,
 		AutoCompoundRewardShares: 250_000,
 		Period:                   7 * 24 * time.Hour,
 	}
 
-	var gotValidatorTxID ids.ID
-	var gotAutoCompoundRewardShares uint32
-	var gotPeriodSeconds uint64
+	var gotAuthTxID ids.ID
+	var gotUnsignedTx txs.UnsignedTx
 	gotTxID, err := issueSetAutoRenewedValidatorConfigTx(
-		func(
-			txID ids.ID,
-			autoCompoundRewardShares uint32,
-			periodSeconds uint64,
-			_ ...common.Option,
-		) (*txs.Tx, error) {
-			gotValidatorTxID = txID
-			gotAutoCompoundRewardShares = autoCompoundRewardShares
-			gotPeriodSeconds = periodSeconds
+		func(validationID ids.ID, _ ...common.Option) (*txs.DisableL1ValidatorTx, error) {
+			gotAuthTxID = validationID
+			return &txs.DisableL1ValidatorTx{
+				BaseTx: txs.BaseTx{BaseTx: avax.BaseTx{
+					NetworkID: 1,
+				}},
+				ValidationID: validationID,
+				DisableAuth:  auth,
+			}, nil
+		},
+		func(utx txs.UnsignedTx, _ ...common.Option) (*txs.Tx, error) {
+			gotUnsignedTx = utx
 			return &txs.Tx{TxID: issuedTxID}, nil
 		},
 		cfg,
@@ -395,14 +436,24 @@ func TestIssueSetAutoRenewedValidatorConfigTx(t *testing.T) {
 	if gotTxID != issuedTxID {
 		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() txID = %s, want %s", gotTxID, issuedTxID)
 	}
-	if gotValidatorTxID != validatorTxID {
-		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() validator txID = %s, want %s", gotValidatorTxID, validatorTxID)
+	if gotAuthTxID != validatorTxID {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() auth txID = %s, want %s", gotAuthTxID, validatorTxID)
 	}
-	if gotAutoCompoundRewardShares != cfg.AutoCompoundRewardShares {
-		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() auto-compound shares = %d, want %d", gotAutoCompoundRewardShares, cfg.AutoCompoundRewardShares)
+	setTx, ok := gotUnsignedTx.(*txs.SetAutoRenewedValidatorConfigTx)
+	if !ok {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() unsigned type = %T, want *txs.SetAutoRenewedValidatorConfigTx", gotUnsignedTx)
 	}
-	if gotPeriodSeconds != uint64(cfg.Period/time.Second) {
-		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() period seconds = %d, want %d", gotPeriodSeconds, uint64(cfg.Period/time.Second))
+	if setTx.TxID != validatorTxID {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() validator txID = %s, want %s", setTx.TxID, validatorTxID)
+	}
+	if setTx.Auth != auth {
+		t.Fatal("issueSetAutoRenewedValidatorConfigTx() auth pointer mismatch")
+	}
+	if setTx.AutoCompoundRewardShares != cfg.AutoCompoundRewardShares {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() auto-compound shares = %d, want %d", setTx.AutoCompoundRewardShares, cfg.AutoCompoundRewardShares)
+	}
+	if setTx.Period != uint64(cfg.Period/time.Second) {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() period seconds = %d, want %d", setTx.Period, uint64(cfg.Period/time.Second))
 	}
 }
 
@@ -415,13 +466,18 @@ func TestIssueSetAutoRenewedValidatorConfigTxAllowsZeroPeriod(t *testing.T) {
 
 	var gotPeriodSeconds uint64
 	_, err := issueSetAutoRenewedValidatorConfigTx(
-		func(
-			_ ids.ID,
-			_ uint32,
-			periodSeconds uint64,
-			_ ...common.Option,
-		) (*txs.Tx, error) {
-			gotPeriodSeconds = periodSeconds
+		func(validationID ids.ID, _ ...common.Option) (*txs.DisableL1ValidatorTx, error) {
+			return &txs.DisableL1ValidatorTx{
+				ValidationID: validationID,
+				DisableAuth:  &secp256k1fx.Input{},
+			}, nil
+		},
+		func(utx txs.UnsignedTx, _ ...common.Option) (*txs.Tx, error) {
+			setTx, ok := utx.(*txs.SetAutoRenewedValidatorConfigTx)
+			if !ok {
+				t.Fatalf("issueSetAutoRenewedValidatorConfigTx() unsigned type = %T, want *txs.SetAutoRenewedValidatorConfigTx", utx)
+			}
+			gotPeriodSeconds = setTx.Period
 			return &txs.Tx{TxID: ids.GenerateTestID()}, nil
 		},
 		cfg,
@@ -442,17 +498,16 @@ func TestIssueRewardAutoRenewedValidatorTx(t *testing.T) {
 		Timestamp: 1780576200,
 	}
 
-	var gotValidatorTxID ids.ID
-	var gotTimestamp uint64
+	var gotTxBytes []byte
+	var gotAwaitTxID ids.ID
 	gotTxID, err := issueRewardAutoRenewedValidatorTx(
-		func(
-			txID ids.ID,
-			timestamp uint64,
-			_ ...common.Option,
-		) (*txs.Tx, error) {
-			gotValidatorTxID = txID
-			gotTimestamp = timestamp
-			return &txs.Tx{TxID: issuedTxID}, nil
+		func(_ context.Context, txBytes []byte) (ids.ID, error) {
+			gotTxBytes = txBytes
+			return issuedTxID, nil
+		},
+		func(_ context.Context, txID ids.ID, _ time.Duration) error {
+			gotAwaitTxID = txID
+			return nil
 		},
 		cfg,
 	)
@@ -462,11 +517,22 @@ func TestIssueRewardAutoRenewedValidatorTx(t *testing.T) {
 	if gotTxID != issuedTxID {
 		t.Fatalf("issueRewardAutoRenewedValidatorTx() txID = %s, want %s", gotTxID, issuedTxID)
 	}
-	if gotValidatorTxID != validatorTxID {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx() validator txID = %s, want %s", gotValidatorTxID, validatorTxID)
+	if gotAwaitTxID != issuedTxID {
+		t.Fatalf("issueRewardAutoRenewedValidatorTx() awaited txID = %s, want %s", gotAwaitTxID, issuedTxID)
 	}
-	if gotTimestamp != cfg.Timestamp {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx() timestamp = %d, want %d", gotTimestamp, cfg.Timestamp)
+	parsedTx, err := txs.Parse(txs.Codec, gotTxBytes)
+	if err != nil {
+		t.Fatalf("issueRewardAutoRenewedValidatorTx() failed to parse issued bytes: %v", err)
+	}
+	rewardTx, ok := parsedTx.Unsigned.(*txs.RewardAutoRenewedValidatorTx)
+	if !ok {
+		t.Fatalf("issueRewardAutoRenewedValidatorTx() unsigned type = %T, want *txs.RewardAutoRenewedValidatorTx", parsedTx.Unsigned)
+	}
+	if rewardTx.TxID != validatorTxID {
+		t.Fatalf("issueRewardAutoRenewedValidatorTx() validator txID = %s, want %s", rewardTx.TxID, validatorTxID)
+	}
+	if rewardTx.Timestamp != cfg.Timestamp {
+		t.Fatalf("issueRewardAutoRenewedValidatorTx() timestamp = %d, want %d", rewardTx.Timestamp, cfg.Timestamp)
 	}
 }
 
