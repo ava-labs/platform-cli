@@ -37,6 +37,15 @@ var (
 	valRewardAutoTime  string
 )
 
+var (
+	validatorGetNetworkConfigFn                 = getNetworkConfig
+	validatorLoadPChainWalletFn                 = loadPChainWallet
+	validatorAddAutoRenewedValidatorFn          = pchain.AddAutoRenewedValidator
+	validatorGetAutoRenewedValidatorAuthorityFn = pchain.GetAutoRenewedValidatorAuthority
+	validatorSetAutoRenewedValidatorConfigFn    = pchain.SetAutoRenewedValidatorConfig
+	validatorRewardAutoRenewedValidatorFn       = pchain.RewardAutoRenewedValidator
+)
+
 var validatorCmd = &cobra.Command{
 	Use:   "validator",
 	Short: "Primary network staking",
@@ -67,7 +76,7 @@ var validatorAddCmd = &cobra.Command{
 			return err
 		}
 
-		netConfig, err := getNetworkConfig(ctx)
+		netConfig, err := validatorGetNetworkConfigFn(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
 		}
@@ -80,7 +89,7 @@ var validatorAddCmd = &cobra.Command{
 			return err
 		}
 
-		w, cleanup, err := loadPChainWallet(ctx, netConfig)
+		w, cleanup, err := validatorLoadPChainWalletFn(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
@@ -161,7 +170,7 @@ var validatorDelegateCmd = &cobra.Command{
 			return err
 		}
 
-		netConfig, err := getNetworkConfig(ctx)
+		netConfig, err := validatorGetNetworkConfigFn(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
 		}
@@ -169,7 +178,7 @@ var validatorDelegateCmd = &cobra.Command{
 			return fmt.Errorf("duration too short for %s: minimum is %s", netConfig.Name, netConfig.MinStakeDuration)
 		}
 
-		w, cleanup, err := loadPChainWallet(ctx, netConfig)
+		w, cleanup, err := validatorLoadPChainWalletFn(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
@@ -236,7 +245,7 @@ var validatorAddAutoRenewedCmd = &cobra.Command{
 			return err
 		}
 
-		netConfig, err := getNetworkConfig(ctx)
+		netConfig, err := validatorGetNetworkConfigFn(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
 		}
@@ -249,7 +258,7 @@ var validatorAddAutoRenewedCmd = &cobra.Command{
 			return err
 		}
 
-		w, cleanup, err := loadPChainWallet(ctx, netConfig)
+		w, cleanup, err := validatorLoadPChainWalletFn(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
@@ -300,7 +309,7 @@ var validatorAddAutoRenewedCmd = &cobra.Command{
 		}
 		fmt.Println("Submitting transaction...")
 
-		txID, err := pchain.AddAutoRenewedValidator(ctx, w, pchain.AddAutoRenewedValidatorConfig{
+		txID, err := validatorAddAutoRenewedValidatorFn(ctx, w, pchain.AddAutoRenewedValidatorConfig{
 			NodeID:                   nodeID,
 			StakeAmt:                 stakeNAVAX,
 			RewardAddr:               rewardAddr,
@@ -351,7 +360,7 @@ var validatorSetAutoConfigCmd = &cobra.Command{
 			return fmt.Errorf("invalid auto-compound: %w", err)
 		}
 
-		netConfig, err := getNetworkConfig(ctx)
+		netConfig, err := validatorGetNetworkConfigFn(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
 		}
@@ -359,12 +368,12 @@ var validatorSetAutoConfigCmd = &cobra.Command{
 			return fmt.Errorf("period too short for %s: minimum is %s", netConfig.Name, netConfig.MinStakeDuration)
 		}
 
-		validatorAuthority, err := pchain.GetAutoRenewedValidatorAuthority(ctx, netConfig.RPCURL, autoRenewedTxID)
+		validatorAuthority, err := validatorGetAutoRenewedValidatorAuthorityFn(ctx, netConfig.RPCURL, autoRenewedTxID)
 		if err != nil {
 			return err
 		}
 
-		w, cleanup, err := loadPChainWallet(ctx, netConfig)
+		w, cleanup, err := validatorLoadPChainWalletFn(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
@@ -379,7 +388,7 @@ var validatorSetAutoConfigCmd = &cobra.Command{
 		fmt.Printf("  Auto-Compound Rewards: %.2f%%\n", valSetAutoCompound*100)
 		fmt.Println("Submitting transaction...")
 
-		txID, err := pchain.SetAutoRenewedValidatorConfig(ctx, w, pchain.SetAutoRenewedValidatorConfigTxConfig{
+		txID, err := validatorSetAutoRenewedValidatorConfigFn(ctx, w, pchain.SetAutoRenewedValidatorConfigTxConfig{
 			TxID:                     autoRenewedTxID,
 			AutoCompoundRewardShares: autoCompoundShares,
 			Period:                   period,
@@ -418,12 +427,12 @@ var validatorRewardAutoCmd = &cobra.Command{
 			return err
 		}
 
-		netConfig, err := getNetworkConfig(ctx)
+		netConfig, err := validatorGetNetworkConfigFn(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
 		}
 
-		w, cleanup, err := loadPChainWallet(ctx, netConfig)
+		w, cleanup, err := validatorLoadPChainWalletFn(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
@@ -433,7 +442,7 @@ var validatorRewardAutoCmd = &cobra.Command{
 		fmt.Printf("  Timestamp: %s (%d)\n", timestampTime.UTC().Format(time.RFC3339), timestamp)
 		fmt.Println("Submitting transaction...")
 
-		txID, err := pchain.RewardAutoRenewedValidator(ctx, w, pchain.RewardAutoRenewedValidatorConfig{
+		txID, err := validatorRewardAutoRenewedValidatorFn(ctx, w, pchain.RewardAutoRenewedValidatorConfig{
 			TxID:      autoRenewedTxID,
 			Timestamp: timestamp,
 		})

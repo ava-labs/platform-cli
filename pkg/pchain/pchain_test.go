@@ -3,12 +3,17 @@ package pchain
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/constants"
+	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
@@ -357,8 +362,14 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 	if gotValidationRewardsOwner == nil || len(gotValidationRewardsOwner.Addrs) != 1 || gotValidationRewardsOwner.Addrs[0] != rewardAddr {
 		t.Fatalf("issueAddAutoRenewedValidatorTx() builder validation owner addrs = %#v, want [%s]", gotValidationRewardsOwner, rewardAddr)
 	}
+	if gotValidationRewardsOwner.Locktime != 0 || gotValidationRewardsOwner.Threshold != 1 {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder validation owner locktime/threshold = %d/%d, want 0/1", gotValidationRewardsOwner.Locktime, gotValidationRewardsOwner.Threshold)
+	}
 	if gotDelegationRewardsOwner == nil || len(gotDelegationRewardsOwner.Addrs) != 1 || gotDelegationRewardsOwner.Addrs[0] != rewardAddr {
 		t.Fatalf("issueAddAutoRenewedValidatorTx() builder delegation owner addrs = %#v, want [%s]", gotDelegationRewardsOwner, rewardAddr)
+	}
+	if gotDelegationRewardsOwner.Locktime != 0 || gotDelegationRewardsOwner.Threshold != 1 {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder delegation owner locktime/threshold = %d/%d, want 0/1", gotDelegationRewardsOwner.Locktime, gotDelegationRewardsOwner.Threshold)
 	}
 	if gotDelegationShares != cfg.DelegationFee {
 		t.Fatalf("issueAddAutoRenewedValidatorTx() builder delegation shares = %d, want %d", gotDelegationShares, cfg.DelegationFee)
@@ -390,6 +401,9 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 	if len(validatorAuthority.Addrs) != 1 || validatorAuthority.Addrs[0] != authorityAddr {
 		t.Fatalf("issueAddAutoRenewedValidatorTx() authority addrs = %#v, want [%s]", validatorAuthority.Addrs, authorityAddr)
 	}
+	if validatorAuthority.Locktime != 0 || validatorAuthority.Threshold != 1 {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() authority locktime/threshold = %d/%d, want 0/1", validatorAuthority.Locktime, validatorAuthority.Threshold)
+	}
 	if autoTx.DelegationShares != cfg.DelegationFee {
 		t.Fatalf("issueAddAutoRenewedValidatorTx() delegation shares = %d, want %d", autoTx.DelegationShares, cfg.DelegationFee)
 	}
@@ -398,6 +412,18 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 	}
 	if autoTx.Period != uint64(cfg.Period/time.Second) {
 		t.Fatalf("issueAddAutoRenewedValidatorTx() period seconds = %d, want %d", autoTx.Period, uint64(cfg.Period/time.Second))
+	}
+
+	initializedTx := &txs.Tx{Unsigned: autoTx}
+	if err := initializedTx.Initialize(txs.Codec); err != nil {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() failed to initialize tx: %v", err)
+	}
+	parsedTx, err := txs.Parse(txs.Codec, initializedTx.Bytes())
+	if err != nil {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() failed to parse initialized tx: %v", err)
+	}
+	if _, ok := parsedTx.Unsigned.(*txs.AddAutoRenewedValidatorTx); !ok {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() parsed unsigned type = %T, want *txs.AddAutoRenewedValidatorTx", parsedTx.Unsigned)
 	}
 }
 
@@ -454,6 +480,18 @@ func TestIssueSetAutoRenewedValidatorConfigTx(t *testing.T) {
 	}
 	if setTx.Period != uint64(cfg.Period/time.Second) {
 		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() period seconds = %d, want %d", setTx.Period, uint64(cfg.Period/time.Second))
+	}
+
+	initializedTx := &txs.Tx{Unsigned: setTx}
+	if err := initializedTx.Initialize(txs.Codec); err != nil {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() failed to initialize tx: %v", err)
+	}
+	parsedTx, err := txs.Parse(txs.Codec, initializedTx.Bytes())
+	if err != nil {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() failed to parse initialized tx: %v", err)
+	}
+	if _, ok := parsedTx.Unsigned.(*txs.SetAutoRenewedValidatorConfigTx); !ok {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() parsed unsigned type = %T, want *txs.SetAutoRenewedValidatorConfigTx", parsedTx.Unsigned)
 	}
 }
 
@@ -533,6 +571,150 @@ func TestIssueRewardAutoRenewedValidatorTx(t *testing.T) {
 	}
 	if rewardTx.Timestamp != cfg.Timestamp {
 		t.Fatalf("issueRewardAutoRenewedValidatorTx() timestamp = %d, want %d", rewardTx.Timestamp, cfg.Timestamp)
+	}
+	if len(parsedTx.Creds) != 0 {
+		t.Fatalf("issueRewardAutoRenewedValidatorTx() credentials = %d, want 0 for node-issued internal tx", len(parsedTx.Creds))
+	}
+}
+
+func TestGetAutoRenewedValidatorAuthorityUsesCurrentValidatorAuthority(t *testing.T) {
+	targetTxID := ids.GenerateTestID()
+	otherTxID := ids.GenerateTestID()
+	validationRewardAddr := ids.GenerateTestShortID()
+	delegationRewardAddr := ids.GenerateTestShortID()
+	authorityAddr := ids.GenerateTestShortID()
+
+	server := newCurrentValidatorsServer(t, []map[string]any{
+		{
+			"txID":               otherTxID.String(),
+			"validatorAuthority": testAPIOwner(t, ids.GenerateTestShortID(), "0", "1"),
+		},
+		{
+			"txID":                  targetTxID.String(),
+			"validationRewardOwner": testAPIOwner(t, validationRewardAddr, "0", "1"),
+			"delegationRewardOwner": testAPIOwner(t, delegationRewardAddr, "0", "1"),
+			"validatorAuthority":    testAPIOwner(t, authorityAddr, "0", "1"),
+		},
+	})
+	defer server.Close()
+
+	owner, err := GetAutoRenewedValidatorAuthority(context.Background(), server.URL, targetTxID)
+	if err != nil {
+		t.Fatalf("GetAutoRenewedValidatorAuthority() returned error: %v", err)
+	}
+	if owner.Locktime != 0 || owner.Threshold != 1 {
+		t.Fatalf("authority locktime/threshold = %d/%d, want 0/1", owner.Locktime, owner.Threshold)
+	}
+	if len(owner.Addrs) != 1 || owner.Addrs[0] != authorityAddr {
+		t.Fatalf("authority addrs = %#v, want [%s]", owner.Addrs, authorityAddr)
+	}
+	if owner.Addrs[0] == validationRewardAddr || owner.Addrs[0] == delegationRewardAddr {
+		t.Fatal("authority lookup used a reward owner instead of validatorAuthority")
+	}
+}
+
+func TestGetAutoRenewedValidatorAuthorityErrors(t *testing.T) {
+	targetTxID := ids.GenerateTestID()
+
+	tests := []struct {
+		name       string
+		validators []map[string]any
+		wantErr    string
+	}{
+		{
+			name:       "not found",
+			validators: []map[string]any{},
+			wantErr:    "not found in current validators",
+		},
+		{
+			name: "missing validatorAuthority",
+			validators: []map[string]any{{
+				"txID": targetTxID.String(),
+			}},
+			wantErr: "did not include validatorAuthority",
+		},
+		{
+			name: "bad threshold",
+			validators: []map[string]any{{
+				"txID":               targetTxID.String(),
+				"validatorAuthority": testAPIOwner(t, ids.GenerateTestShortID(), "0", "not-a-number"),
+			}},
+			wantErr: "invalid validatorAuthority threshold",
+		},
+		{
+			name: "bad address",
+			validators: []map[string]any{{
+				"txID": targetTxID.String(),
+				"validatorAuthority": map[string]any{
+					"locktime":  "0",
+					"threshold": "1",
+					"addresses": []string{"not-an-address"},
+				},
+			}},
+			wantErr: "invalid validatorAuthority addresses",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newCurrentValidatorsServer(t, tt.validators)
+			defer server.Close()
+
+			_, err := GetAutoRenewedValidatorAuthority(context.Background(), server.URL, targetTxID)
+			if err == nil {
+				t.Fatalf("GetAutoRenewedValidatorAuthority() expected error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %q, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func newCurrentValidatorsServer(t *testing.T, validators []map[string]any) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ext/P" {
+			t.Fatalf("request path = %q, want /ext/P", r.URL.Path)
+		}
+		var req struct {
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+			ID     any             `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("failed to decode JSON-RPC request: %v", err)
+		}
+		if req.Method != "platform.getCurrentValidators" {
+			t.Fatalf("method = %q, want platform.getCurrentValidators", req.Method)
+		}
+		if string(req.Params) != "{}" {
+			t.Fatalf("params = %s, want {}", req.Params)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0",
+			"result": map[string]any{
+				"validators": validators,
+			},
+			"id": req.ID,
+		})
+	}))
+}
+
+func testAPIOwner(t *testing.T, addr ids.ShortID, locktime string, threshold string) map[string]any {
+	t.Helper()
+
+	formattedAddr, err := address.Format("P", constants.GetHRP(constants.UnitTestID), addr.Bytes())
+	if err != nil {
+		t.Fatalf("address.Format() error = %v", err)
+	}
+	return map[string]any{
+		"locktime":  locktime,
+		"threshold": threshold,
+		"addresses": []string{formattedAddr},
 	}
 }
 
