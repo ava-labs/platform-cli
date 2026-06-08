@@ -4,16 +4,25 @@ package pchain
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
+	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
+	"github.com/ava-labs/avalanchego/vms/platformvm/fx"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	avmtypes "github.com/ava-labs/avalanchego/vms/types"
+	pchainwallet "github.com/ava-labs/avalanchego/wallet/chain/p"
+	pbuilder "github.com/ava-labs/avalanchego/wallet/chain/p/builder"
+	psigner "github.com/ava-labs/avalanchego/wallet/chain/p/signer"
+	pwallet "github.com/ava-labs/avalanchego/wallet/chain/p/wallet"
+	"github.com/ava-labs/avalanchego/wallet/subnet/primary"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
 )
@@ -309,17 +318,106 @@ type SetAutoRenewedValidatorConfigTxConfig struct {
 	TxID                     ids.ID
 	AutoCompoundRewardShares uint32        // in parts per million (1_000_000 = 100%)
 	Period                   time.Duration // 0 means exit after the current cycle
+	ValidatorAuthority       *secp256k1fx.OutputOwners
 }
 
 // SetAutoRenewedValidatorConfig updates an auto-renewed validator's next-cycle
 // configuration.
 func SetAutoRenewedValidatorConfig(ctx context.Context, w *wallet.Wallet, cfg SetAutoRenewedValidatorConfigTxConfig) (ids.ID, error) {
+	pWallet := w.PWallet()
+	if cfg.ValidatorAuthority != nil {
+		var err error
+		pWallet, err = newPWalletWithOwner(ctx, w, cfg.TxID, cfg.ValidatorAuthority)
+		if err != nil {
+			return ids.Empty, err
+		}
+	}
+
 	return issueSetAutoRenewedValidatorConfigTx(
-		w.PWallet().Builder().NewDisableL1ValidatorTx,
-		w.PWallet().IssueUnsignedTx,
+		pWallet.Builder().NewDisableL1ValidatorTx,
+		pWallet.IssueUnsignedTx,
 		cfg,
 		common.WithContext(ctx),
 	)
+}
+
+func newPWalletWithOwner(ctx context.Context, w *wallet.Wallet, ownerID ids.ID, owner fx.Owner) (pwallet.Wallet, error) {
+	kc := w.Keychain()
+	if kc == nil {
+		return nil, fmt.Errorf("set-auto-config authority owner signing is not available for this wallet type")
+	}
+
+	client, pContext, utxos, err := primary.FetchPState(ctx, w.Config().RPCURL, kc.Addresses())
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch P-Chain wallet state: %w", err)
+	}
+
+	owners := map[ids.ID]fx.Owner{
+		ownerID: owner,
+	}
+	pBackend := pwallet.NewBackend(common.NewChainUTXOs(constants.PlatformChainID, utxos), owners)
+	pClient := pchainwallet.NewClient(client, pBackend)
+	pBuilder := pbuilder.New(kc.Addresses(), pContext, pBackend)
+	pSigner := psigner.New(kc, pBackend)
+	return pwallet.New(pClient, pBuilder, pSigner), nil
+}
+
+// GetAutoRenewedValidatorAuthority returns the authority owner for an accepted
+// AddAutoRenewedValidatorTx.
+func GetAutoRenewedValidatorAuthority(ctx context.Context, rpcURL string, txID ids.ID) (*secp256k1fx.OutputOwners, error) {
+	client := platformvm.NewClient(rpcURL)
+	reply := &getCurrentValidatorsWithAuthorityReply{}
+	if err := client.Requester.SendRequest(ctx, "platform.getCurrentValidators", &platformVMGetCurrentValidatorsArgs{}, reply); err != nil {
+		return nil, fmt.Errorf("failed to fetch current validators: %w", err)
+	}
+
+	for _, validator := range reply.Validators {
+		if validator.TxID != txID.String() {
+			continue
+		}
+		if validator.ValidatorAuthority == nil {
+			return nil, fmt.Errorf("validator %s did not include validatorAuthority", txID)
+		}
+		return validator.ValidatorAuthority.toOutputOwners()
+	}
+	return nil, fmt.Errorf("auto-renewed validator %s not found in current validators", txID)
+}
+
+type platformVMGetCurrentValidatorsArgs struct{}
+
+type getCurrentValidatorsWithAuthorityReply struct {
+	Validators []autoRenewedValidatorWithAuthority `json:"validators"`
+}
+
+type autoRenewedValidatorWithAuthority struct {
+	TxID               string               `json:"txID"`
+	ValidatorAuthority *autoRenewedAPIOwner `json:"validatorAuthority"`
+}
+
+type autoRenewedAPIOwner struct {
+	Locktime  string   `json:"locktime"`
+	Threshold string   `json:"threshold"`
+	Addresses []string `json:"addresses"`
+}
+
+func (o *autoRenewedAPIOwner) toOutputOwners() (*secp256k1fx.OutputOwners, error) {
+	locktime, err := strconv.ParseUint(o.Locktime, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid validatorAuthority locktime: %w", err)
+	}
+	threshold, err := strconv.ParseUint(o.Threshold, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid validatorAuthority threshold: %w", err)
+	}
+	addrs, err := address.ParseToIDs(o.Addresses)
+	if err != nil {
+		return nil, fmt.Errorf("invalid validatorAuthority addresses: %w", err)
+	}
+	return &secp256k1fx.OutputOwners{
+		Locktime:  locktime,
+		Threshold: uint32(threshold),
+		Addrs:     addrs,
+	}, nil
 }
 
 func issueSetAutoRenewedValidatorConfigTx(

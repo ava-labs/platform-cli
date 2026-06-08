@@ -359,6 +359,11 @@ var validatorSetAutoConfigCmd = &cobra.Command{
 			return fmt.Errorf("period too short for %s: minimum is %s", netConfig.Name, netConfig.MinStakeDuration)
 		}
 
+		validatorAuthority, err := pchain.GetAutoRenewedValidatorAuthority(ctx, netConfig.RPCURL, autoRenewedTxID)
+		if err != nil {
+			return err
+		}
+
 		w, cleanup, err := loadPChainWallet(ctx, netConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
@@ -378,6 +383,7 @@ var validatorSetAutoConfigCmd = &cobra.Command{
 			TxID:                     autoRenewedTxID,
 			AutoCompoundRewardShares: autoCompoundShares,
 			Period:                   period,
+			ValidatorAuthority:       validatorAuthority,
 		})
 		if err != nil {
 			return err
