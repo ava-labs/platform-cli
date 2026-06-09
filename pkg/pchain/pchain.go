@@ -4,14 +4,24 @@ package pchain
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
+	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
+	"github.com/ava-labs/avalanchego/vms/platformvm"
+	"github.com/ava-labs/avalanchego/vms/platformvm/fx"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
+	pchainwallet "github.com/ava-labs/avalanchego/wallet/chain/p"
+	pbuilder "github.com/ava-labs/avalanchego/wallet/chain/p/builder"
+	psigner "github.com/ava-labs/avalanchego/wallet/chain/p/signer"
+	pwallet "github.com/ava-labs/avalanchego/wallet/chain/p/wallet"
+	"github.com/ava-labs/avalanchego/wallet/subnet/primary"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
 )
@@ -207,6 +217,256 @@ func issueAddPermissionlessValidatorTx(
 		return ids.Empty, fmt.Errorf("failed to issue AddPermissionlessValidatorTx: %w", err)
 	}
 	return tx.ID(), nil
+}
+
+// AddAutoRenewedValidatorConfig holds configuration for adding an auto-renewed
+// primary network validator.
+type AddAutoRenewedValidatorConfig struct {
+	NodeID                   ids.NodeID
+	StakeAmt                 uint64 // in nAVAX
+	RewardAddr               ids.ShortID
+	ValidatorAuthorityAddr   ids.ShortID
+	DelegationFee            uint32                    // in parts per million (1_000_000 = 100%)
+	AutoCompoundRewardShares uint32                    // in parts per million (1_000_000 = 100%)
+	Period                   time.Duration             // auto-renewal cycle duration
+	BLSSigner                *signer.ProofOfPossession // BLS proof of possession for the validator
+}
+
+// AddAutoRenewedValidator adds an auto-renewed validator to the primary network.
+func AddAutoRenewedValidator(ctx context.Context, w *wallet.Wallet, cfg AddAutoRenewedValidatorConfig) (ids.ID, error) {
+	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
+	return issueAddAutoRenewedValidatorTx(
+		w.PWallet().Builder().NewAddAutoRenewedValidatorTx,
+		w.PWallet().IssueUnsignedTx,
+		avaxAssetID,
+		cfg,
+		common.WithContext(ctx),
+	)
+}
+
+func issueAddAutoRenewedValidatorTx(
+	buildAddAutoRenewedValidatorTxFn func(
+		validatorNodeID ids.NodeID,
+		weight uint64,
+		signer signer.Signer,
+		assetID ids.ID,
+		validationRewardsOwner *secp256k1fx.OutputOwners,
+		delegationRewardsOwner *secp256k1fx.OutputOwners,
+		configOwner *secp256k1fx.OutputOwners,
+		shares uint32,
+		autoCompoundRewardShares uint32,
+		periodSeconds uint64,
+		options ...common.Option,
+	) (*txs.AddAutoRenewedValidatorTx, error),
+	issueUnsignedTxFn func(
+		utx txs.UnsignedTx,
+		options ...common.Option,
+	) (*txs.Tx, error),
+	avaxAssetID ids.ID,
+	cfg AddAutoRenewedValidatorConfig,
+	options ...common.Option,
+) (ids.ID, error) {
+	periodSeconds, err := durationToWholeSeconds("period", cfg.Period, false)
+	if err != nil {
+		return ids.Empty, err
+	}
+
+	rewardsOwner := &secp256k1fx.OutputOwners{
+		Threshold: 1,
+		Addrs:     []ids.ShortID{cfg.RewardAddr},
+	}
+	validatorAuthority := &secp256k1fx.OutputOwners{
+		Threshold: 1,
+		Addrs:     []ids.ShortID{cfg.ValidatorAuthorityAddr},
+	}
+
+	autoRenewedValidatorTx, err := buildAddAutoRenewedValidatorTxFn(
+		cfg.NodeID,
+		cfg.StakeAmt,
+		cfg.BLSSigner,
+		avaxAssetID,
+		rewardsOwner,
+		rewardsOwner,
+		validatorAuthority,
+		cfg.DelegationFee,
+		cfg.AutoCompoundRewardShares,
+		periodSeconds,
+		options...,
+	)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to build AddAutoRenewedValidatorTx: %w", err)
+	}
+
+	tx, err := issueUnsignedTxFn(
+		autoRenewedValidatorTx,
+		options...,
+	)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to issue AddAutoRenewedValidatorTx: %w", err)
+	}
+	return tx.ID(), nil
+}
+
+// SetAutoRenewedValidatorConfigTxConfig holds configuration for updating an
+// auto-renewed validator's next-cycle configuration.
+type SetAutoRenewedValidatorConfigTxConfig struct {
+	TxID                     ids.ID
+	AutoCompoundRewardShares uint32        // in parts per million (1_000_000 = 100%)
+	Period                   time.Duration // 0 means exit after the current cycle
+	ValidatorAuthority       *secp256k1fx.OutputOwners
+}
+
+// SetAutoRenewedValidatorConfig updates an auto-renewed validator's next-cycle
+// configuration.
+func SetAutoRenewedValidatorConfig(ctx context.Context, w *wallet.Wallet, cfg SetAutoRenewedValidatorConfigTxConfig) (ids.ID, error) {
+	pWallet := w.PWallet()
+	if cfg.ValidatorAuthority != nil {
+		var err error
+		pWallet, err = newPWalletWithOwner(ctx, w, cfg.TxID, cfg.ValidatorAuthority)
+		if err != nil {
+			return ids.Empty, err
+		}
+	}
+
+	// TODO: Replace the temporary owner-backed wallet with native wallet support
+	// once the public API can source this auth owner directly from chain state.
+	return issueSetAutoRenewedValidatorConfigTx(
+		pWallet.Builder().NewSetAutoRenewedValidatorConfigTx,
+		pWallet.IssueUnsignedTx,
+		cfg,
+		common.WithContext(ctx),
+	)
+}
+
+func newPWalletWithOwner(ctx context.Context, w *wallet.Wallet, ownerID ids.ID, owner fx.Owner) (pwallet.Wallet, error) {
+	kc := w.Keychain()
+	if kc == nil {
+		return nil, fmt.Errorf("set-auto-config authority owner signing is not available for this wallet type")
+	}
+
+	client, pContext, utxos, err := primary.FetchPState(ctx, w.Config().RPCURL, kc.Addresses())
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch P-Chain wallet state: %w", err)
+	}
+
+	owners := map[ids.ID]fx.Owner{
+		ownerID: owner,
+	}
+	pBackend := pwallet.NewBackend(common.NewChainUTXOs(constants.PlatformChainID, utxos), owners)
+	pClient := pchainwallet.NewClient(client, pBackend)
+	pBuilder := pbuilder.New(kc.Addresses(), pContext, pBackend)
+	pSigner := psigner.New(kc, pBackend)
+	return pwallet.New(pClient, pBuilder, pSigner), nil
+}
+
+// GetAutoRenewedValidatorAuthority returns the authority owner for an accepted
+// AddAutoRenewedValidatorTx.
+func GetAutoRenewedValidatorAuthority(ctx context.Context, rpcURL string, txID ids.ID) (*secp256k1fx.OutputOwners, error) {
+	client := platformvm.NewClient(rpcURL)
+	reply := &getCurrentValidatorsWithAuthorityReply{}
+	if err := client.Requester.SendRequest(ctx, "platform.getCurrentValidators", &platformVMGetCurrentValidatorsArgs{}, reply); err != nil {
+		return nil, fmt.Errorf("failed to fetch current validators: %w", err)
+	}
+
+	for _, validator := range reply.Validators {
+		if validator.TxID != txID.String() {
+			continue
+		}
+		if validator.ValidatorAuthority == nil {
+			return nil, fmt.Errorf("validator %s did not include validatorAuthority", txID)
+		}
+		return validator.ValidatorAuthority.toOutputOwners()
+	}
+	return nil, fmt.Errorf("auto-renewed validator %s not found in current validators", txID)
+}
+
+type platformVMGetCurrentValidatorsArgs struct{}
+
+type getCurrentValidatorsWithAuthorityReply struct {
+	Validators []autoRenewedValidatorWithAuthority `json:"validators"`
+}
+
+type autoRenewedValidatorWithAuthority struct {
+	TxID               string               `json:"txID"`
+	ValidatorAuthority *autoRenewedAPIOwner `json:"validatorAuthority"`
+}
+
+type autoRenewedAPIOwner struct {
+	Locktime  string   `json:"locktime"`
+	Threshold string   `json:"threshold"`
+	Addresses []string `json:"addresses"`
+}
+
+func (o *autoRenewedAPIOwner) toOutputOwners() (*secp256k1fx.OutputOwners, error) {
+	locktime, err := strconv.ParseUint(o.Locktime, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid validatorAuthority locktime: %w", err)
+	}
+	threshold, err := strconv.ParseUint(o.Threshold, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid validatorAuthority threshold: %w", err)
+	}
+	addrs, err := address.ParseToIDs(o.Addresses)
+	if err != nil {
+		return nil, fmt.Errorf("invalid validatorAuthority addresses: %w", err)
+	}
+	return &secp256k1fx.OutputOwners{
+		Locktime:  locktime,
+		Threshold: uint32(threshold),
+		Addrs:     addrs,
+	}, nil
+}
+
+func issueSetAutoRenewedValidatorConfigTx(
+	buildSetAutoRenewedValidatorConfigTxFn func(
+		txID ids.ID,
+		autoCompoundRewardShares uint32,
+		periodSeconds uint64,
+		options ...common.Option,
+	) (*txs.SetAutoRenewedValidatorConfigTx, error),
+	issueUnsignedTxFn func(
+		utx txs.UnsignedTx,
+		options ...common.Option,
+	) (*txs.Tx, error),
+	cfg SetAutoRenewedValidatorConfigTxConfig,
+	options ...common.Option,
+) (ids.ID, error) {
+	periodSeconds, err := durationToWholeSeconds("period", cfg.Period, true)
+	if err != nil {
+		return ids.Empty, err
+	}
+
+	configTx, err := buildSetAutoRenewedValidatorConfigTxFn(
+		cfg.TxID,
+		cfg.AutoCompoundRewardShares,
+		periodSeconds,
+		options...,
+	)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to build SetAutoRenewedValidatorConfigTx: %w", err)
+	}
+
+	tx, err := issueUnsignedTxFn(
+		configTx,
+		options...,
+	)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to issue SetAutoRenewedValidatorConfigTx: %w", err)
+	}
+	return tx.ID(), nil
+}
+
+func durationToWholeSeconds(name string, duration time.Duration, allowZero bool) (uint64, error) {
+	if duration < 0 {
+		return 0, fmt.Errorf("%s cannot be negative", name)
+	}
+	if !allowZero && duration == 0 {
+		return 0, fmt.Errorf("%s must be positive", name)
+	}
+	if duration%time.Second != 0 {
+		return 0, fmt.Errorf("%s must be a whole number of seconds", name)
+	}
+	return uint64(duration / time.Second), nil
 }
 
 // AddDelegatorConfig holds configuration for adding a delegator.

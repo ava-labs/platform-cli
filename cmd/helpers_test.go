@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -120,6 +121,24 @@ func TestFeeToShares(t *testing.T) {
 	}
 }
 
+func TestFractionToShares(t *testing.T) {
+	got, err := fractionToShares("auto-compound", 0.3)
+	if err != nil {
+		t.Fatalf("fractionToShares() returned error: %v", err)
+	}
+	if got != 300_000 {
+		t.Fatalf("fractionToShares() = %d, want 300000", got)
+	}
+
+	_, err = fractionToShares("auto-compound", 1.01)
+	if err == nil {
+		t.Fatal("fractionToShares() expected error for value above one")
+	}
+	if !strings.Contains(err.Error(), "auto-compound") {
+		t.Fatalf("fractionToShares() error = %v, want field name", err)
+	}
+}
+
 func TestGetTransferAmountNAVAX(t *testing.T) {
 	origAmount := transferAmount
 	origAmountNAVAX := transferAmountNAVAX
@@ -199,6 +218,89 @@ func TestParseTimeRange(t *testing.T) {
 	_, _, err = parseTimeRange("now", "bad-duration")
 	if err == nil {
 		t.Fatal("parseTimeRange() expected error for invalid duration")
+	}
+}
+
+func TestParseAutoRenewPeriod(t *testing.T) {
+	got, err := parseAutoRenewPeriod("336h")
+	if err != nil {
+		t.Fatalf("parseAutoRenewPeriod() returned error: %v", err)
+	}
+	if got != 14*24*time.Hour {
+		t.Fatalf("parseAutoRenewPeriod() = %s, want 336h", got)
+	}
+
+	_, err = parseAutoRenewPeriod("0s")
+	if err == nil {
+		t.Fatal("parseAutoRenewPeriod() expected error for zero period")
+	}
+
+	_, err = parseAutoRenewPeriod("1.5s")
+	if err == nil {
+		t.Fatal("parseAutoRenewPeriod() expected error for sub-second period")
+	}
+
+	_, err = parseAutoRenewPeriod("bad-period")
+	if err == nil {
+		t.Fatal("parseAutoRenewPeriod() expected error for invalid period")
+	}
+}
+
+func TestParseAutoRenewConfigPeriod(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    time.Duration
+		wantErr bool
+	}{
+		{
+			name:  "zero duration",
+			input: "0",
+			want:  0,
+		},
+		{
+			name:  "zero seconds",
+			input: "0s",
+			want:  0,
+		},
+		{
+			name:  "non-zero duration",
+			input: "336h",
+			want:  14 * 24 * time.Hour,
+		},
+		{
+			name:    "negative duration",
+			input:   "-1s",
+			wantErr: true,
+		},
+		{
+			name:    "sub-second duration",
+			input:   "1.5s",
+			wantErr: true,
+		},
+		{
+			name:    "invalid duration",
+			input:   "bad-period",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseAutoRenewConfigPeriod(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("parseAutoRenewConfigPeriod(%q) expected error", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseAutoRenewConfigPeriod(%q) returned error: %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Fatalf("parseAutoRenewConfigPeriod(%q) = %s, want %s", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 
