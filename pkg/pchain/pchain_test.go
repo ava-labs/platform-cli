@@ -294,34 +294,54 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 		},
 	}}
 
-	var gotVdr *txs.SubnetValidator
+	var gotNodeID ids.NodeID
+	var gotWeight uint64
 	var gotSigner signer.Signer
 	var gotAssetID ids.ID
 	var gotValidationRewardsOwner *secp256k1fx.OutputOwners
 	var gotDelegationRewardsOwner *secp256k1fx.OutputOwners
+	var gotConfigOwner *secp256k1fx.OutputOwners
 	var gotDelegationShares uint32
+	var gotAutoCompoundShares uint32
+	var gotPeriodSeconds uint64
 	var gotUnsignedTx txs.UnsignedTx
 	gotTxID, err := issueAddAutoRenewedValidatorTx(
 		func(
-			vdr *txs.SubnetValidator,
+			validatorNodeID ids.NodeID,
+			weight uint64,
 			signer signer.Signer,
 			assetID ids.ID,
 			validationRewardsOwner *secp256k1fx.OutputOwners,
 			delegationRewardsOwner *secp256k1fx.OutputOwners,
+			configOwner *secp256k1fx.OutputOwners,
 			shares uint32,
+			autoCompoundRewardShares uint32,
+			periodSeconds uint64,
 			_ ...common.Option,
-		) (*txs.AddPermissionlessValidatorTx, error) {
-			gotVdr = vdr
+		) (*txs.AddAutoRenewedValidatorTx, error) {
+			gotNodeID = validatorNodeID
+			gotWeight = weight
 			gotSigner = signer
 			gotAssetID = assetID
 			gotValidationRewardsOwner = validationRewardsOwner
 			gotDelegationRewardsOwner = delegationRewardsOwner
+			gotConfigOwner = configOwner
 			gotDelegationShares = shares
-			return &txs.AddPermissionlessValidatorTx{
+			gotAutoCompoundShares = autoCompoundRewardShares
+			gotPeriodSeconds = periodSeconds
+			return &txs.AddAutoRenewedValidatorTx{
 				BaseTx: txs.BaseTx{BaseTx: avax.BaseTx{
 					NetworkID: 1,
 				}},
-				StakeOuts: stakeOuts,
+				ValidatorNodeID:          cfg.NodeID[:],
+				Signer:                   signer,
+				StakeOuts:                stakeOuts,
+				ValidatorRewardsOwner:    validationRewardsOwner,
+				DelegatorRewardsOwner:    delegationRewardsOwner,
+				ValidatorAuthority:       configOwner,
+				DelegationShares:         shares,
+				AutoCompoundRewardShares: autoCompoundRewardShares,
+				Period:                   periodSeconds,
 			}, nil
 		},
 		func(utx txs.UnsignedTx, _ ...common.Option) (*txs.Tx, error) {
@@ -337,17 +357,11 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 	if gotTxID != txID {
 		t.Fatalf("issueAddAutoRenewedValidatorTx() txID = %s, want %s", gotTxID, txID)
 	}
-	if gotVdr == nil {
-		t.Fatal("issueAddAutoRenewedValidatorTx() builder validator is nil")
+	if gotNodeID != cfg.NodeID {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder nodeID = %s, want %s", gotNodeID, cfg.NodeID)
 	}
-	if gotVdr.Validator.NodeID != cfg.NodeID {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() builder nodeID = %s, want %s", gotVdr.Validator.NodeID, cfg.NodeID)
-	}
-	if gotVdr.Validator.Wght != cfg.StakeAmt {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() builder weight = %d, want %d", gotVdr.Validator.Wght, cfg.StakeAmt)
-	}
-	if gotVdr.Subnet != ids.Empty {
-		t.Fatalf("issueAddAutoRenewedValidatorTx() builder subnet = %s, want Primary Network (ids.Empty)", gotVdr.Subnet)
+	if gotWeight != cfg.StakeAmt {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder weight = %d, want %d", gotWeight, cfg.StakeAmt)
 	}
 	gotPop, ok := gotSigner.(*signer.ProofOfPossession)
 	if !ok {
@@ -373,6 +387,15 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 	}
 	if gotDelegationShares != cfg.DelegationFee {
 		t.Fatalf("issueAddAutoRenewedValidatorTx() builder delegation shares = %d, want %d", gotDelegationShares, cfg.DelegationFee)
+	}
+	if gotAutoCompoundShares != cfg.AutoCompoundRewardShares {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder auto-compound shares = %d, want %d", gotAutoCompoundShares, cfg.AutoCompoundRewardShares)
+	}
+	if gotPeriodSeconds != uint64(cfg.Period/time.Second) {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder period seconds = %d, want %d", gotPeriodSeconds, uint64(cfg.Period/time.Second))
+	}
+	if gotConfigOwner == nil || len(gotConfigOwner.Addrs) != 1 || gotConfigOwner.Addrs[0] != authorityAddr {
+		t.Fatalf("issueAddAutoRenewedValidatorTx() builder authority addrs = %#v, want [%s]", gotConfigOwner, authorityAddr)
 	}
 
 	autoTx, ok := gotUnsignedTx.(*txs.AddAutoRenewedValidatorTx)
@@ -437,17 +460,23 @@ func TestIssueSetAutoRenewedValidatorConfigTx(t *testing.T) {
 		Period:                   7 * 24 * time.Hour,
 	}
 
-	var gotAuthTxID ids.ID
+	var gotBuilderTxID ids.ID
+	var gotBuilderAutoCompoundShares uint32
+	var gotBuilderPeriodSeconds uint64
 	var gotUnsignedTx txs.UnsignedTx
 	gotTxID, err := issueSetAutoRenewedValidatorConfigTx(
-		func(validationID ids.ID, _ ...common.Option) (*txs.DisableL1ValidatorTx, error) {
-			gotAuthTxID = validationID
-			return &txs.DisableL1ValidatorTx{
+		func(txID ids.ID, autoCompoundRewardShares uint32, periodSeconds uint64, _ ...common.Option) (*txs.SetAutoRenewedValidatorConfigTx, error) {
+			gotBuilderTxID = txID
+			gotBuilderAutoCompoundShares = autoCompoundRewardShares
+			gotBuilderPeriodSeconds = periodSeconds
+			return &txs.SetAutoRenewedValidatorConfigTx{
 				BaseTx: txs.BaseTx{BaseTx: avax.BaseTx{
 					NetworkID: 1,
 				}},
-				ValidationID: validationID,
-				DisableAuth:  auth,
+				TxID:                     txID,
+				Auth:                     auth,
+				AutoCompoundRewardShares: autoCompoundRewardShares,
+				Period:                   periodSeconds,
 			}, nil
 		},
 		func(utx txs.UnsignedTx, _ ...common.Option) (*txs.Tx, error) {
@@ -462,8 +491,14 @@ func TestIssueSetAutoRenewedValidatorConfigTx(t *testing.T) {
 	if gotTxID != issuedTxID {
 		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() txID = %s, want %s", gotTxID, issuedTxID)
 	}
-	if gotAuthTxID != validatorTxID {
-		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() auth txID = %s, want %s", gotAuthTxID, validatorTxID)
+	if gotBuilderTxID != validatorTxID {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() builder txID = %s, want %s", gotBuilderTxID, validatorTxID)
+	}
+	if gotBuilderAutoCompoundShares != cfg.AutoCompoundRewardShares {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() builder auto-compound shares = %d, want %d", gotBuilderAutoCompoundShares, cfg.AutoCompoundRewardShares)
+	}
+	if gotBuilderPeriodSeconds != uint64(cfg.Period/time.Second) {
+		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() builder period seconds = %d, want %d", gotBuilderPeriodSeconds, uint64(cfg.Period/time.Second))
 	}
 	setTx, ok := gotUnsignedTx.(*txs.SetAutoRenewedValidatorConfigTx)
 	if !ok {
@@ -504,10 +539,12 @@ func TestIssueSetAutoRenewedValidatorConfigTxAllowsZeroPeriod(t *testing.T) {
 
 	var gotPeriodSeconds uint64
 	_, err := issueSetAutoRenewedValidatorConfigTx(
-		func(validationID ids.ID, _ ...common.Option) (*txs.DisableL1ValidatorTx, error) {
-			return &txs.DisableL1ValidatorTx{
-				ValidationID: validationID,
-				DisableAuth:  &secp256k1fx.Input{},
+		func(txID ids.ID, autoCompoundRewardShares uint32, periodSeconds uint64, _ ...common.Option) (*txs.SetAutoRenewedValidatorConfigTx, error) {
+			return &txs.SetAutoRenewedValidatorConfigTx{
+				TxID:                     txID,
+				Auth:                     &secp256k1fx.Input{},
+				AutoCompoundRewardShares: autoCompoundRewardShares,
+				Period:                   periodSeconds,
 			}, nil
 		},
 		func(utx txs.UnsignedTx, _ ...common.Option) (*txs.Tx, error) {
@@ -528,52 +565,39 @@ func TestIssueSetAutoRenewedValidatorConfigTxAllowsZeroPeriod(t *testing.T) {
 	}
 }
 
-func TestIssueRewardAutoRenewedValidatorTx(t *testing.T) {
-	validatorTxID := ids.GenerateTestID()
-	issuedTxID := ids.GenerateTestID()
-	cfg := RewardAutoRenewedValidatorConfig{
-		TxID:      validatorTxID,
-		Timestamp: 1780576200,
+func TestIssueAutoRenewedValidatorTxRejectsInvalidPeriods(t *testing.T) {
+	_, err := issueAddAutoRenewedValidatorTx(
+		func(ids.NodeID, uint64, signer.Signer, ids.ID, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, uint32, uint32, uint64, ...common.Option) (*txs.AddAutoRenewedValidatorTx, error) {
+			t.Fatal("builder should not be called for invalid add-auto period")
+			return nil, nil
+		},
+		func(txs.UnsignedTx, ...common.Option) (*txs.Tx, error) {
+			t.Fatal("issuer should not be called for invalid add-auto period")
+			return nil, nil
+		},
+		ids.GenerateTestID(),
+		AddAutoRenewedValidatorConfig{Period: 1500 * time.Millisecond},
+	)
+	if err == nil || !strings.Contains(err.Error(), "period must be a whole number of seconds") {
+		t.Fatalf("add-auto invalid period error = %v", err)
 	}
 
-	var gotTxBytes []byte
-	var gotAwaitTxID ids.ID
-	gotTxID, err := issueRewardAutoRenewedValidatorTx(
-		func(_ context.Context, txBytes []byte) (ids.ID, error) {
-			gotTxBytes = txBytes
-			return issuedTxID, nil
+	_, err = issueSetAutoRenewedValidatorConfigTx(
+		func(ids.ID, uint32, uint64, ...common.Option) (*txs.SetAutoRenewedValidatorConfigTx, error) {
+			t.Fatal("builder should not be called for invalid set-auto period")
+			return nil, nil
 		},
-		func(_ context.Context, txID ids.ID, _ time.Duration) error {
-			gotAwaitTxID = txID
-			return nil
+		func(txs.UnsignedTx, ...common.Option) (*txs.Tx, error) {
+			t.Fatal("issuer should not be called for invalid set-auto period")
+			return nil, nil
 		},
-		cfg,
+		SetAutoRenewedValidatorConfigTxConfig{
+			TxID:   ids.GenerateTestID(),
+			Period: -time.Second,
+		},
 	)
-	if err != nil {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx() returned error: %v", err)
-	}
-	if gotTxID != issuedTxID {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx() txID = %s, want %s", gotTxID, issuedTxID)
-	}
-	if gotAwaitTxID != issuedTxID {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx() awaited txID = %s, want %s", gotAwaitTxID, issuedTxID)
-	}
-	parsedTx, err := txs.Parse(txs.Codec, gotTxBytes)
-	if err != nil {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx() failed to parse issued bytes: %v", err)
-	}
-	rewardTx, ok := parsedTx.Unsigned.(*txs.RewardAutoRenewedValidatorTx)
-	if !ok {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx() unsigned type = %T, want *txs.RewardAutoRenewedValidatorTx", parsedTx.Unsigned)
-	}
-	if rewardTx.TxID != validatorTxID {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx() validator txID = %s, want %s", rewardTx.TxID, validatorTxID)
-	}
-	if rewardTx.Timestamp != cfg.Timestamp {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx() timestamp = %d, want %d", rewardTx.Timestamp, cfg.Timestamp)
-	}
-	if len(parsedTx.Creds) != 0 {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx() credentials = %d, want 0 for node-issued internal tx", len(parsedTx.Creds))
+	if err == nil || !strings.Contains(err.Error(), "period cannot be negative") {
+		t.Fatalf("set-auto invalid period error = %v", err)
 	}
 }
 

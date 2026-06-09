@@ -46,25 +46,26 @@ func TestDevnetCompatAddAutoRenewedValidatorTx(t *testing.T) {
 	var issuedTx *txs.Tx
 	gotTxID, err := issueAddAutoRenewedValidatorTx(
 		func(
-			vdr *txs.SubnetValidator,
+			validatorNodeID ids.NodeID,
+			weight uint64,
 			gotSigner signer.Signer,
 			assetID ids.ID,
 			validationRewardsOwner *secp256k1fx.OutputOwners,
 			delegationRewardsOwner *secp256k1fx.OutputOwners,
+			configOwner *secp256k1fx.OutputOwners,
 			shares uint32,
+			autoCompoundRewardShares uint32,
+			periodSeconds uint64,
 			options ...common.Option,
-		) (*txs.AddPermissionlessValidatorTx, error) {
+		) (*txs.AddAutoRenewedValidatorTx, error) {
 			if common.NewOptions(options).Context().Value(testContextKey("devnetcompat")) != "add" {
-				t.Fatal("context option was not passed to add-auto-renewed stake builder")
+				t.Fatal("context option was not passed to add-auto-renewed builder")
 			}
-			if vdr.Validator.NodeID != cfg.NodeID {
-				t.Fatalf("builder nodeID = %s, want %s", vdr.Validator.NodeID, cfg.NodeID)
+			if validatorNodeID != cfg.NodeID {
+				t.Fatalf("builder nodeID = %s, want %s", validatorNodeID, cfg.NodeID)
 			}
-			if vdr.Validator.Wght != cfg.StakeAmt {
-				t.Fatalf("builder weight = %d, want %d", vdr.Validator.Wght, cfg.StakeAmt)
-			}
-			if vdr.Subnet != ids.Empty {
-				t.Fatalf("builder subnet = %s, want primary network ids.Empty", vdr.Subnet)
+			if weight != cfg.StakeAmt {
+				t.Fatalf("builder weight = %d, want %d", weight, cfg.StakeAmt)
 			}
 			if gotSigner != pop {
 				t.Fatal("builder BLS proof pointer mismatch")
@@ -81,10 +82,27 @@ func TestDevnetCompatAddAutoRenewedValidatorTx(t *testing.T) {
 			if shares != cfg.DelegationFee {
 				t.Fatalf("builder delegation shares = %d, want %d", shares, cfg.DelegationFee)
 			}
+			if !ownerHasOnly(configOwner, authorityAddr) {
+				t.Fatalf("validator authority = %#v, want [%s]", configOwner, authorityAddr)
+			}
+			if autoCompoundRewardShares != cfg.AutoCompoundRewardShares {
+				t.Fatalf("builder auto-compound shares = %d, want %d", autoCompoundRewardShares, cfg.AutoCompoundRewardShares)
+			}
+			if periodSeconds != uint64(cfg.Period/time.Second) {
+				t.Fatalf("builder period seconds = %d, want %d", periodSeconds, uint64(cfg.Period/time.Second))
+			}
 
-			return &txs.AddPermissionlessValidatorTx{
-				BaseTx:    devnetCompatBaseTx(ctx),
-				StakeOuts: stakeOuts,
+			return &txs.AddAutoRenewedValidatorTx{
+				BaseTx:                   devnetCompatBaseTx(ctx),
+				ValidatorNodeID:          validatorNodeID[:],
+				Signer:                   gotSigner,
+				StakeOuts:                stakeOuts,
+				ValidatorRewardsOwner:    validationRewardsOwner,
+				DelegatorRewardsOwner:    delegationRewardsOwner,
+				ValidatorAuthority:       configOwner,
+				DelegationShares:         shares,
+				AutoCompoundRewardShares: autoCompoundRewardShares,
+				Period:                   periodSeconds,
 			}, nil
 		},
 		func(utx txs.UnsignedTx, options ...common.Option) (*txs.Tx, error) {
@@ -163,17 +181,25 @@ func TestDevnetCompatSetAutoRenewedValidatorConfigTx(t *testing.T) {
 
 	var issuedTx *txs.Tx
 	gotTxID, err := issueSetAutoRenewedValidatorConfigTx(
-		func(validationID ids.ID, options ...common.Option) (*txs.DisableL1ValidatorTx, error) {
+		func(txID ids.ID, autoCompoundRewardShares uint32, periodSeconds uint64, options ...common.Option) (*txs.SetAutoRenewedValidatorConfigTx, error) {
 			if common.NewOptions(options).Context().Value(testContextKey("devnetcompat")) != "set" {
-				t.Fatal("context option was not passed to set-auto-config auth builder")
+				t.Fatal("context option was not passed to set-auto-config builder")
 			}
-			if validationID != validatorTxID {
-				t.Fatalf("auth validationID = %s, want %s", validationID, validatorTxID)
+			if txID != validatorTxID {
+				t.Fatalf("builder txID = %s, want %s", txID, validatorTxID)
 			}
-			return &txs.DisableL1ValidatorTx{
-				BaseTx:       devnetCompatBaseTx(ctx),
-				ValidationID: validationID,
-				DisableAuth:  auth,
+			if autoCompoundRewardShares != cfg.AutoCompoundRewardShares {
+				t.Fatalf("builder auto-compound shares = %d, want %d", autoCompoundRewardShares, cfg.AutoCompoundRewardShares)
+			}
+			if periodSeconds != uint64(cfg.Period/time.Second) {
+				t.Fatalf("builder period seconds = %d, want %d", periodSeconds, uint64(cfg.Period/time.Second))
+			}
+			return &txs.SetAutoRenewedValidatorConfigTx{
+				BaseTx:                   devnetCompatBaseTx(ctx),
+				TxID:                     txID,
+				Auth:                     auth,
+				AutoCompoundRewardShares: autoCompoundRewardShares,
+				Period:                   periodSeconds,
 			}, nil
 		},
 		func(utx txs.UnsignedTx, options ...common.Option) (*txs.Tx, error) {
@@ -232,11 +258,13 @@ func TestDevnetCompatSetAutoRenewedValidatorConfigTxExitCycle(t *testing.T) {
 	}
 
 	_, err := issueSetAutoRenewedValidatorConfigTx(
-		func(validationID ids.ID, _ ...common.Option) (*txs.DisableL1ValidatorTx, error) {
-			return &txs.DisableL1ValidatorTx{
-				BaseTx:       devnetCompatBaseTx(ctx),
-				ValidationID: validationID,
-				DisableAuth:  &secp256k1fx.Input{SigIndices: []uint32{0}},
+		func(txID ids.ID, autoCompoundRewardShares uint32, periodSeconds uint64, _ ...common.Option) (*txs.SetAutoRenewedValidatorConfigTx, error) {
+			return &txs.SetAutoRenewedValidatorConfigTx{
+				BaseTx:                   devnetCompatBaseTx(ctx),
+				TxID:                     txID,
+				Auth:                     &secp256k1fx.Input{SigIndices: []uint32{0}},
+				AutoCompoundRewardShares: autoCompoundRewardShares,
+				Period:                   periodSeconds,
 			}, nil
 		},
 		func(utx txs.UnsignedTx, _ ...common.Option) (*txs.Tx, error) {
@@ -260,101 +288,12 @@ func TestDevnetCompatSetAutoRenewedValidatorConfigTxExitCycle(t *testing.T) {
 	}
 }
 
-func TestDevnetCompatRewardAutoRenewedValidatorTx(t *testing.T) {
-	validatorTxID := ids.GenerateTestID()
-	issuedTxID := ids.GenerateTestID()
-	cfg := RewardAutoRenewedValidatorConfig{
-		TxID:      validatorTxID,
-		Timestamp: 1780576200,
-	}
-	callCtx := context.WithValue(context.Background(), testContextKey("devnetcompat"), "reward")
-	pollFrequency := 250 * time.Millisecond
-
-	var gotAwaitTxID ids.ID
-	gotTxID, err := issueRewardAutoRenewedValidatorTx(
-		func(ctx context.Context, txBytes []byte) (ids.ID, error) {
-			if ctx.Value(testContextKey("devnetcompat")) != "reward" {
-				t.Fatal("context option was not passed to reward-auto issuer")
-			}
-
-			parsed, err := txs.Parse(txs.Codec, txBytes)
-			if err != nil {
-				t.Fatalf("failed to parse serialized RewardAutoRenewedValidatorTx: %v", err)
-			}
-			rewardTx, ok := parsed.Unsigned.(*txs.RewardAutoRenewedValidatorTx)
-			if !ok {
-				t.Fatalf("parsed unsigned tx type = %T, want *txs.RewardAutoRenewedValidatorTx", parsed.Unsigned)
-			}
-			if err := rewardTx.SyntacticVerify(nil); err != nil {
-				t.Fatalf("RewardAutoRenewedValidatorTx failed devnet syntactic verify: %v", err)
-			}
-			if rewardTx.TxID != cfg.TxID {
-				t.Fatalf("reward txID = %s, want %s", rewardTx.TxID, cfg.TxID)
-			}
-			if rewardTx.Timestamp != cfg.Timestamp {
-				t.Fatalf("reward timestamp = %d, want %d", rewardTx.Timestamp, cfg.Timestamp)
-			}
-			if len(parsed.Creds) != 0 {
-				t.Fatalf("reward tx credentials = %d, want unsigned/no credentials", len(parsed.Creds))
-			}
-			return issuedTxID, nil
-		},
-		func(ctx context.Context, txID ids.ID, freq time.Duration) error {
-			if ctx.Value(testContextKey("devnetcompat")) != "reward" {
-				t.Fatal("context option was not passed to reward-auto awaiter")
-			}
-			if freq != pollFrequency {
-				t.Fatalf("poll frequency = %s, want %s", freq, pollFrequency)
-			}
-			gotAwaitTxID = txID
-			return nil
-		},
-		cfg,
-		common.WithContext(callCtx),
-		common.WithPollFrequency(pollFrequency),
-	)
-	if err != nil {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx returned error: %v", err)
-	}
-	if gotTxID != issuedTxID {
-		t.Fatalf("returned txID = %s, want %s", gotTxID, issuedTxID)
-	}
-	if gotAwaitTxID != issuedTxID {
-		t.Fatalf("awaited txID = %s, want %s", gotAwaitTxID, issuedTxID)
-	}
-}
-
-func TestDevnetCompatRewardAutoRenewedValidatorTxAssumeDecidedSkipsAwait(t *testing.T) {
-	issuedTxID := ids.GenerateTestID()
-
-	gotTxID, err := issueRewardAutoRenewedValidatorTx(
-		func(context.Context, []byte) (ids.ID, error) {
-			return issuedTxID, nil
-		},
-		func(context.Context, ids.ID, time.Duration) error {
-			t.Fatal("await should not be called when WithAssumeDecided is set")
-			return nil
-		},
-		RewardAutoRenewedValidatorConfig{
-			TxID:      ids.GenerateTestID(),
-			Timestamp: 1780576200,
-		},
-		common.WithAssumeDecided(),
-	)
-	if err != nil {
-		t.Fatalf("issueRewardAutoRenewedValidatorTx returned error: %v", err)
-	}
-	if gotTxID != issuedTxID {
-		t.Fatalf("returned txID = %s, want %s", gotTxID, issuedTxID)
-	}
-}
-
 func TestDevnetCompatACP236ErrorWrapping(t *testing.T) {
 	ctx := devnetCompatContext()
 	expectedErr := errors.New("devnet compat failure")
 
 	_, err := issueAddAutoRenewedValidatorTx(
-		func(*txs.SubnetValidator, signer.Signer, ids.ID, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, uint32, ...common.Option) (*txs.AddPermissionlessValidatorTx, error) {
+		func(ids.NodeID, uint64, signer.Signer, ids.ID, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, uint32, uint32, uint64, ...common.Option) (*txs.AddAutoRenewedValidatorTx, error) {
 			return nil, expectedErr
 		},
 		func(txs.UnsignedTx, ...common.Option) (*txs.Tx, error) {
@@ -362,24 +301,24 @@ func TestDevnetCompatACP236ErrorWrapping(t *testing.T) {
 			return nil, nil
 		},
 		ctx.AVAXAssetID,
-		AddAutoRenewedValidatorConfig{},
+		AddAutoRenewedValidatorConfig{Period: time.Second},
 	)
 	assertWrapped(t, err, expectedErr, "failed to build AddAutoRenewedValidatorTx")
 
 	_, err = issueAddAutoRenewedValidatorTx(
-		func(*txs.SubnetValidator, signer.Signer, ids.ID, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, uint32, ...common.Option) (*txs.AddPermissionlessValidatorTx, error) {
-			return &txs.AddPermissionlessValidatorTx{BaseTx: devnetCompatBaseTx(ctx)}, nil
+		func(ids.NodeID, uint64, signer.Signer, ids.ID, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, uint32, uint32, uint64, ...common.Option) (*txs.AddAutoRenewedValidatorTx, error) {
+			return &txs.AddAutoRenewedValidatorTx{BaseTx: devnetCompatBaseTx(ctx)}, nil
 		},
 		func(txs.UnsignedTx, ...common.Option) (*txs.Tx, error) {
 			return nil, expectedErr
 		},
 		ctx.AVAXAssetID,
-		AddAutoRenewedValidatorConfig{},
+		AddAutoRenewedValidatorConfig{Period: time.Second},
 	)
 	assertWrapped(t, err, expectedErr, "failed to issue AddAutoRenewedValidatorTx")
 
 	_, err = issueSetAutoRenewedValidatorConfigTx(
-		func(ids.ID, ...common.Option) (*txs.DisableL1ValidatorTx, error) {
+		func(ids.ID, uint32, uint64, ...common.Option) (*txs.SetAutoRenewedValidatorConfigTx, error) {
 			return nil, expectedErr
 		},
 		func(txs.UnsignedTx, ...common.Option) (*txs.Tx, error) {
@@ -391,11 +330,13 @@ func TestDevnetCompatACP236ErrorWrapping(t *testing.T) {
 	assertWrapped(t, err, expectedErr, "failed to build SetAutoRenewedValidatorConfigTx")
 
 	_, err = issueSetAutoRenewedValidatorConfigTx(
-		func(validationID ids.ID, _ ...common.Option) (*txs.DisableL1ValidatorTx, error) {
-			return &txs.DisableL1ValidatorTx{
-				BaseTx:       devnetCompatBaseTx(ctx),
-				ValidationID: validationID,
-				DisableAuth:  &secp256k1fx.Input{},
+		func(txID ids.ID, autoCompoundRewardShares uint32, periodSeconds uint64, _ ...common.Option) (*txs.SetAutoRenewedValidatorConfigTx, error) {
+			return &txs.SetAutoRenewedValidatorConfigTx{
+				BaseTx:                   devnetCompatBaseTx(ctx),
+				TxID:                     txID,
+				Auth:                     &secp256k1fx.Input{},
+				AutoCompoundRewardShares: autoCompoundRewardShares,
+				Period:                   periodSeconds,
 			}, nil
 		},
 		func(txs.UnsignedTx, ...common.Option) (*txs.Tx, error) {
@@ -404,35 +345,6 @@ func TestDevnetCompatACP236ErrorWrapping(t *testing.T) {
 		SetAutoRenewedValidatorConfigTxConfig{TxID: ids.GenerateTestID()},
 	)
 	assertWrapped(t, err, expectedErr, "failed to issue SetAutoRenewedValidatorConfigTx")
-
-	_, err = issueRewardAutoRenewedValidatorTx(
-		func(context.Context, []byte) (ids.ID, error) {
-			return ids.Empty, expectedErr
-		},
-		func(context.Context, ids.ID, time.Duration) error {
-			t.Fatal("awaiter should not be called after reward-auto issue failure")
-			return nil
-		},
-		RewardAutoRenewedValidatorConfig{
-			TxID:      ids.GenerateTestID(),
-			Timestamp: 1,
-		},
-	)
-	assertWrapped(t, err, expectedErr, "failed to issue RewardAutoRenewedValidatorTx")
-
-	_, err = issueRewardAutoRenewedValidatorTx(
-		func(context.Context, []byte) (ids.ID, error) {
-			return ids.GenerateTestID(), nil
-		},
-		func(context.Context, ids.ID, time.Duration) error {
-			return expectedErr
-		},
-		RewardAutoRenewedValidatorConfig{
-			TxID:      ids.GenerateTestID(),
-			Timestamp: 1,
-		},
-	)
-	assertWrapped(t, err, expectedErr, "failed waiting for RewardAutoRenewedValidatorTx acceptance")
 }
 
 func TestDevnetCompatACP236DevnetSyntacticRejections(t *testing.T) {
@@ -454,12 +366,6 @@ func TestDevnetCompatACP236DevnetSyntacticRejections(t *testing.T) {
 		t.Fatal("AddAutoRenewedValidatorTx expected devnet syntactic rejection for too many auto-compound shares")
 	}
 
-	missingTimestampTx := &txs.RewardAutoRenewedValidatorTx{
-		TxID: ids.GenerateTestID(),
-	}
-	if err := missingTimestampTx.SyntacticVerify(nil); err == nil {
-		t.Fatal("RewardAutoRenewedValidatorTx expected devnet syntactic rejection for missing timestamp")
-	}
 }
 
 func newDevnetCompatPoP(t *testing.T) *signer.ProofOfPossession {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -33,8 +32,6 @@ var (
 	valSetAutoTxID     string
 	valSetAutoPeriod   string
 	valSetAutoCompound float64
-	valRewardAutoTxID  string
-	valRewardAutoTime  string
 )
 
 var (
@@ -43,7 +40,6 @@ var (
 	validatorAddAutoRenewedValidatorFn          = pchain.AddAutoRenewedValidator
 	validatorGetAutoRenewedValidatorAuthorityFn = pchain.GetAutoRenewedValidatorAuthority
 	validatorSetAutoRenewedValidatorConfigFn    = pchain.SetAutoRenewedValidatorConfig
-	validatorRewardAutoRenewedValidatorFn       = pchain.RewardAutoRenewedValidator
 )
 
 var validatorCmd = &cobra.Command{
@@ -403,58 +399,6 @@ var validatorSetAutoConfigCmd = &cobra.Command{
 	},
 }
 
-var validatorRewardAutoCmd = &cobra.Command{
-	Use:   "reward-auto",
-	Short: "Reward an auto-renewed validator cycle",
-	Long:  `Reward or exit an auto-renewed validator at the end of a validation cycle.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx, cancel := getOperationContext()
-		defer cancel()
-
-		if valRewardAutoTxID == "" {
-			return fmt.Errorf("--tx-id is required")
-		}
-		autoRenewedTxID, err := ids.FromString(valRewardAutoTxID)
-		if err != nil {
-			return fmt.Errorf("invalid tx ID: %w", err)
-		}
-
-		if valRewardAutoTime == "" {
-			return fmt.Errorf("--timestamp is required")
-		}
-		timestamp, timestampTime, err := parseRewardAutoTimestamp(valRewardAutoTime)
-		if err != nil {
-			return err
-		}
-
-		netConfig, err := validatorGetNetworkConfigFn(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get network config: %w", err)
-		}
-
-		w, cleanup, err := validatorLoadPChainWalletFn(ctx, netConfig)
-		if err != nil {
-			return fmt.Errorf("failed to create wallet: %w", err)
-		}
-		defer cleanup()
-
-		fmt.Printf("Rewarding auto-renewed validator cycle for %s...\n", autoRenewedTxID)
-		fmt.Printf("  Timestamp: %s (%d)\n", timestampTime.UTC().Format(time.RFC3339), timestamp)
-		fmt.Println("Submitting transaction...")
-
-		txID, err := validatorRewardAutoRenewedValidatorFn(ctx, w, pchain.RewardAutoRenewedValidatorConfig{
-			TxID:      autoRenewedTxID,
-			Timestamp: timestamp,
-		})
-		if err != nil {
-			return err
-		}
-
-		fmt.Printf("TX ID: %s\n", txID)
-		return nil
-	},
-}
-
 func parseTimeRange(startStr, durationStr string) (time.Time, time.Time, error) {
 	var start time.Time
 	var err error
@@ -510,32 +454,6 @@ func parseAutoRenewConfigPeriod(periodStr string) (time.Duration, error) {
 		return 0, fmt.Errorf("period must be a whole number of seconds")
 	}
 	return period, nil
-}
-
-func parseRewardAutoTimestamp(timestampStr string) (uint64, time.Time, error) {
-	timestampStr = strings.TrimSpace(timestampStr)
-	if timestampStr == "" {
-		return 0, time.Time{}, fmt.Errorf("timestamp is required")
-	}
-
-	if timestamp, err := strconv.ParseUint(timestampStr, 10, 64); err == nil {
-		if timestamp == 0 {
-			return 0, time.Time{}, fmt.Errorf("timestamp must be positive")
-		}
-		if timestamp > uint64(1<<63-1) {
-			return 0, time.Time{}, fmt.Errorf("timestamp is too large")
-		}
-		return timestamp, time.Unix(int64(timestamp), 0).UTC(), nil
-	}
-
-	timestampTime, err := time.Parse(time.RFC3339, timestampStr)
-	if err != nil {
-		return 0, time.Time{}, fmt.Errorf("invalid timestamp (use RFC3339 or Unix seconds): %w", err)
-	}
-	if timestampTime.Unix() <= 0 {
-		return 0, time.Time{}, fmt.Errorf("timestamp must be positive")
-	}
-	return uint64(timestampTime.Unix()), timestampTime.UTC(), nil
 }
 
 // getValidatorPoP returns a BLS proof of possession for validator registration.
@@ -612,7 +530,6 @@ func init() {
 	validatorCmd.AddCommand(validatorAddCmd)
 	validatorCmd.AddCommand(validatorAddAutoRenewedCmd)
 	validatorCmd.AddCommand(validatorSetAutoConfigCmd)
-	validatorCmd.AddCommand(validatorRewardAutoCmd)
 	validatorCmd.AddCommand(validatorDelegateCmd)
 
 	// Add validator flags
@@ -642,10 +559,6 @@ func init() {
 	validatorSetAutoConfigCmd.Flags().StringVar(&valSetAutoTxID, "tx-id", "", "Original AddAutoRenewedValidatorTx ID (required)")
 	validatorSetAutoConfigCmd.Flags().StringVar(&valSetAutoPeriod, "period", "", "Next auto-renewal cycle duration, or 0 to exit after the current cycle (required)")
 	validatorSetAutoConfigCmd.Flags().Float64Var(&valSetAutoCompound, "auto-compound", 0, "Fraction of rewards to auto-compound (0.3 = 30%, 1 = 100%) (required)")
-
-	// Reward auto-renewed validator flags
-	validatorRewardAutoCmd.Flags().StringVar(&valRewardAutoTxID, "tx-id", "", "Original AddAutoRenewedValidatorTx ID (required)")
-	validatorRewardAutoCmd.Flags().StringVar(&valRewardAutoTime, "timestamp", "", "Cycle end timestamp as RFC3339 or Unix seconds (required)")
 
 	// Delegate flags
 	validatorDelegateCmd.Flags().StringVar(&valNodeID, "node-id", "", "Node ID to delegate to")

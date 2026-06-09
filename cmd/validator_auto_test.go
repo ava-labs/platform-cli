@@ -440,7 +440,6 @@ func resetValidatorAutoCommandState(t *testing.T) {
 	origAddAutoRenewedValidatorFn := validatorAddAutoRenewedValidatorFn
 	origGetAutoRenewedValidatorAuthorityFn := validatorGetAutoRenewedValidatorAuthorityFn
 	origSetAutoRenewedValidatorConfigFn := validatorSetAutoRenewedValidatorConfigFn
-	origRewardAutoRenewedValidatorFn := validatorRewardAutoRenewedValidatorFn
 
 	t.Cleanup(func() {
 		validatorGetNetworkConfigFn = origGetNetworkConfigFn
@@ -448,7 +447,6 @@ func resetValidatorAutoCommandState(t *testing.T) {
 		validatorAddAutoRenewedValidatorFn = origAddAutoRenewedValidatorFn
 		validatorGetAutoRenewedValidatorAuthorityFn = origGetAutoRenewedValidatorAuthorityFn
 		validatorSetAutoRenewedValidatorConfigFn = origSetAutoRenewedValidatorConfigFn
-		validatorRewardAutoRenewedValidatorFn = origRewardAutoRenewedValidatorFn
 		valNodeID = ""
 		valStakeAmount = 0
 		valNodeEndpoint = ""
@@ -462,8 +460,6 @@ func resetValidatorAutoCommandState(t *testing.T) {
 		valSetAutoTxID = ""
 		valSetAutoPeriod = ""
 		valSetAutoCompound = 0
-		valRewardAutoTxID = ""
-		valRewardAutoTime = ""
 		setFlagChanged(t, validatorSetAutoConfigCmd, "period", false)
 		setFlagChanged(t, validatorSetAutoConfigCmd, "auto-compound", false)
 	})
@@ -481,8 +477,6 @@ func resetValidatorAutoCommandState(t *testing.T) {
 	valSetAutoTxID = ""
 	valSetAutoPeriod = ""
 	valSetAutoCompound = 0
-	valRewardAutoTxID = ""
-	valRewardAutoTime = ""
 	setFlagChanged(t, validatorSetAutoConfigCmd, "period", false)
 	setFlagChanged(t, validatorSetAutoConfigCmd, "auto-compound", false)
 }

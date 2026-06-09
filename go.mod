@@ -3,7 +3,7 @@ module github.com/ava-labs/platform-cli
 go 1.25.11
 
 require (
-	github.com/ava-labs/avalanchego v1.14.3-0.20260602193739-919446e8501f
+	github.com/ava-labs/avalanchego v1.14.3-0.20260603151011-1339ef45dc6c
 	github.com/ava-labs/ledger-avalanche-go v1.1.0
 	github.com/ava-labs/libevm v1.13.15-0.20260602011657-ad0081e3b988
 	github.com/spf13/cobra v1.9.1
