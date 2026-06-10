@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.25.9"
+          go-version: "1.25.11"
 
       - name: Verify go.mod is tidy
         run: |
@@ -28,17 +28,17 @@ jobs:
 
       - name: Run staticcheck
         env:
-          GOTOOLCHAIN: go1.25.9
+          GOTOOLCHAIN: go1.25.11
         run: go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...
 
       - name: Run staticcheck (tagged e2e)
         env:
-          GOTOOLCHAIN: go1.25.9
+          GOTOOLCHAIN: go1.25.11
         run: go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 -tags=clie2e,networke2e ./e2e/...
 
       - name: Run govulncheck
         env:
-          GOTOOLCHAIN: go1.25.9
+          GOTOOLCHAIN: go1.25.11
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.2.0 ./...
 
       - name: Run tests
