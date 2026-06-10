@@ -20,11 +20,11 @@ import (
 
 // Wallet wraps the avalanchego wallet for P-Chain operations.
 type Wallet struct {
-	key       *secp256k1.PrivateKey   // nil for Ledger
-	keychain  *secp256k1fx.Keychain   // nil for Ledger
-	pWallet   pwallet.Wallet
-	config    network.Config
-	address   ids.ShortID             // used when key is nil (Ledger mode)
+	key      *secp256k1.PrivateKey // nil for Ledger
+	keychain *secp256k1fx.Keychain // nil for Ledger
+	pWallet  pwallet.Wallet
+	config   network.Config
+	address  ids.ShortID // used when key is nil (Ledger mode)
 }
 
 // NewWallet creates a new wallet for P-Chain operations.
@@ -147,12 +147,12 @@ func (w *Wallet) Config() network.Config {
 
 // FullWallet wraps the avalanchego primary.Wallet for multi-chain operations.
 type FullWallet struct {
-	key       *secp256k1.PrivateKey   // nil for Ledger
-	keychain  *secp256k1fx.Keychain   // nil for Ledger
-	wallet    *primary.Wallet
-	config    network.Config
-	address   ids.ShortID             // P-Chain address (used when key is nil)
-	ethAddr   common.Address          // C-Chain address (used when key is nil)
+	key      *secp256k1.PrivateKey // nil for Ledger
+	keychain *secp256k1fx.Keychain // nil for Ledger
+	wallet   *primary.Wallet
+	config   network.Config
+	address  ids.ShortID    // P-Chain address (used when key is nil)
+	ethAddr  common.Address // C-Chain address (used when key is nil)
 }
 
 // NewFullWallet creates a new wallet for multi-chain operations (P-Chain and C-Chain).

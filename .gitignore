@@ -14,9 +14,6 @@ e2e.test
 .DS_Store
 Thumbs.db
 
-# AI context (local only)
-CLAUDE.md
-
 # Test artifacts
 coverage.out
 *.test

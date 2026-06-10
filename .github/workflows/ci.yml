@@ -23,6 +23,15 @@ jobs:
           go mod tidy
           git diff --exit-code go.mod go.sum
 
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Files not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
       - name: Run go vet
         run: go vet ./...
 

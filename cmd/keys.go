@@ -121,6 +121,8 @@ Examples:
 				}
 			}
 			defer clearBytes(password)
+		} else {
+			fmt.Fprintln(os.Stderr, "WARNING: storing key unencrypted; anyone with access to ~/.platform/keys/ can read it")
 		}
 
 		// Import the key
@@ -189,6 +191,8 @@ Examples:
 				}
 			}
 			defer clearBytes(password)
+		} else {
+			fmt.Fprintln(os.Stderr, "WARNING: storing key unencrypted; anyone with access to ~/.platform/keys/ can read it")
 		}
 
 		// Generate the key

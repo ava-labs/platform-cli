@@ -2,14 +2,12 @@ package cmd
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	nodeutil "github.com/ava-labs/platform-cli/pkg/node"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
@@ -265,33 +263,6 @@ func getValidatorPoP(ctx context.Context, nodeID ids.NodeID) (*signer.ProofOfPos
 	default:
 		return nil, "", fmt.Errorf("missing BLS proof of possession: provide --bls-public-key and --bls-pop (recommended), or use --node-endpoint")
 	}
-}
-
-func parseManualPoP(pubKeyHex, popHex string) (*signer.ProofOfPossession, error) {
-	pubKeyBytes, err := hex.DecodeString(strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(pubKeyHex), "0x"), "0X"))
-	if err != nil {
-		return nil, fmt.Errorf("invalid --bls-public-key: %w", err)
-	}
-	if len(pubKeyBytes) != bls.PublicKeyLen {
-		return nil, fmt.Errorf("invalid --bls-public-key length: expected %d bytes, got %d", bls.PublicKeyLen, len(pubKeyBytes))
-	}
-
-	popBytes, err := hex.DecodeString(strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(popHex), "0x"), "0X"))
-	if err != nil {
-		return nil, fmt.Errorf("invalid --bls-pop: %w", err)
-	}
-	if len(popBytes) != bls.SignatureLen {
-		return nil, fmt.Errorf("invalid --bls-pop length: expected %d bytes, got %d", bls.SignatureLen, len(popBytes))
-	}
-
-	pop := &signer.ProofOfPossession{}
-	copy(pop.PublicKey[:], pubKeyBytes)
-	copy(pop.ProofOfPossession[:], popBytes)
-	if err := pop.Verify(); err != nil {
-		return nil, fmt.Errorf("invalid BLS proof of possession: %w", err)
-	}
-
-	return pop, nil
 }
 
 func normalizeValidatorNodeURI(addr string) (string, error) {

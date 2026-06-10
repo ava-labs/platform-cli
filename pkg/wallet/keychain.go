@@ -100,7 +100,6 @@ func deriveEthAddress(key *secp256k1.PrivateKey) string {
 	return key.PublicKey().EthAddress().Hex()
 }
 
-
 // KeyToHex converts a private key to hex format with 0x prefix.
 func KeyToHex(key *secp256k1.PrivateKey) string {
 	return "0x" + hex.EncodeToString(key.Bytes())

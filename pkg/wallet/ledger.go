@@ -36,9 +36,9 @@ const LedgerEnabled = true
 type LedgerKeychain struct {
 	device    *ledger.LedgerAvalanche
 	index     uint32
-	address   ids.ShortID              // P-Chain address (from 9000 path)
-	pubKey    *secp256k1.PublicKey      // Public key from m/44'/9000'/0'/0/{index}
-	evmPubKey *secp256k1.PublicKey      // Public key from m/44'/60'/0'/0/{index}
+	address   ids.ShortID          // P-Chain address (from 9000 path)
+	pubKey    *secp256k1.PublicKey // Public key from m/44'/9000'/0'/0/{index}
+	evmPubKey *secp256k1.PublicKey // Public key from m/44'/60'/0'/0/{index}
 	addresses set.Set[ids.ShortID]
 }
 
