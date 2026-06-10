@@ -23,17 +23,17 @@ import (
 const defaultValidatorWeight uint64 = 100
 
 var (
-	subnetID           string
-	subnetNewOwner     string
-	subnetChainID      string
-	subnetManager      string
-	subnetValidatorIPs string
-	subnetValidatorIDs string
-	subnetValidatorBLS string
-	subnetValidatorPoP string
-	subnetValBalance        float64
-	subnetMockVal           bool
-	subnetValidatorWeights  string
+	subnetID               string
+	subnetNewOwner         string
+	subnetChainID          string
+	subnetManager          string
+	subnetValidatorIPs     string
+	subnetValidatorIDs     string
+	subnetValidatorBLS     string
+	subnetValidatorPoP     string
+	subnetValBalance       float64
+	subnetMockVal          bool
+	subnetValidatorWeights string
 )
 
 var subnetCmd = &cobra.Command{
