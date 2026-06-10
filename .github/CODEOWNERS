@@ -2,13 +2,13 @@
 # These users will be automatically requested for review on PRs
 
 # Default owner for everything
-* @owenwahlgren @containerman17 @martineckardt
+* @ava-labs/builder-hub-maintainers
 
 # Security-critical paths (require explicit owner review)
-/pkg/keystore/ @owenwahlgren @containerman17 @martineckardt
-/pkg/pchain/ @owenwahlgren @containerman17 @martineckardt
-/pkg/wallet/ @owenwahlgren @containerman17 @martineckardt
-/pkg/crosschain/ @owenwahlgren @containerman17 @martineckardt
+/pkg/keystore/ @ava-labs/builder-hub-maintainers
+/pkg/pchain/ @ava-labs/builder-hub-maintainers
+/pkg/wallet/ @ava-labs/builder-hub-maintainers
+/pkg/crosschain/ @ava-labs/builder-hub-maintainers
 
 # CI/CD and repo config
-/.github/ @owenwahlgren @containerman17 @martineckardt
+/.github/ @ava-labs/builder-hub-maintainers
