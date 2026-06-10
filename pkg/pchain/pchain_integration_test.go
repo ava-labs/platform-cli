@@ -4,9 +4,9 @@
 // This file contains integration tests that run against a tmpnet network.
 //
 // To run these tests:
-//   1. Build avalanchego: go build -o ./build/avalanchego ./main
-//   2. Set AVALANCHEGO_PATH to point to the binary
-//   3. Run: go test -tags=integration -v ./pkg/pchain/...
+//  1. Build avalanchego: go build -o ./build/avalanchego ./main
+//  2. Set AVALANCHEGO_PATH to point to the binary
+//  3. Run: go test -tags=integration -v ./pkg/pchain/...
 package pchain
 
 import (
