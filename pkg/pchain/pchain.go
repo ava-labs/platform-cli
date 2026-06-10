@@ -17,34 +17,88 @@ import (
 )
 
 // =============================================================================
+// Issuer Seams
+// =============================================================================
+//
+// Each unexported issue*Tx helper depends on a small, single-method interface
+// rather than the full avalanchego wallet. The avalanchego P-Chain wallet
+// (pwallet.Wallet, returned by w.PWallet()) satisfies all of them, and tests
+// supply small stub implementations.
+
+// baseTxIssuer issues a P-Chain BaseTx.
+type baseTxIssuer interface {
+	IssueBaseTx(outputs []*avax.TransferableOutput, options ...common.Option) (*txs.Tx, error)
+}
+
+// exportTxIssuer issues a P-Chain ExportTx.
+type exportTxIssuer interface {
+	IssueExportTx(chainID ids.ID, outputs []*avax.TransferableOutput, options ...common.Option) (*txs.Tx, error)
+}
+
+// importTxIssuer issues a P-Chain ImportTx.
+type importTxIssuer interface {
+	IssueImportTx(chainID ids.ID, to *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error)
+}
+
+// permissionlessValidatorTxIssuer issues an AddPermissionlessValidatorTx.
+type permissionlessValidatorTxIssuer interface {
+	IssueAddPermissionlessValidatorTx(vdr *txs.SubnetValidator, signer signer.Signer, assetID ids.ID, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, shares uint32, options ...common.Option) (*txs.Tx, error)
+}
+
+// permissionlessDelegatorTxIssuer issues an AddPermissionlessDelegatorTx.
+type permissionlessDelegatorTxIssuer interface {
+	IssueAddPermissionlessDelegatorTx(vdr *txs.SubnetValidator, assetID ids.ID, rewardsOwner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error)
+}
+
+// createSubnetTxIssuer issues a CreateSubnetTx.
+type createSubnetTxIssuer interface {
+	IssueCreateSubnetTx(owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error)
+}
+
+// transferSubnetOwnershipTxIssuer issues a TransferSubnetOwnershipTx.
+type transferSubnetOwnershipTxIssuer interface {
+	IssueTransferSubnetOwnershipTx(subnetID ids.ID, owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error)
+}
+
+// convertSubnetToL1TxIssuer issues a ConvertSubnetToL1Tx.
+type convertSubnetToL1TxIssuer interface {
+	IssueConvertSubnetToL1Tx(subnetID ids.ID, chainID ids.ID, address []byte, validators []*txs.ConvertSubnetToL1Validator, options ...common.Option) (*txs.Tx, error)
+}
+
+// createChainTxIssuer issues a CreateChainTx.
+type createChainTxIssuer interface {
+	IssueCreateChainTx(subnetID ids.ID, genesis []byte, vmID ids.ID, fxIDs []ids.ID, chainName string, options ...common.Option) (*txs.Tx, error)
+}
+
+// =============================================================================
 // Transfers
 // =============================================================================
 
 // Send sends AVAX on the P-Chain (IssueBaseTx).
 func Send(ctx context.Context, w *wallet.Wallet, to ids.ShortID, amountNAVAX uint64) (ids.ID, error) {
 	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
-	return issueSendTx(w.PWallet().IssueBaseTx, avaxAssetID, to, amountNAVAX, common.WithContext(ctx))
+	return issueSendTx(w.PWallet(), avaxAssetID, to, amountNAVAX, common.WithContext(ctx))
 }
 
 // Export exports AVAX from P-Chain to another chain (IssueExportTx).
 func Export(ctx context.Context, w *wallet.Wallet, destChainID ids.ID, amountNAVAX uint64) (ids.ID, error) {
 	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
-	return issueExportTx(w.PWallet().IssueExportTx, destChainID, avaxAssetID, w.PChainAddress(), amountNAVAX, common.WithContext(ctx))
+	return issueExportTx(w.PWallet(), destChainID, avaxAssetID, w.PChainAddress(), amountNAVAX, common.WithContext(ctx))
 }
 
 // Import imports AVAX to P-Chain from another chain (IssueImportTx).
 func Import(ctx context.Context, w *wallet.Wallet, sourceChainID ids.ID) (ids.ID, error) {
-	return issueImportTx(w.PWallet().IssueImportTx, sourceChainID, w.PChainAddress(), common.WithContext(ctx))
+	return issueImportTx(w.PWallet(), sourceChainID, w.PChainAddress(), common.WithContext(ctx))
 }
 
 func issueSendTx(
-	issueBaseTx func(outputs []*avax.TransferableOutput, options ...common.Option) (*txs.Tx, error),
+	issuer baseTxIssuer,
 	avaxAssetID ids.ID,
 	to ids.ShortID,
 	amountNAVAX uint64,
 	options ...common.Option,
 ) (ids.ID, error) {
-	tx, err := issueBaseTx([]*avax.TransferableOutput{{
+	tx, err := issuer.IssueBaseTx([]*avax.TransferableOutput{{
 		Asset: avax.Asset{ID: avaxAssetID},
 		Out: &secp256k1fx.TransferOutput{
 			Amt: amountNAVAX,
@@ -61,7 +115,7 @@ func issueSendTx(
 }
 
 func issueExportTx(
-	issueExportTxFn func(chainID ids.ID, outputs []*avax.TransferableOutput, options ...common.Option) (*txs.Tx, error),
+	issuer exportTxIssuer,
 	destChainID ids.ID,
 	avaxAssetID ids.ID,
 	ownerAddr ids.ShortID,
@@ -73,7 +127,7 @@ func issueExportTx(
 		Addrs:     []ids.ShortID{ownerAddr},
 	}
 
-	tx, err := issueExportTxFn(destChainID, []*avax.TransferableOutput{{
+	tx, err := issuer.IssueExportTx(destChainID, []*avax.TransferableOutput{{
 		Asset: avax.Asset{ID: avaxAssetID},
 		Out: &secp256k1fx.TransferOutput{
 			Amt:          amountNAVAX,
@@ -87,7 +141,7 @@ func issueExportTx(
 }
 
 func issueImportTx(
-	issueImportTxFn func(chainID ids.ID, to *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error),
+	issuer importTxIssuer,
 	sourceChainID ids.ID,
 	ownerAddr ids.ShortID,
 	options ...common.Option,
@@ -97,7 +151,7 @@ func issueImportTx(
 		Addrs:     []ids.ShortID{ownerAddr},
 	}
 
-	tx, err := issueImportTxFn(sourceChainID, &owner, options...)
+	tx, err := issuer.IssueImportTx(sourceChainID, &owner, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue ImportTx: %w", err)
 	}
@@ -160,7 +214,7 @@ type AddPermissionlessValidatorConfig struct {
 func AddPermissionlessValidator(ctx context.Context, w *wallet.Wallet, cfg AddPermissionlessValidatorConfig) (ids.ID, error) {
 	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
 	return issueAddPermissionlessValidatorTx(
-		w.PWallet().IssueAddPermissionlessValidatorTx,
+		w.PWallet(),
 		avaxAssetID,
 		cfg,
 		common.WithContext(ctx),
@@ -168,15 +222,7 @@ func AddPermissionlessValidator(ctx context.Context, w *wallet.Wallet, cfg AddPe
 }
 
 func issueAddPermissionlessValidatorTx(
-	issueTxFn func(
-		vdr *txs.SubnetValidator,
-		signer signer.Signer,
-		assetID ids.ID,
-		validationRewardsOwner *secp256k1fx.OutputOwners,
-		delegationRewardsOwner *secp256k1fx.OutputOwners,
-		shares uint32,
-		options ...common.Option,
-	) (*txs.Tx, error),
+	issuer permissionlessValidatorTxIssuer,
 	avaxAssetID ids.ID,
 	cfg AddPermissionlessValidatorConfig,
 	options ...common.Option,
@@ -186,7 +232,7 @@ func issueAddPermissionlessValidatorTx(
 		Addrs:     []ids.ShortID{cfg.RewardAddr},
 	}
 
-	tx, err := issueTxFn(
+	tx, err := issuer.IssueAddPermissionlessValidatorTx(
 		&txs.SubnetValidator{
 			Validator: txs.Validator{
 				NodeID: cfg.NodeID,
@@ -257,7 +303,7 @@ type AddPermissionlessDelegatorConfig struct {
 func AddPermissionlessDelegator(ctx context.Context, w *wallet.Wallet, cfg AddPermissionlessDelegatorConfig) (ids.ID, error) {
 	avaxAssetID := w.PWallet().Builder().Context().AVAXAssetID
 	return issueAddPermissionlessDelegatorTx(
-		w.PWallet().IssueAddPermissionlessDelegatorTx,
+		w.PWallet(),
 		avaxAssetID,
 		cfg,
 		common.WithContext(ctx),
@@ -265,12 +311,7 @@ func AddPermissionlessDelegator(ctx context.Context, w *wallet.Wallet, cfg AddPe
 }
 
 func issueAddPermissionlessDelegatorTx(
-	issueTxFn func(
-		vdr *txs.SubnetValidator,
-		assetID ids.ID,
-		rewardsOwner *secp256k1fx.OutputOwners,
-		options ...common.Option,
-	) (*txs.Tx, error),
+	issuer permissionlessDelegatorTxIssuer,
 	avaxAssetID ids.ID,
 	cfg AddPermissionlessDelegatorConfig,
 	options ...common.Option,
@@ -280,7 +321,7 @@ func issueAddPermissionlessDelegatorTx(
 		Addrs:     []ids.ShortID{cfg.RewardAddr},
 	}
 
-	tx, err := issueTxFn(
+	tx, err := issuer.IssueAddPermissionlessDelegatorTx(
 		&txs.SubnetValidator{
 			Validator: txs.Validator{
 				NodeID: cfg.NodeID,
@@ -306,11 +347,11 @@ func issueAddPermissionlessDelegatorTx(
 
 // CreateSubnet creates a new subnet (IssueCreateSubnetTx).
 func CreateSubnet(ctx context.Context, w *wallet.Wallet) (ids.ID, error) {
-	return issueCreateSubnetTx(w.PWallet().IssueCreateSubnetTx, w.PChainAddress(), common.WithContext(ctx))
+	return issueCreateSubnetTx(w.PWallet(), w.PChainAddress(), common.WithContext(ctx))
 }
 
 func issueCreateSubnetTx(
-	issueTxFn func(owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error),
+	issuer createSubnetTxIssuer,
 	ownerAddr ids.ShortID,
 	options ...common.Option,
 ) (ids.ID, error) {
@@ -319,7 +360,7 @@ func issueCreateSubnetTx(
 		Addrs:     []ids.ShortID{ownerAddr},
 	}
 
-	tx, err := issueTxFn(owner, options...)
+	tx, err := issuer.IssueCreateSubnetTx(owner, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue CreateSubnetTx: %w", err)
 	}
@@ -328,11 +369,11 @@ func issueCreateSubnetTx(
 
 // TransferSubnetOwnership transfers subnet ownership (IssueTransferSubnetOwnershipTx).
 func TransferSubnetOwnership(ctx context.Context, w *wallet.Wallet, subnetID ids.ID, newOwner ids.ShortID) (ids.ID, error) {
-	return issueTransferSubnetOwnershipTx(w.PWallet().IssueTransferSubnetOwnershipTx, subnetID, newOwner, common.WithContext(ctx))
+	return issueTransferSubnetOwnershipTx(w.PWallet(), subnetID, newOwner, common.WithContext(ctx))
 }
 
 func issueTransferSubnetOwnershipTx(
-	issueTxFn func(subnetID ids.ID, owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error),
+	issuer transferSubnetOwnershipTxIssuer,
 	subnetID ids.ID,
 	newOwner ids.ShortID,
 	options ...common.Option,
@@ -342,7 +383,7 @@ func issueTransferSubnetOwnershipTx(
 		Addrs:     []ids.ShortID{newOwner},
 	}
 
-	tx, err := issueTxFn(subnetID, owner, options...)
+	tx, err := issuer.IssueTransferSubnetOwnershipTx(subnetID, owner, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue TransferSubnetOwnershipTx: %w", err)
 	}
@@ -351,18 +392,18 @@ func issueTransferSubnetOwnershipTx(
 
 // ConvertSubnetToL1 converts a subnet to L1 (IssueConvertSubnetToL1Tx).
 func ConvertSubnetToL1(ctx context.Context, w *wallet.Wallet, subnetID, chainID ids.ID, managerAddr []byte, validators []*txs.ConvertSubnetToL1Validator) (ids.ID, error) {
-	return issueConvertSubnetToL1Tx(w.PWallet().IssueConvertSubnetToL1Tx, subnetID, chainID, managerAddr, validators, common.WithContext(ctx))
+	return issueConvertSubnetToL1Tx(w.PWallet(), subnetID, chainID, managerAddr, validators, common.WithContext(ctx))
 }
 
 func issueConvertSubnetToL1Tx(
-	issueTxFn func(subnetID ids.ID, chainID ids.ID, address []byte, validators []*txs.ConvertSubnetToL1Validator, options ...common.Option) (*txs.Tx, error),
+	issuer convertSubnetToL1TxIssuer,
 	subnetID ids.ID,
 	chainID ids.ID,
 	managerAddr []byte,
 	validators []*txs.ConvertSubnetToL1Validator,
 	options ...common.Option,
 ) (ids.ID, error) {
-	tx, err := issueTxFn(subnetID, chainID, managerAddr, validators, options...)
+	tx, err := issuer.IssueConvertSubnetToL1Tx(subnetID, chainID, managerAddr, validators, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue ConvertSubnetToL1Tx: %w", err)
 	}
@@ -424,22 +465,15 @@ type CreateChainConfig struct {
 
 // CreateChain creates a new chain on a subnet (IssueCreateChainTx).
 func CreateChain(ctx context.Context, w *wallet.Wallet, cfg CreateChainConfig) (ids.ID, error) {
-	return issueCreateChainTx(w.PWallet().IssueCreateChainTx, cfg, common.WithContext(ctx))
+	return issueCreateChainTx(w.PWallet(), cfg, common.WithContext(ctx))
 }
 
 func issueCreateChainTx(
-	issueTxFn func(
-		subnetID ids.ID,
-		genesis []byte,
-		vmID ids.ID,
-		fxIDs []ids.ID,
-		chainName string,
-		options ...common.Option,
-	) (*txs.Tx, error),
+	issuer createChainTxIssuer,
 	cfg CreateChainConfig,
 	options ...common.Option,
 ) (ids.ID, error) {
-	tx, err := issueTxFn(
+	tx, err := issuer.IssueCreateChainTx(
 		cfg.SubnetID,
 		cfg.Genesis,
 		cfg.VMID,

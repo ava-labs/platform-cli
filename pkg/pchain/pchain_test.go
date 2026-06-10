@@ -17,22 +17,174 @@ import (
 
 type testContextKey string
 
+// =============================================================================
+// Issuer Stubs
+// =============================================================================
+
+// stubBaseTxIssuer implements baseTxIssuer, recording the arguments it was
+// called with and returning the configured tx/err.
+type stubBaseTxIssuer struct {
+	tx  *txs.Tx
+	err error
+
+	gotOutputs []*avax.TransferableOutput
+	gotOpts    []common.Option
+}
+
+func (s *stubBaseTxIssuer) IssueBaseTx(outputs []*avax.TransferableOutput, options ...common.Option) (*txs.Tx, error) {
+	s.gotOutputs = outputs
+	s.gotOpts = options
+	return s.tx, s.err
+}
+
+// stubExportTxIssuer implements exportTxIssuer.
+type stubExportTxIssuer struct {
+	tx  *txs.Tx
+	err error
+
+	gotChainID ids.ID
+	gotOutputs []*avax.TransferableOutput
+}
+
+func (s *stubExportTxIssuer) IssueExportTx(chainID ids.ID, outputs []*avax.TransferableOutput, _ ...common.Option) (*txs.Tx, error) {
+	s.gotChainID = chainID
+	s.gotOutputs = outputs
+	return s.tx, s.err
+}
+
+// stubImportTxIssuer implements importTxIssuer.
+type stubImportTxIssuer struct {
+	tx  *txs.Tx
+	err error
+
+	gotChainID ids.ID
+	gotOwners  *secp256k1fx.OutputOwners
+}
+
+func (s *stubImportTxIssuer) IssueImportTx(chainID ids.ID, to *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
+	s.gotChainID = chainID
+	s.gotOwners = to
+	return s.tx, s.err
+}
+
+// stubValidatorTxIssuer implements permissionlessValidatorTxIssuer.
+type stubValidatorTxIssuer struct {
+	tx  *txs.Tx
+	err error
+
+	gotVdr                    *txs.SubnetValidator
+	gotSigner                 signer.Signer
+	gotAssetID                ids.ID
+	gotValidationRewardsOwner *secp256k1fx.OutputOwners
+	gotDelegationRewardsOwner *secp256k1fx.OutputOwners
+	gotShares                 uint32
+}
+
+func (s *stubValidatorTxIssuer) IssueAddPermissionlessValidatorTx(vdr *txs.SubnetValidator, sig signer.Signer, assetID ids.ID, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, shares uint32, _ ...common.Option) (*txs.Tx, error) {
+	s.gotVdr = vdr
+	s.gotSigner = sig
+	s.gotAssetID = assetID
+	s.gotValidationRewardsOwner = validationRewardsOwner
+	s.gotDelegationRewardsOwner = delegationRewardsOwner
+	s.gotShares = shares
+	return s.tx, s.err
+}
+
+// stubDelegatorTxIssuer implements permissionlessDelegatorTxIssuer.
+type stubDelegatorTxIssuer struct {
+	tx  *txs.Tx
+	err error
+
+	gotVdr          *txs.SubnetValidator
+	gotAssetID      ids.ID
+	gotRewardsOwner *secp256k1fx.OutputOwners
+}
+
+func (s *stubDelegatorTxIssuer) IssueAddPermissionlessDelegatorTx(vdr *txs.SubnetValidator, assetID ids.ID, rewardsOwner *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
+	s.gotVdr = vdr
+	s.gotAssetID = assetID
+	s.gotRewardsOwner = rewardsOwner
+	return s.tx, s.err
+}
+
+// stubCreateSubnetTxIssuer implements createSubnetTxIssuer.
+type stubCreateSubnetTxIssuer struct {
+	tx  *txs.Tx
+	err error
+
+	gotOwner *secp256k1fx.OutputOwners
+}
+
+func (s *stubCreateSubnetTxIssuer) IssueCreateSubnetTx(owner *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
+	s.gotOwner = owner
+	return s.tx, s.err
+}
+
+// stubTransferSubnetOwnershipTxIssuer implements transferSubnetOwnershipTxIssuer.
+type stubTransferSubnetOwnershipTxIssuer struct {
+	tx  *txs.Tx
+	err error
+
+	gotSubnetID ids.ID
+	gotOwner    *secp256k1fx.OutputOwners
+}
+
+func (s *stubTransferSubnetOwnershipTxIssuer) IssueTransferSubnetOwnershipTx(subnetID ids.ID, owner *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
+	s.gotSubnetID = subnetID
+	s.gotOwner = owner
+	return s.tx, s.err
+}
+
+// stubConvertSubnetToL1TxIssuer implements convertSubnetToL1TxIssuer.
+type stubConvertSubnetToL1TxIssuer struct {
+	tx  *txs.Tx
+	err error
+
+	gotSubnetID    ids.ID
+	gotChainID     ids.ID
+	gotManagerAddr []byte
+	gotValidators  []*txs.ConvertSubnetToL1Validator
+}
+
+func (s *stubConvertSubnetToL1TxIssuer) IssueConvertSubnetToL1Tx(subnetID ids.ID, chainID ids.ID, address []byte, validators []*txs.ConvertSubnetToL1Validator, _ ...common.Option) (*txs.Tx, error) {
+	s.gotSubnetID = subnetID
+	s.gotChainID = chainID
+	s.gotManagerAddr = address
+	s.gotValidators = validators
+	return s.tx, s.err
+}
+
+// stubCreateChainTxIssuer implements createChainTxIssuer.
+type stubCreateChainTxIssuer struct {
+	tx  *txs.Tx
+	err error
+
+	gotCfg CreateChainConfig
+}
+
+func (s *stubCreateChainTxIssuer) IssueCreateChainTx(subnetID ids.ID, genesis []byte, vmID ids.ID, fxIDs []ids.ID, chainName string, _ ...common.Option) (*txs.Tx, error) {
+	s.gotCfg = CreateChainConfig{
+		SubnetID:  subnetID,
+		Genesis:   genesis,
+		VMID:      vmID,
+		FxIDs:     fxIDs,
+		ChainName: chainName,
+	}
+	return s.tx, s.err
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
 func TestIssueSendTx(t *testing.T) {
 	assetID := ids.GenerateTestID()
 	dest := ids.GenerateTestShortID()
 	amount := uint64(42_000)
 	txID := ids.GenerateTestID()
 
-	var captured []*avax.TransferableOutput
-	gotTxID, err := issueSendTx(
-		func(outputs []*avax.TransferableOutput, _ ...common.Option) (*txs.Tx, error) {
-			captured = outputs
-			return &txs.Tx{TxID: txID}, nil
-		},
-		assetID,
-		dest,
-		amount,
-	)
+	issuer := &stubBaseTxIssuer{tx: &txs.Tx{TxID: txID}}
+	gotTxID, err := issueSendTx(issuer, assetID, dest, amount)
 	if err != nil {
 		t.Fatalf("issueSendTx() returned error: %v", err)
 	}
@@ -40,6 +192,7 @@ func TestIssueSendTx(t *testing.T) {
 		t.Fatalf("issueSendTx() txID = %s, want %s", gotTxID, txID)
 	}
 
+	captured := issuer.gotOutputs
 	if len(captured) != 1 {
 		t.Fatalf("issueSendTx() output count = %d, want 1", len(captured))
 	}
@@ -63,14 +216,9 @@ func TestIssueSendTx(t *testing.T) {
 
 func TestIssueSendTxPassesOptions(t *testing.T) {
 	ctx := context.WithValue(context.Background(), testContextKey("key"), "value")
+	issuer := &stubBaseTxIssuer{tx: &txs.Tx{TxID: ids.GenerateTestID()}}
 	_, err := issueSendTx(
-		func(_ []*avax.TransferableOutput, opts ...common.Option) (*txs.Tx, error) {
-			gotCtx := common.NewOptions(opts).Context()
-			if gotCtx.Value(testContextKey("key")) != "value" {
-				t.Fatalf("issueSendTx() context option not propagated")
-			}
-			return &txs.Tx{TxID: ids.GenerateTestID()}, nil
-		},
+		issuer,
 		ids.GenerateTestID(),
 		ids.GenerateTestShortID(),
 		1,
@@ -79,14 +227,17 @@ func TestIssueSendTxPassesOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issueSendTx() returned error: %v", err)
 	}
+	gotCtx := common.NewOptions(issuer.gotOpts).Context()
+	if gotCtx.Value(testContextKey("key")) != "value" {
+		t.Fatalf("issueSendTx() context option not propagated")
+	}
 }
 
 func TestIssueSendTxError(t *testing.T) {
 	expectedErr := errors.New("boom")
+	issuer := &stubBaseTxIssuer{err: expectedErr}
 	_, err := issueSendTx(
-		func(_ []*avax.TransferableOutput, _ ...common.Option) (*txs.Tx, error) {
-			return nil, expectedErr
-		},
+		issuer,
 		ids.GenerateTestID(),
 		ids.GenerateTestShortID(),
 		1,
@@ -106,14 +257,9 @@ func TestIssueExportTx(t *testing.T) {
 	amount := uint64(7)
 	txID := ids.GenerateTestID()
 
-	var gotChainID ids.ID
-	var captured []*avax.TransferableOutput
+	issuer := &stubExportTxIssuer{tx: &txs.Tx{TxID: txID}}
 	gotTxID, err := issueExportTx(
-		func(chainID ids.ID, outputs []*avax.TransferableOutput, _ ...common.Option) (*txs.Tx, error) {
-			gotChainID = chainID
-			captured = outputs
-			return &txs.Tx{TxID: txID}, nil
-		},
+		issuer,
 		destChainID,
 		assetID,
 		owner,
@@ -125,9 +271,10 @@ func TestIssueExportTx(t *testing.T) {
 	if gotTxID != txID {
 		t.Fatalf("issueExportTx() txID = %s, want %s", gotTxID, txID)
 	}
-	if gotChainID != destChainID {
-		t.Fatalf("issueExportTx() chainID = %s, want %s", gotChainID, destChainID)
+	if issuer.gotChainID != destChainID {
+		t.Fatalf("issueExportTx() chainID = %s, want %s", issuer.gotChainID, destChainID)
 	}
+	captured := issuer.gotOutputs
 	if len(captured) != 1 {
 		t.Fatalf("issueExportTx() output count = %d, want 1", len(captured))
 	}
@@ -148,14 +295,9 @@ func TestIssueImportTx(t *testing.T) {
 	owner := ids.GenerateTestShortID()
 	txID := ids.GenerateTestID()
 
-	var gotChainID ids.ID
-	var gotOwners *secp256k1fx.OutputOwners
+	issuer := &stubImportTxIssuer{tx: &txs.Tx{TxID: txID}}
 	gotTxID, err := issueImportTx(
-		func(chainID ids.ID, to *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
-			gotChainID = chainID
-			gotOwners = to
-			return &txs.Tx{TxID: txID}, nil
-		},
+		issuer,
 		sourceChainID,
 		owner,
 	)
@@ -165,14 +307,14 @@ func TestIssueImportTx(t *testing.T) {
 	if gotTxID != txID {
 		t.Fatalf("issueImportTx() txID = %s, want %s", gotTxID, txID)
 	}
-	if gotChainID != sourceChainID {
-		t.Fatalf("issueImportTx() chainID = %s, want %s", gotChainID, sourceChainID)
+	if issuer.gotChainID != sourceChainID {
+		t.Fatalf("issueImportTx() chainID = %s, want %s", issuer.gotChainID, sourceChainID)
 	}
-	if gotOwners == nil {
+	if issuer.gotOwners == nil {
 		t.Fatal("issueImportTx() owners is nil")
 	}
-	if len(gotOwners.Addrs) != 1 || gotOwners.Addrs[0] != owner {
-		t.Fatalf("issueImportTx() owner addrs = %#v, want [%s]", gotOwners.Addrs, owner)
+	if len(issuer.gotOwners.Addrs) != 1 || issuer.gotOwners.Addrs[0] != owner {
+		t.Fatalf("issueImportTx() owner addrs = %#v, want [%s]", issuer.gotOwners.Addrs, owner)
 	}
 }
 
@@ -194,30 +336,9 @@ func TestIssueAddPermissionlessValidatorTx(t *testing.T) {
 	}
 	txID := ids.GenerateTestID()
 
-	var gotVdr *txs.SubnetValidator
-	var gotSigner signer.Signer
-	var gotAssetID ids.ID
-	var gotValidationRewardsOwner *secp256k1fx.OutputOwners
-	var gotDelegationRewardsOwner *secp256k1fx.OutputOwners
-	var gotShares uint32
+	issuer := &stubValidatorTxIssuer{tx: &txs.Tx{TxID: txID}}
 	gotTxID, err := issueAddPermissionlessValidatorTx(
-		func(
-			vdr *txs.SubnetValidator,
-			signer signer.Signer,
-			assetID ids.ID,
-			validationRewardsOwner *secp256k1fx.OutputOwners,
-			delegationRewardsOwner *secp256k1fx.OutputOwners,
-			shares uint32,
-			_ ...common.Option,
-		) (*txs.Tx, error) {
-			gotVdr = vdr
-			gotSigner = signer
-			gotAssetID = assetID
-			gotValidationRewardsOwner = validationRewardsOwner
-			gotDelegationRewardsOwner = delegationRewardsOwner
-			gotShares = shares
-			return &txs.Tx{TxID: txID}, nil
-		},
+		issuer,
 		assetID,
 		cfg,
 	)
@@ -227,6 +348,7 @@ func TestIssueAddPermissionlessValidatorTx(t *testing.T) {
 	if gotTxID != txID {
 		t.Fatalf("issueAddPermissionlessValidatorTx() txID = %s, want %s", gotTxID, txID)
 	}
+	gotVdr := issuer.gotVdr
 	if gotVdr == nil {
 		t.Fatal("issueAddPermissionlessValidatorTx() validator is nil")
 	}
@@ -243,24 +365,24 @@ func TestIssueAddPermissionlessValidatorTx(t *testing.T) {
 	if gotVdr.Subnet != ids.Empty {
 		t.Fatalf("issueAddPermissionlessValidatorTx() subnet = %s, want Primary Network (ids.Empty)", gotVdr.Subnet)
 	}
-	gotPop, ok := gotSigner.(*signer.ProofOfPossession)
+	gotPop, ok := issuer.gotSigner.(*signer.ProofOfPossession)
 	if !ok {
-		t.Fatalf("issueAddPermissionlessValidatorTx() signer type = %T, want *signer.ProofOfPossession", gotSigner)
+		t.Fatalf("issueAddPermissionlessValidatorTx() signer type = %T, want *signer.ProofOfPossession", issuer.gotSigner)
 	}
 	if gotPop != pop {
 		t.Fatal("issueAddPermissionlessValidatorTx() signer pointer mismatch")
 	}
-	if gotAssetID != assetID {
-		t.Fatalf("issueAddPermissionlessValidatorTx() assetID = %s, want %s", gotAssetID, assetID)
+	if issuer.gotAssetID != assetID {
+		t.Fatalf("issueAddPermissionlessValidatorTx() assetID = %s, want %s", issuer.gotAssetID, assetID)
 	}
-	if gotValidationRewardsOwner == nil || len(gotValidationRewardsOwner.Addrs) != 1 || gotValidationRewardsOwner.Addrs[0] != rewardAddr {
-		t.Fatalf("issueAddPermissionlessValidatorTx() validation owner addrs = %#v, want [%s]", gotValidationRewardsOwner, rewardAddr)
+	if issuer.gotValidationRewardsOwner == nil || len(issuer.gotValidationRewardsOwner.Addrs) != 1 || issuer.gotValidationRewardsOwner.Addrs[0] != rewardAddr {
+		t.Fatalf("issueAddPermissionlessValidatorTx() validation owner addrs = %#v, want [%s]", issuer.gotValidationRewardsOwner, rewardAddr)
 	}
-	if gotDelegationRewardsOwner == nil || len(gotDelegationRewardsOwner.Addrs) != 1 || gotDelegationRewardsOwner.Addrs[0] != rewardAddr {
-		t.Fatalf("issueAddPermissionlessValidatorTx() delegation owner addrs = %#v, want [%s]", gotDelegationRewardsOwner, rewardAddr)
+	if issuer.gotDelegationRewardsOwner == nil || len(issuer.gotDelegationRewardsOwner.Addrs) != 1 || issuer.gotDelegationRewardsOwner.Addrs[0] != rewardAddr {
+		t.Fatalf("issueAddPermissionlessValidatorTx() delegation owner addrs = %#v, want [%s]", issuer.gotDelegationRewardsOwner, rewardAddr)
 	}
-	if gotShares != cfg.DelegationFee {
-		t.Fatalf("issueAddPermissionlessValidatorTx() shares = %d, want %d", gotShares, cfg.DelegationFee)
+	if issuer.gotShares != cfg.DelegationFee {
+		t.Fatalf("issueAddPermissionlessValidatorTx() shares = %d, want %d", issuer.gotShares, cfg.DelegationFee)
 	}
 }
 
@@ -279,21 +401,9 @@ func TestIssueAddPermissionlessDelegatorTx(t *testing.T) {
 	}
 	txID := ids.GenerateTestID()
 
-	var gotVdr *txs.SubnetValidator
-	var gotAssetID ids.ID
-	var gotRewardsOwner *secp256k1fx.OutputOwners
+	issuer := &stubDelegatorTxIssuer{tx: &txs.Tx{TxID: txID}}
 	gotTxID, err := issueAddPermissionlessDelegatorTx(
-		func(
-			vdr *txs.SubnetValidator,
-			assetID ids.ID,
-			rewardsOwner *secp256k1fx.OutputOwners,
-			_ ...common.Option,
-		) (*txs.Tx, error) {
-			gotVdr = vdr
-			gotAssetID = assetID
-			gotRewardsOwner = rewardsOwner
-			return &txs.Tx{TxID: txID}, nil
-		},
+		issuer,
 		assetID,
 		cfg,
 	)
@@ -303,6 +413,7 @@ func TestIssueAddPermissionlessDelegatorTx(t *testing.T) {
 	if gotTxID != txID {
 		t.Fatalf("issueAddPermissionlessDelegatorTx() txID = %s, want %s", gotTxID, txID)
 	}
+	gotVdr := issuer.gotVdr
 	if gotVdr == nil {
 		t.Fatal("issueAddPermissionlessDelegatorTx() validator is nil")
 	}
@@ -315,11 +426,11 @@ func TestIssueAddPermissionlessDelegatorTx(t *testing.T) {
 	if gotVdr.Subnet != ids.Empty {
 		t.Fatalf("issueAddPermissionlessDelegatorTx() subnet = %s, want Primary Network (ids.Empty)", gotVdr.Subnet)
 	}
-	if gotAssetID != assetID {
-		t.Fatalf("issueAddPermissionlessDelegatorTx() assetID = %s, want %s", gotAssetID, assetID)
+	if issuer.gotAssetID != assetID {
+		t.Fatalf("issueAddPermissionlessDelegatorTx() assetID = %s, want %s", issuer.gotAssetID, assetID)
 	}
-	if gotRewardsOwner == nil || len(gotRewardsOwner.Addrs) != 1 || gotRewardsOwner.Addrs[0] != rewardAddr {
-		t.Fatalf("issueAddPermissionlessDelegatorTx() rewards owner addrs = %#v, want [%s]", gotRewardsOwner, rewardAddr)
+	if issuer.gotRewardsOwner == nil || len(issuer.gotRewardsOwner.Addrs) != 1 || issuer.gotRewardsOwner.Addrs[0] != rewardAddr {
+		t.Fatalf("issueAddPermissionlessDelegatorTx() rewards owner addrs = %#v, want [%s]", issuer.gotRewardsOwner, rewardAddr)
 	}
 }
 
@@ -327,12 +438,9 @@ func TestIssueCreateSubnetTx(t *testing.T) {
 	owner := ids.GenerateTestShortID()
 	txID := ids.GenerateTestID()
 
-	var gotOwner *secp256k1fx.OutputOwners
+	issuer := &stubCreateSubnetTxIssuer{tx: &txs.Tx{TxID: txID}}
 	gotTxID, err := issueCreateSubnetTx(
-		func(owner *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
-			gotOwner = owner
-			return &txs.Tx{TxID: txID}, nil
-		},
+		issuer,
 		owner,
 	)
 	if err != nil {
@@ -341,8 +449,8 @@ func TestIssueCreateSubnetTx(t *testing.T) {
 	if gotTxID != txID {
 		t.Fatalf("issueCreateSubnetTx() txID = %s, want %s", gotTxID, txID)
 	}
-	if gotOwner == nil || len(gotOwner.Addrs) != 1 || gotOwner.Addrs[0] != owner {
-		t.Fatalf("issueCreateSubnetTx() owner addrs = %#v, want [%s]", gotOwner, owner)
+	if issuer.gotOwner == nil || len(issuer.gotOwner.Addrs) != 1 || issuer.gotOwner.Addrs[0] != owner {
+		t.Fatalf("issueCreateSubnetTx() owner addrs = %#v, want [%s]", issuer.gotOwner, owner)
 	}
 }
 
@@ -351,14 +459,9 @@ func TestIssueTransferSubnetOwnershipTx(t *testing.T) {
 	newOwner := ids.GenerateTestShortID()
 	txID := ids.GenerateTestID()
 
-	var gotSubnetID ids.ID
-	var gotOwner *secp256k1fx.OutputOwners
+	issuer := &stubTransferSubnetOwnershipTxIssuer{tx: &txs.Tx{TxID: txID}}
 	gotTxID, err := issueTransferSubnetOwnershipTx(
-		func(subnetID ids.ID, owner *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
-			gotSubnetID = subnetID
-			gotOwner = owner
-			return &txs.Tx{TxID: txID}, nil
-		},
+		issuer,
 		subnetID,
 		newOwner,
 	)
@@ -368,11 +471,11 @@ func TestIssueTransferSubnetOwnershipTx(t *testing.T) {
 	if gotTxID != txID {
 		t.Fatalf("issueTransferSubnetOwnershipTx() txID = %s, want %s", gotTxID, txID)
 	}
-	if gotSubnetID != subnetID {
-		t.Fatalf("issueTransferSubnetOwnershipTx() subnetID = %s, want %s", gotSubnetID, subnetID)
+	if issuer.gotSubnetID != subnetID {
+		t.Fatalf("issueTransferSubnetOwnershipTx() subnetID = %s, want %s", issuer.gotSubnetID, subnetID)
 	}
-	if gotOwner == nil || len(gotOwner.Addrs) != 1 || gotOwner.Addrs[0] != newOwner {
-		t.Fatalf("issueTransferSubnetOwnershipTx() owner addrs = %#v, want [%s]", gotOwner, newOwner)
+	if issuer.gotOwner == nil || len(issuer.gotOwner.Addrs) != 1 || issuer.gotOwner.Addrs[0] != newOwner {
+		t.Fatalf("issueTransferSubnetOwnershipTx() owner addrs = %#v, want [%s]", issuer.gotOwner, newOwner)
 	}
 }
 
@@ -383,24 +486,9 @@ func TestIssueConvertSubnetToL1Tx(t *testing.T) {
 	validators := []*txs.ConvertSubnetToL1Validator{{NodeID: []byte{0xAA}, Weight: 1}}
 	txID := ids.GenerateTestID()
 
-	var gotSubnetID ids.ID
-	var gotChainID ids.ID
-	var gotManagerAddr []byte
-	var gotValidators []*txs.ConvertSubnetToL1Validator
+	issuer := &stubConvertSubnetToL1TxIssuer{tx: &txs.Tx{TxID: txID}}
 	gotTxID, err := issueConvertSubnetToL1Tx(
-		func(
-			subnetID ids.ID,
-			chainID ids.ID,
-			address []byte,
-			validators []*txs.ConvertSubnetToL1Validator,
-			_ ...common.Option,
-		) (*txs.Tx, error) {
-			gotSubnetID = subnetID
-			gotChainID = chainID
-			gotManagerAddr = address
-			gotValidators = validators
-			return &txs.Tx{TxID: txID}, nil
-		},
+		issuer,
 		subnetID,
 		chainID,
 		managerAddr,
@@ -412,14 +500,15 @@ func TestIssueConvertSubnetToL1Tx(t *testing.T) {
 	if gotTxID != txID {
 		t.Fatalf("issueConvertSubnetToL1Tx() txID = %s, want %s", gotTxID, txID)
 	}
-	if gotSubnetID != subnetID || gotChainID != chainID {
-		t.Fatalf("issueConvertSubnetToL1Tx() IDs = (%s,%s), want (%s,%s)", gotSubnetID, gotChainID, subnetID, chainID)
+	if issuer.gotSubnetID != subnetID || issuer.gotChainID != chainID {
+		t.Fatalf("issueConvertSubnetToL1Tx() IDs = (%s,%s), want (%s,%s)", issuer.gotSubnetID, issuer.gotChainID, subnetID, chainID)
 	}
+	gotManagerAddr := issuer.gotManagerAddr
 	if len(gotManagerAddr) != len(managerAddr) || gotManagerAddr[0] != managerAddr[0] || gotManagerAddr[1] != managerAddr[1] {
 		t.Fatalf("issueConvertSubnetToL1Tx() managerAddr = %x, want %x", gotManagerAddr, managerAddr)
 	}
-	if len(gotValidators) != 1 || gotValidators[0] != validators[0] {
-		t.Fatalf("issueConvertSubnetToL1Tx() validators = %#v, want %#v", gotValidators, validators)
+	if len(issuer.gotValidators) != 1 || issuer.gotValidators[0] != validators[0] {
+		t.Fatalf("issueConvertSubnetToL1Tx() validators = %#v, want %#v", issuer.gotValidators, validators)
 	}
 }
 
@@ -433,25 +522,9 @@ func TestIssueCreateChainTx(t *testing.T) {
 	}
 	txID := ids.GenerateTestID()
 
-	var gotCfg CreateChainConfig
+	issuer := &stubCreateChainTxIssuer{tx: &txs.Tx{TxID: txID}}
 	gotTxID, err := issueCreateChainTx(
-		func(
-			subnetID ids.ID,
-			genesis []byte,
-			vmID ids.ID,
-			fxIDs []ids.ID,
-			chainName string,
-			_ ...common.Option,
-		) (*txs.Tx, error) {
-			gotCfg = CreateChainConfig{
-				SubnetID:  subnetID,
-				Genesis:   genesis,
-				VMID:      vmID,
-				FxIDs:     fxIDs,
-				ChainName: chainName,
-			}
-			return &txs.Tx{TxID: txID}, nil
-		},
+		issuer,
 		cfg,
 	)
 	if err != nil {
@@ -460,6 +533,7 @@ func TestIssueCreateChainTx(t *testing.T) {
 	if gotTxID != txID {
 		t.Fatalf("issueCreateChainTx() txID = %s, want %s", gotTxID, txID)
 	}
+	gotCfg := issuer.gotCfg
 	if gotCfg.SubnetID != cfg.SubnetID || gotCfg.VMID != cfg.VMID || gotCfg.ChainName != cfg.ChainName {
 		t.Fatalf("issueCreateChainTx() config mismatch: got %#v, want %#v", gotCfg, cfg)
 	}
