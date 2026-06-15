@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ava-labs/avalanchego/vms/platformvm/reward"
 	"github.com/spf13/cobra"
 )
 
@@ -95,13 +96,20 @@ func avaxToNAVAX(avax float64) (uint64, error) {
 	return uint64(math.Round(avax * 1e9)), nil
 }
 
+// fractionToShares converts a decimal fraction (0.02 = 2%) to shares out of
+// reward.PercentDenominator (0.02 -> 20,000). Uses rounding to avoid float
+// precision issues. [name] is used in the error message.
+func fractionToShares(name string, value float64) (uint32, error) {
+	if value < 0 || value > 1 {
+		return 0, fmt.Errorf("%s must be between 0 and 1 (got %.4f)", name, value)
+	}
+	return uint32(math.Round(value * reward.PercentDenominator)), nil
+}
+
 // feeToShares converts a decimal fee (0.02 = 2%) to shares (20,000 out of 1,000,000).
 // Uses rounding to avoid float precision issues.
 func feeToShares(fee float64) (uint32, error) {
-	if fee < 0 || fee > 1 {
-		return 0, fmt.Errorf("delegation fee must be between 0 and 1 (got %.4f)", fee)
-	}
-	return uint32(math.Round(fee * 1_000_000)), nil
+	return fractionToShares("delegation fee", fee)
 }
 
 // getOperationContext returns a context with timeout and signal handling.

@@ -21,6 +21,7 @@ type Config struct {
 	MinValidatorStake uint64        // Minimum stake to become a validator (in nAVAX)
 	MinDelegatorStake uint64        // Minimum stake to delegate (in nAVAX)
 	MinStakeDuration  time.Duration // Minimum staking duration
+	MaxStakeDuration  time.Duration // Maximum staking duration (also bounds auto-renewal cycle length)
 }
 
 // Fuji testnet configuration
@@ -28,9 +29,10 @@ var Fuji = Config{
 	Name:              "fuji",
 	NetworkID:         5,
 	RPCURL:            "https://api.avax-test.network",
-	MinValidatorStake: 1_000_000_000,  // 1 AVAX
-	MinDelegatorStake: 1_000_000_000,  // 1 AVAX
-	MinStakeDuration:  24 * time.Hour, // 24 hours
+	MinValidatorStake: 1_000_000_000,        // 1 AVAX
+	MinDelegatorStake: 1_000_000_000,        // 1 AVAX
+	MinStakeDuration:  24 * time.Hour,       // 24 hours
+	MaxStakeDuration:  365 * 24 * time.Hour, // 1 year
 }
 
 // Mainnet configuration
@@ -38,9 +40,10 @@ var Mainnet = Config{
 	Name:              "mainnet",
 	NetworkID:         1,
 	RPCURL:            "https://api.avax.network",
-	MinValidatorStake: 2000_000_000_000,    // 2000 AVAX
-	MinDelegatorStake: 25_000_000_000,      // 25 AVAX
-	MinStakeDuration:  14 * 24 * time.Hour, // 14 days
+	MinValidatorStake: 2000_000_000_000,     // 2000 AVAX
+	MinDelegatorStake: 25_000_000_000,       // 25 AVAX
+	MinStakeDuration:  14 * 24 * time.Hour,  // 14 days
+	MaxStakeDuration:  365 * 24 * time.Hour, // 1 year
 }
 
 // GetConfig returns the network configuration for the given network name.
@@ -135,5 +138,6 @@ func NewCustomConfigWithInsecureHTTP(ctx context.Context, rpcURL string, network
 		MinValidatorStake: minValidatorStake,
 		MinDelegatorStake: minDelegatorStake,
 		MinStakeDuration:  minStakeDuration,
+		MaxStakeDuration:  365 * 24 * time.Hour, // 1 year
 	}, nil
 }

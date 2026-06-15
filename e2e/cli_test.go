@@ -125,7 +125,7 @@ func TestCLIValidatorHelp(t *testing.T) {
 		t.Fatalf("validator help failed: %v", err)
 	}
 
-	expected := []string{"add", "delegate"}
+	expected := []string{"add", "add-auto-renewed", "set-auto-config", "delegate"}
 	for _, cmd := range expected {
 		if !strings.Contains(stdout, cmd) {
 			t.Errorf("validator help missing subcommand: %s", cmd)
@@ -302,6 +302,56 @@ func TestCLIValidatorDelegateMissingArgs(t *testing.T) {
 	}
 
 	if !strings.Contains(stderr, "node-id") && !strings.Contains(stderr, "required") {
+		t.Logf("stderr: %s", stderr)
+	}
+}
+
+func TestCLIValidatorAddAutoRenewedHelp(t *testing.T) {
+	stdout, _, err := runCLI(t, "validator", "add-auto-renewed", "--help")
+	if err != nil {
+		t.Fatalf("add-auto-renewed help failed: %v", err)
+	}
+
+	expected := []string{"node-id", "stake", "period", "auto-compound", "owner-address"}
+	for _, flag := range expected {
+		if !strings.Contains(stdout, flag) {
+			t.Errorf("add-auto-renewed help missing flag: %s", flag)
+		}
+	}
+}
+
+func TestCLIValidatorSetAutoConfigHelp(t *testing.T) {
+	stdout, _, err := runCLI(t, "validator", "set-auto-config", "--help")
+	if err != nil {
+		t.Fatalf("set-auto-config help failed: %v", err)
+	}
+
+	expected := []string{"tx-id", "node-id", "period", "auto-compound"}
+	for _, flag := range expected {
+		if !strings.Contains(stdout, flag) {
+			t.Errorf("set-auto-config help missing flag: %s", flag)
+		}
+	}
+}
+
+func TestCLIValidatorAddAutoRenewedMissingArgs(t *testing.T) {
+	_, stderr, err := runCLI(t, "validator", "add-auto-renewed")
+	if err == nil {
+		t.Error("expected error when missing required args")
+	}
+
+	if !strings.Contains(stderr, "stake") && !strings.Contains(stderr, "required") {
+		t.Logf("stderr: %s", stderr)
+	}
+}
+
+func TestCLIValidatorSetAutoConfigMissingArgs(t *testing.T) {
+	_, stderr, err := runCLI(t, "validator", "set-auto-config")
+	if err == nil {
+		t.Error("expected error when missing required args")
+	}
+
+	if !strings.Contains(stderr, "tx-id") && !strings.Contains(stderr, "required") {
 		t.Logf("stderr: %s", stderr)
 	}
 }

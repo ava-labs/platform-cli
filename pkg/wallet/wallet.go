@@ -10,10 +10,15 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/keychain"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
+	"github.com/ava-labs/avalanchego/vms/platformvm/fx"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/wallet/chain/c"
+	pchainwallet "github.com/ava-labs/avalanchego/wallet/chain/p"
+	pbuilder "github.com/ava-labs/avalanchego/wallet/chain/p/builder"
+	psigner "github.com/ava-labs/avalanchego/wallet/chain/p/signer"
 	pwallet "github.com/ava-labs/avalanchego/wallet/chain/p/wallet"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary"
+	walletcommon "github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/platform-cli/pkg/network"
 )
@@ -85,6 +90,36 @@ func NewWalletFromKeychainWithSubnet(ctx context.Context, kc keychain.Keychain, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create P-Chain wallet: %w", err)
 	}
+
+	return &Wallet{
+		pWallet: pWallet,
+		config:  config,
+		address: address,
+	}, nil
+}
+
+// NewWalletFromKeychainWithOwner creates a P-Chain wallet whose backend maps
+// ownerID -> owner.
+//
+// This is required for transactions whose authorizing owner is not sourced from
+// chain state by the public builder. In particular, the builder for
+// SetAutoRenewedValidatorConfigTx resolves the config owner via
+// backend.GetOwner(txID), so the owner authorized at add-time must be supplied
+// through the backend's owners map. P-Chain state is fetched exactly once here,
+// avoiding a second round-trip on top of loading a standard wallet.
+func NewWalletFromKeychainWithOwner(ctx context.Context, kc keychain.Keychain, address ids.ShortID, config network.Config, ownerID ids.ID, owner fx.Owner) (*Wallet, error) {
+	client, pContext, utxos, err := primary.FetchPState(ctx, config.RPCURL, kc.Addresses())
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch P-Chain wallet state: %w", err)
+	}
+
+	owners := map[ids.ID]fx.Owner{ownerID: owner}
+	backend := pwallet.NewBackend(walletcommon.NewChainUTXOs(constants.PlatformChainID, utxos), owners)
+	pWallet := pwallet.New(
+		pchainwallet.NewClient(client, backend),
+		pbuilder.New(kc.Addresses(), pContext, backend),
+		psigner.New(kc, backend),
+	)
 
 	return &Wallet{
 		pWallet: pWallet,
