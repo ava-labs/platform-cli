@@ -358,18 +358,24 @@ func TestCLISubnetConvertL1MissingArgs(t *testing.T) {
 	}
 }
 
-// TestCLIDeprecatedAliasWarns verifies that an old command name still works via
-// its alias and emits a deprecation warning pointing at the canonical name.
-func TestCLIDeprecatedAliasWarns(t *testing.T) {
-	// "convert-l1" is the deprecated alias for "convert-to-l1"; invoking it with
-	// no args reaches RunE (which prints the warning) before the missing-arg error.
-	_, stderr, err := runCLI(t, "subnet", "convert-l1")
-	if err == nil {
-		t.Error("expected error when missing required args")
+// TestCLIRemovedOldNamesRejected verifies the v2.0.0 hard cutover: the old
+// command names were removed (no aliases) and are now rejected as unknown.
+func TestCLIRemovedOldNamesRejected(t *testing.T) {
+	cases := [][]string{
+		{"validator", "add"},
+		{"validator", "delegate"},
+		{"subnet", "convert-l1"},
+		{"l1", "set-weight"},
+		{"l1", "add-balance"},
 	}
-
-	if !strings.Contains(stderr, "deprecated") || !strings.Contains(stderr, "convert-to-l1") {
-		t.Errorf("expected deprecation warning pointing at canonical name, got stderr: %s", stderr)
+	for _, args := range cases {
+		_, stderr, err := runCLI(t, args...)
+		if err == nil {
+			t.Errorf("%v: expected error for removed command name", args)
+		}
+		if !strings.Contains(stderr, "unknown command") {
+			t.Errorf("%v: expected \"unknown command\", got stderr: %s", args, stderr)
+		}
 	}
 }
 

@@ -1,11 +1,11 @@
 # P-Chain Operations Reference
 
-Command names mirror the avalanchego transaction type each one issues. Previous
-names are retained as deprecated aliases (see the last column) and print a
-warning when used.
+Command names mirror the avalanchego transaction type each one issues. The
+"Previous name" column lists names that were **removed in v2.0.0** (no aliases) —
+use it to migrate existing scripts.
 
-| Tx Type | Command | SDK Method | Deprecated alias |
-|---------|---------|------------|------------------|
+| Tx Type | Command | SDK Method | Previous name (removed in v2.0.0) |
+|---------|---------|------------|-----------------------------------|
 | `BaseTx` | `transfer send` | `IssueBaseTx` | — |
 | `ExportTx` | `transfer export` | `IssueExportTx` | — |
 | `ImportTx` | `transfer import` | `IssueImportTx` | — |

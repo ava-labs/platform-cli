@@ -87,8 +87,13 @@ platform validator add-permissionless-delegator \
   --duration 336h
 ```
 
-> Command names mirror the avalanchego transaction they issue. The previous
-> names (`add`, `delegate`) still work as deprecated aliases.
+> **Breaking (v2.0.0):** command names now mirror the avalanchego transaction
+> they issue, and the old names were removed (no aliases):
+> `validator add` → `validator add-permissionless`,
+> `validator delegate` → `validator add-permissionless-delegator`,
+> `subnet convert-l1` → `subnet convert-to-l1`,
+> `l1 set-weight` → `l1 set-validator-weight`,
+> `l1 add-balance` → `l1 increase-validator-balance`.
 
 ### Subnets
 
@@ -105,8 +110,6 @@ platform subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> \
 platform subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock-validator
 platform subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight <uint> [--start <RFC3339|now>] [--duration <dur>]
 ```
-
-> `convert-to-l1` was previously `convert-l1`, which still works as a deprecated alias.
 
 `add-validator` notes:
 - Adds a validator to a **permissioned** subnet (`AddSubnetValidatorTx`).
@@ -139,9 +142,6 @@ platform l1 set-validator-weight --message <hex>
 platform l1 increase-validator-balance --validation-id <ID> --balance <AVAX>   # balance > 0
 platform l1 disable-validator --validation-id <ID>
 ```
-
-> Deprecated aliases still work: `set-validator-weight` ← `set-weight`,
-> `increase-validator-balance` ← `add-balance`.
 
 ### Chains
 

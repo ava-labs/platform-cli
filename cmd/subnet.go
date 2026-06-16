@@ -34,6 +34,7 @@ var subnetCmd = &cobra.Command{
 	Use:   "subnet",
 	Short: "Subnet management",
 	Long:  `Create and manage subnets on the Avalanche P-Chain.`,
+	RunE:  requireSubcommand,
 }
 
 var subnetCreateCmd = &cobra.Command{
@@ -117,12 +118,10 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 }
 
 var subnetConvertL1Cmd = &cobra.Command{
-	Use:     "convert-to-l1",
-	Aliases: []string{"convert-l1"},
-	Short:   "Convert subnet to L1 (ConvertSubnetToL1Tx)",
-	Long:    `Convert a permissioned subnet to an L1 blockchain.`,
+	Use:   "convert-to-l1",
+	Short: "Convert subnet to L1 (ConvertSubnetToL1Tx)",
+	Long:  `Convert a permissioned subnet to an L1 blockchain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		warnIfDeprecatedAlias(cmd)
 		ctx, cancel := getOperationContext()
 		defer cancel()
 

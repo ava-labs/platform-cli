@@ -81,14 +81,14 @@ func init() {
 	})
 }
 
-// warnIfDeprecatedAlias prints a deprecation notice to stderr when a command is
-// invoked through a deprecated alias rather than its canonical name. Commands are
-// named to mirror the avalanchego transaction type they issue; the previous names
-// are retained as aliases for backward compatibility.
-func warnIfDeprecatedAlias(cmd *cobra.Command) {
-	if called := cmd.CalledAs(); called != "" && called != cmd.Name() {
-		fmt.Fprintf(os.Stderr, "Warning: %q is deprecated; use %q instead.\n", called, cmd.CommandPath())
+// requireSubcommand is the RunE for command groups: it prints help when the
+// group is invoked bare, and rejects any unknown subcommand with an error so
+// removed command names fail loudly instead of silently printing help.
+func requireSubcommand(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unknown command %q for %q", args[0], cmd.CommandPath())
 	}
+	return cmd.Help()
 }
 
 // avaxToNAVAX converts AVAX amount to nAVAX with validation.
