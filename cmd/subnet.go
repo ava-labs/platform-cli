@@ -38,7 +38,7 @@ var subnetCmd = &cobra.Command{
 
 var subnetCreateCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Create a new subnet",
+	Short: "Create a new subnet (CreateSubnetTx)",
 	Long:  `Create a new subnet on the P-Chain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
@@ -72,7 +72,7 @@ var subnetCreateCmd = &cobra.Command{
 
 var subnetTransferOwnershipCmd = &cobra.Command{
 	Use:   "transfer-ownership",
-	Short: "Transfer subnet ownership",
+	Short: "Transfer subnet ownership (TransferSubnetOwnershipTx)",
 	Long:  `Transfer ownership of a subnet to a new address.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
@@ -117,10 +117,12 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 }
 
 var subnetConvertL1Cmd = &cobra.Command{
-	Use:   "convert-l1",
-	Short: "Convert subnet to L1",
-	Long:  `Convert a permissioned subnet to an L1 blockchain.`,
+	Use:     "convert-to-l1",
+	Aliases: []string{"convert-l1"},
+	Short:   "Convert subnet to L1 (ConvertSubnetToL1Tx)",
+	Long:    `Convert a permissioned subnet to an L1 blockchain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		warnIfDeprecatedAlias(cmd)
 		ctx, cancel := getOperationContext()
 		defer cancel()
 
@@ -244,7 +246,7 @@ var subnetConvertL1Cmd = &cobra.Command{
 
 var subnetAddValidatorCmd = &cobra.Command{
 	Use:   "add-validator",
-	Short: "Add a validator to a permissioned subnet",
+	Short: "Add a validator to a permissioned subnet (AddSubnetValidatorTx)",
 	Long: `Add a validator to a permissioned subnet (AddSubnetValidatorTx).
 
 The node must already be a primary network validator, and the validation period

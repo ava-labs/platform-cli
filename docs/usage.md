@@ -72,7 +72,7 @@ platform transfer import --from p --to c
 
 ```bash
 # Add validator (mainnet minimum: 2000 AVAX, 14 days)
-platform validator add \
+platform validator add-permissionless \
   --node-id NodeID-... \
   --bls-public-key <hex> \
   --bls-pop <hex> \
@@ -81,27 +81,32 @@ platform validator add \
   --delegation-fee 0.02
 
 # Delegate to validator (mainnet minimum: 25 AVAX)
-platform validator delegate \
+platform validator add-permissionless-delegator \
   --node-id NodeID-... \
   --stake 100 \
   --duration 336h
 ```
+
+> Command names mirror the avalanchego transaction they issue. The previous
+> names (`add`, `delegate`) still work as deprecated aliases.
 
 ### Subnets
 
 ```bash
 platform subnet create
 platform subnet transfer-ownership --subnet-id <ID> --new-owner <address>
-platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--manager <hex>]
-platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--contract-address <hex>]
-platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> \
+platform subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--manager <hex>]
+platform subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--contract-address <hex>]
+platform subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> \
   --validator-node-ids NodeID-...,NodeID-... \
   --validator-bls-public-keys <hex>,<hex> \
   --validator-bls-pops <hex>,<hex> \
   [--manager <hex>]
-platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock-validator
+platform subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock-validator
 platform subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight <uint> [--start <RFC3339|now>] [--duration <dur>]
 ```
+
+> `convert-to-l1` was previously `convert-l1`, which still works as a deprecated alias.
 
 `add-validator` notes:
 - Adds a validator to a **permissioned** subnet (`AddSubnetValidatorTx`).
@@ -110,7 +115,7 @@ platform subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight <ui
 - The subnet owner key authorizes the tx (subnet auth), so load the owner key via
   `--key-name` or `--ledger`.
 
-`convert-l1` notes:
+`convert-to-l1` notes:
 - `--manager` / `--contract-address` is the validator manager contract address (hex).
 - `--chain-id` is the chain where the validator manager contract is deployed.
   In many setups, this is the same as the new L1 chain ID.
@@ -130,10 +135,13 @@ platform subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight <ui
 
 ```bash
 platform l1 register-validator --balance <AVAX> --pop <hex> --message <hex>   # balance > 0
-platform l1 set-weight --message <hex>
-platform l1 add-balance --validation-id <ID> --balance <AVAX>                  # balance > 0
+platform l1 set-validator-weight --message <hex>
+platform l1 increase-validator-balance --validation-id <ID> --balance <AVAX>   # balance > 0
 platform l1 disable-validator --validation-id <ID>
 ```
+
+> Deprecated aliases still work: `set-validator-weight` ← `set-weight`,
+> `increase-validator-balance` ← `add-balance`.
 
 ### Chains
 

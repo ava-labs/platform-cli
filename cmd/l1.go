@@ -24,7 +24,7 @@ var l1Cmd = &cobra.Command{
 
 var l1RegisterValidatorCmd = &cobra.Command{
 	Use:   "register-validator",
-	Short: "Register a new L1 validator",
+	Short: "Register a new L1 validator (RegisterL1ValidatorTx)",
 	Long:  `Register a new validator on an L1 blockchain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
@@ -80,10 +80,12 @@ var l1RegisterValidatorCmd = &cobra.Command{
 }
 
 var l1SetWeightCmd = &cobra.Command{
-	Use:   "set-weight",
-	Short: "Set L1 validator weight",
-	Long:  `Set the weight of a validator on an L1 blockchain.`,
+	Use:     "set-validator-weight",
+	Aliases: []string{"set-weight"},
+	Short:   "Set L1 validator weight (SetL1ValidatorWeightTx)",
+	Long:    `Set the weight of a validator on an L1 blockchain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		warnIfDeprecatedAlias(cmd)
 		ctx, cancel := getOperationContext()
 		defer cancel()
 
@@ -118,10 +120,12 @@ var l1SetWeightCmd = &cobra.Command{
 }
 
 var l1AddBalanceCmd = &cobra.Command{
-	Use:   "add-balance",
-	Short: "Increase L1 validator balance",
-	Long:  `Increase the balance of a validator on an L1 blockchain for continuous fees.`,
+	Use:     "increase-validator-balance",
+	Aliases: []string{"add-balance"},
+	Short:   "Increase L1 validator balance (IncreaseL1ValidatorBalanceTx)",
+	Long:    `Increase the balance of a validator on an L1 blockchain for continuous fees.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		warnIfDeprecatedAlias(cmd)
 		ctx, cancel := getOperationContext()
 		defer cancel()
 
@@ -165,7 +169,7 @@ var l1AddBalanceCmd = &cobra.Command{
 
 var l1DisableValidatorCmd = &cobra.Command{
 	Use:   "disable-validator",
-	Short: "Disable an L1 validator",
+	Short: "Disable an L1 validator (DisableL1ValidatorTx)",
 	Long:  `Disable a validator on an L1 blockchain and return remaining funds.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()

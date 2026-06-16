@@ -20,9 +20,9 @@ cmd/               - Cobra CLI commands (user-facing interface)
 ├── keys.go        - Key management: generate, import, export, delete, default
 ├── wallet.go      - Wallet info: address, balance
 ├── transfer.go    - Transfers: send, p-to-c, c-to-p, export, import
-├── validator.go   - Staking: add validator, delegate
-├── subnet.go      - Subnets: create, transfer-ownership, convert-l1
-├── l1.go          - L1 validators: register, set-weight, add-balance, disable
+├── validator.go   - Staking: add-permissionless, add-permissionless-delegator
+├── subnet.go      - Subnets: create, transfer-ownership, convert-to-l1, add-validator
+├── l1.go          - L1 validators: register-validator, set-validator-weight, increase-validator-balance, disable-validator
 ├── chain.go       - Chains: create chain on subnet
 └── node.go        - Node utilities: info
 

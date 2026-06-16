@@ -125,7 +125,7 @@ func TestCLIValidatorHelp(t *testing.T) {
 		t.Fatalf("validator help failed: %v", err)
 	}
 
-	expected := []string{"add", "delegate"}
+	expected := []string{"add-permissionless", "add-permissionless-delegator"}
 	for _, cmd := range expected {
 		if !strings.Contains(stdout, cmd) {
 			t.Errorf("validator help missing subcommand: %s", cmd)
@@ -141,7 +141,7 @@ func TestCLISubnetHelp(t *testing.T) {
 		t.Fatalf("subnet help failed: %v", err)
 	}
 
-	expected := []string{"create", "transfer-ownership", "convert-l1", "add-validator"}
+	expected := []string{"create", "transfer-ownership", "convert-to-l1", "add-validator"}
 	for _, cmd := range expected {
 		if !strings.Contains(stdout, cmd) {
 			t.Errorf("subnet help missing subcommand: %s", cmd)
@@ -157,7 +157,7 @@ func TestCLIL1Help(t *testing.T) {
 		t.Fatalf("l1 help failed: %v", err)
 	}
 
-	expected := []string{"register-validator", "set-weight", "add-balance", "disable-validator"}
+	expected := []string{"register-validator", "set-validator-weight", "increase-validator-balance", "disable-validator"}
 	for _, cmd := range expected {
 		if !strings.Contains(stdout, cmd) {
 			t.Errorf("l1 help missing subcommand: %s", cmd)
@@ -285,7 +285,7 @@ func TestCLISubnetCreate(t *testing.T) {
 // =============================================================================
 
 func TestCLIValidatorAddMissingArgs(t *testing.T) {
-	_, stderr, err := runCLI(t, "validator", "add")
+	_, stderr, err := runCLI(t, "validator", "add-permissionless")
 	if err == nil {
 		t.Error("expected error when missing required args")
 	}
@@ -296,7 +296,7 @@ func TestCLIValidatorAddMissingArgs(t *testing.T) {
 }
 
 func TestCLIValidatorDelegateMissingArgs(t *testing.T) {
-	_, stderr, err := runCLI(t, "validator", "delegate")
+	_, stderr, err := runCLI(t, "validator", "add-permissionless-delegator")
 	if err == nil {
 		t.Error("expected error when missing required args")
 	}
@@ -311,7 +311,7 @@ func TestCLIValidatorDelegateMissingArgs(t *testing.T) {
 // =============================================================================
 
 func TestCLIL1AddBalanceMissingArgs(t *testing.T) {
-	_, stderr, err := runCLI(t, "l1", "add-balance", "--balance", "1")
+	_, stderr, err := runCLI(t, "l1", "increase-validator-balance", "--balance", "1")
 	if err == nil {
 		t.Error("expected error when missing required args")
 	}
@@ -348,7 +348,7 @@ func TestCLIChainCreateMissingArgs(t *testing.T) {
 }
 
 func TestCLISubnetConvertL1MissingArgs(t *testing.T) {
-	_, stderr, err := runCLI(t, "subnet", "convert-l1")
+	_, stderr, err := runCLI(t, "subnet", "convert-to-l1")
 	if err == nil {
 		t.Error("expected error when missing required args")
 	}
@@ -358,9 +358,24 @@ func TestCLISubnetConvertL1MissingArgs(t *testing.T) {
 	}
 }
 
+// TestCLIDeprecatedAliasWarns verifies that an old command name still works via
+// its alias and emits a deprecation warning pointing at the canonical name.
+func TestCLIDeprecatedAliasWarns(t *testing.T) {
+	// "convert-l1" is the deprecated alias for "convert-to-l1"; invoking it with
+	// no args reaches RunE (which prints the warning) before the missing-arg error.
+	_, stderr, err := runCLI(t, "subnet", "convert-l1")
+	if err == nil {
+		t.Error("expected error when missing required args")
+	}
+
+	if !strings.Contains(stderr, "deprecated") || !strings.Contains(stderr, "convert-to-l1") {
+		t.Errorf("expected deprecation warning pointing at canonical name, got stderr: %s", stderr)
+	}
+}
+
 func TestCLISubnetConvertL1EmptyValidators(t *testing.T) {
 	_, stderr, err := runCLI(t,
-		"subnet", "convert-l1",
+		"subnet", "convert-to-l1",
 		"--subnet-id", "2ebCneQ9z9v56N6sryhU6P8L3s1f6BDoed6ox2q6iM8Qv7w6s",
 		"--chain-id", "2ebCneQ9z9v56N6sryhU6P8L3s1f6BDoed6ox2q6iM8Qv7w6s",
 		"--validators", ", , ,",
@@ -452,7 +467,7 @@ func TestCLIL1Lifecycle(t *testing.T) {
 
 	// Step 4: Convert subnet to L1 using mock validator
 	t.Log("Step 3: Converting subnet to L1...")
-	convertOut, stderr, err := runCLI(t, "subnet", "convert-l1",
+	convertOut, stderr, err := runCLI(t, "subnet", "convert-to-l1",
 		"--subnet-id", subnetID,
 		"--chain-id", chainID,
 		"--mock-validator")

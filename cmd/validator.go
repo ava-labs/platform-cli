@@ -33,10 +33,12 @@ var validatorCmd = &cobra.Command{
 }
 
 var validatorAddCmd = &cobra.Command{
-	Use:   "add",
-	Short: "Add a primary network validator",
-	Long:  `Add a validator to the Avalanche primary network.`,
+	Use:     "add-permissionless",
+	Aliases: []string{"add"},
+	Short:   "Add a primary network validator (AddPermissionlessValidatorTx)",
+	Long:    `Add a permissionless validator to the Avalanche primary network.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		warnIfDeprecatedAlias(cmd)
 		ctx, cancel := getOperationContext()
 		defer cancel()
 
@@ -126,10 +128,12 @@ var validatorAddCmd = &cobra.Command{
 }
 
 var validatorDelegateCmd = &cobra.Command{
-	Use:   "delegate",
-	Short: "Delegate to a primary network validator",
-	Long:  `Delegate stake to an existing primary network validator.`,
+	Use:     "add-permissionless-delegator",
+	Aliases: []string{"delegate"},
+	Short:   "Delegate to a primary network validator (AddPermissionlessDelegatorTx)",
+	Long:    `Delegate stake to an existing primary network validator.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		warnIfDeprecatedAlias(cmd)
 		ctx, cancel := getOperationContext()
 		defer cancel()
 

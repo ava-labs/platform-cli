@@ -43,7 +43,7 @@ var rootCmd = &cobra.Command{
 
 Example usage:
   platform wallet balance --key-name mykey
-  platform validator add --node-id NodeID-... --stake 2000
+  platform validator add-permissionless --node-id NodeID-... --stake 2000
   platform transfer p-to-c --amount 10 --key-name mykey
   platform subnet create --network fuji --key-name mykey
 
@@ -79,6 +79,16 @@ func init() {
 			fmt.Println("platform " + version)
 		},
 	})
+}
+
+// warnIfDeprecatedAlias prints a deprecation notice to stderr when a command is
+// invoked through a deprecated alias rather than its canonical name. Commands are
+// named to mirror the avalanchego transaction type they issue; the previous names
+// are retained as aliases for backward compatibility.
+func warnIfDeprecatedAlias(cmd *cobra.Command) {
+	if called := cmd.CalledAs(); called != "" && called != cmd.Name() {
+		fmt.Fprintf(os.Stderr, "Warning: %q is deprecated; use %q instead.\n", called, cmd.CommandPath())
+	}
 }
 
 // avaxToNAVAX converts AVAX amount to nAVAX with validation.
