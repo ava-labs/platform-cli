@@ -141,7 +141,7 @@ func TestCLISubnetHelp(t *testing.T) {
 		t.Fatalf("subnet help failed: %v", err)
 	}
 
-	expected := []string{"create", "transfer-ownership", "convert-l1"}
+	expected := []string{"create", "transfer-ownership", "convert-l1", "add-validator"}
 	for _, cmd := range expected {
 		if !strings.Contains(stdout, cmd) {
 			t.Errorf("subnet help missing subcommand: %s", cmd)
@@ -370,6 +370,17 @@ func TestCLISubnetConvertL1EmptyValidators(t *testing.T) {
 	}
 
 	if !strings.Contains(stderr, "--validators must include at least one non-empty validator address") {
+		t.Logf("stderr: %s", stderr)
+	}
+}
+
+func TestCLISubnetAddValidatorMissingArgs(t *testing.T) {
+	_, stderr, err := runCLI(t, "subnet", "add-validator")
+	if err == nil {
+		t.Error("expected error when missing required args")
+	}
+
+	if !strings.Contains(stderr, "subnet-id") {
 		t.Logf("stderr: %s", stderr)
 	}
 }

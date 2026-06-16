@@ -100,7 +100,15 @@ platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> \
   --validator-bls-pops <hex>,<hex> \
   [--manager <hex>]
 platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock-validator
+platform subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight <uint> [--start <RFC3339|now>] [--duration <dur>]
 ```
+
+`add-validator` notes:
+- Adds a validator to a **permissioned** subnet (`AddSubnetValidatorTx`).
+- The node must already validate the primary network, and the validation period
+  must fall within its primary network validation window.
+- The subnet owner key authorizes the tx (subnet auth), so load the owner key via
+  `--key-name` or `--ledger`.
 
 `convert-l1` notes:
 - `--manager` / `--contract-address` is the validator manager contract address (hex).

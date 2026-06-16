@@ -10,6 +10,7 @@
 | Create Subnet | `subnet create` | `IssueCreateSubnetTx` |
 | Transfer Subnet Ownership | `subnet transfer-ownership` | `IssueTransferSubnetOwnershipTx` |
 | Convert to L1 | `subnet convert-l1` | `IssueConvertSubnetToL1Tx` |
+| Add Subnet Validator | `subnet add-validator` | `IssueAddSubnetValidatorTx` |
 | Register L1 Validator | `l1 register-validator` | `IssueRegisterL1ValidatorTx` |
 | Set L1 Validator Weight | `l1 set-weight` | `IssueSetL1ValidatorWeightTx` |
 | Increase L1 Balance | `l1 add-balance` | `IssueIncreaseL1ValidatorBalanceTx` |
