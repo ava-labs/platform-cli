@@ -47,6 +47,7 @@ Subcommands:
   list      List all stored keys
   export    Export a key (show private key)
   delete    Remove a stored key`,
+	RunE: requireSubcommand,
 }
 
 var keysImportCmd = &cobra.Command{

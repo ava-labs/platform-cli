@@ -379,6 +379,29 @@ func TestCLIRemovedOldNamesRejected(t *testing.T) {
 	}
 }
 
+// TestCLIUnknownSubcommandRejected verifies the root command and every command
+// group reject an unknown subcommand with an error instead of silently printing
+// help and exiting 0 (the footgun requireSubcommand closes).
+func TestCLIUnknownSubcommandRejected(t *testing.T) {
+	cases := [][]string{
+		{"definitely-not-a-command"}, // root
+		{"chain", "bogus"},
+		{"transfer", "bogus"},
+		{"keys", "bogus"},
+		{"wallet", "bogus"},
+		{"node", "bogus"},
+	}
+	for _, args := range cases {
+		_, stderr, err := runCLI(t, args...)
+		if err == nil {
+			t.Errorf("%v: expected error for unknown subcommand", args)
+		}
+		if !strings.Contains(stderr, "unknown command") {
+			t.Errorf("%v: expected \"unknown command\", got stderr: %s", args, stderr)
+		}
+	}
+}
+
 func TestCLISubnetConvertL1EmptyValidators(t *testing.T) {
 	_, stderr, err := runCLI(t,
 		"subnet", "convert-to-l1",
@@ -402,7 +425,7 @@ func TestCLISubnetAddValidatorMissingArgs(t *testing.T) {
 	}
 
 	if !strings.Contains(stderr, "subnet-id") {
-		t.Logf("stderr: %s", stderr)
+		t.Errorf("expected error to mention subnet-id, got stderr: %s", stderr)
 	}
 }
 

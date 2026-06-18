@@ -39,6 +39,7 @@ var rootCmd = &cobra.Command{
 	Short:         "Avalanche P-Chain CLI",
 	SilenceErrors: true,
 	SilenceUsage:  true,
+	RunE:          requireSubcommand,
 	Long: `Avalanche P-Chain operations: staking, subnets, transfers, and L1 validators.
 
 Example usage:

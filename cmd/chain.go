@@ -29,11 +29,12 @@ var chainCmd = &cobra.Command{
 	Use:   "chain",
 	Short: "Chain management",
 	Long:  `Create and manage chains on subnets.`,
+	RunE:  requireSubcommand,
 }
 
 var chainCreateCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Create a new chain",
+	Short: "Create a new chain (CreateChainTx)",
 	Long:  `Create a new blockchain on a subnet.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()

@@ -279,13 +279,13 @@ authorizes the transaction, so load the owner key via --key-name or --ledger.`,
 		if err != nil {
 			return err
 		}
-		if !end.After(start) {
-			return fmt.Errorf("end time must be after start time")
-		}
 
 		netConfig, err := getNetworkConfig(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
+		}
+		if end.Sub(start) < netConfig.MinStakeDuration {
+			return fmt.Errorf("duration too short for %s: minimum is %s", netConfig.Name, netConfig.MinStakeDuration)
 		}
 
 		w, cleanup, err := loadPChainWalletWithSubnet(ctx, netConfig, sid)
@@ -345,6 +345,6 @@ func init() {
 	subnetAddValidatorCmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID")
 	subnetAddValidatorCmd.Flags().StringVar(&subnetValNodeID, "node-id", "", "Validator node ID (must already validate the primary network)")
 	subnetAddValidatorCmd.Flags().Uint64Var(&subnetValWeight, "weight", 0, "Validator sampling weight on the subnet")
-	subnetAddValidatorCmd.Flags().StringVar(&subnetValStartTime, "start", "now", "Start time (RFC3339 or 'now')")
+	subnetAddValidatorCmd.Flags().StringVar(&subnetValStartTime, "start", "now", "Start time (RFC3339 or 'now'). Post-Durango networks ignore this; validation begins at tx acceptance")
 	subnetAddValidatorCmd.Flags().StringVar(&subnetValDuration, "duration", "336h", "Validation duration (must fall within the node's primary network validation period)")
 }
