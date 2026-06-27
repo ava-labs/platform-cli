@@ -47,7 +47,7 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 	binPath := cliBinaryPath
 	if binPath == "" {
 		// Fallback for direct execution without TestMain setup.
-		binPath = "../platform"
+		binPath = "../platform-cli"
 	}
 	cmd := exec.Command(binPath, fullArgs...)
 	cmd.Env = os.Environ()

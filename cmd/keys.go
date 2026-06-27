@@ -60,9 +60,9 @@ When encryption is enabled, set PLATFORM_CLI_KEY_PASSWORD for non-interactive us
 or follow the password prompt.
 
 Examples:
-  platform keys import --name mykey --private-key "PrivateKey-..."
-  platform keys import --name mykey
-  platform keys import --name mykey --encrypt=false`,
+  platform-cli keys import --name mykey --private-key "PrivateKey-..."
+  platform-cli keys import --name mykey
+  platform-cli keys import --name mykey --encrypt=false`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
@@ -155,8 +155,8 @@ When encryption is enabled, set PLATFORM_CLI_KEY_PASSWORD for non-interactive us
 or follow the password prompt.
 
 Examples:
-  platform keys generate --name mykey
-  platform keys generate --name mykey --encrypt=false`,
+  platform-cli keys generate --name mykey
+  platform-cli keys generate --name mykey --encrypt=false`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
@@ -217,7 +217,7 @@ Examples:
 		}
 
 		fmt.Println()
-		fmt.Println("WARNING: Back up your key! Use 'platform keys export' to view the private key.")
+		fmt.Println("WARNING: Back up your key! Use 'platform-cli keys export' to view the private key.")
 
 		return nil
 	},
@@ -231,8 +231,8 @@ var keysListCmd = &cobra.Command{
 Use --show-addresses to display P-Chain and EVM addresses.
 
 Examples:
-  platform keys list
-  platform keys list --show-addresses`,
+  platform-cli keys list
+  platform-cli keys list --show-addresses`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ks, err := keystore.Load()
 		if err != nil {
@@ -241,7 +241,7 @@ Examples:
 
 		entries := ks.ListKeys()
 		if len(entries) == 0 {
-			fmt.Println("No keys found. Use 'platform keys import' or 'platform keys generate' to add a key.")
+			fmt.Println("No keys found. Use 'platform-cli keys import' or 'platform-cli keys generate' to add a key.")
 			return nil
 		}
 
@@ -302,9 +302,9 @@ If you really need stdout output, you must pass --unsafe-stdout.
 If the key is encrypted, you will be prompted for the password.
 
 Examples:
-  platform keys export --name mykey --output-file ./mykey.txt
-  platform keys export --name mykey --format hex --output-file ./mykey.hex
-  platform keys export --name mykey --unsafe-stdout`,
+  platform-cli keys export --name mykey --output-file ./mykey.txt
+  platform-cli keys export --name mykey --format hex --output-file ./mykey.hex
+  platform-cli keys export --name mykey --unsafe-stdout`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
@@ -371,8 +371,8 @@ var keysDeleteCmd = &cobra.Command{
 This action is irreversible! Make sure you have a backup of your key.
 
 Examples:
-  platform keys delete --name mykey
-  platform keys delete --name mykey --force`,
+  platform-cli keys delete --name mykey
+  platform-cli keys delete --name mykey --force`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if keyName == "" {
 			return fmt.Errorf("--name is required")
@@ -425,8 +425,8 @@ When no --name is provided, shows the current default key.
 When --name is provided, sets that key as the default.
 
 Examples:
-  platform keys default
-  platform keys default --name mykey`,
+  platform-cli keys default
+  platform-cli keys default --name mykey`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ks, err := keystore.Load()
 		if err != nil {

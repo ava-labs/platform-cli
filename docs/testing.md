@@ -15,14 +15,14 @@ go test -tags=clie2e -v ./e2e/... -run "Help|Params|MissingArgs"
 
 # Ledger-tag compile/unit checks
 go test -tags=ledger ./...
-go build -tags ledger -o platform-ledger .
+go build -tags ledger -o platform-cli-ledger .
 ```
 
 ## End-to-End Tests
 
 ```bash
 # Build first
-go build -o platform .
+go build -o platform-cli .
 
 # Network e2e tests are opt-in to avoid accidental live transactions
 # Set RUN_E2E_NETWORK_TESTS=1 when you intentionally want to run them
