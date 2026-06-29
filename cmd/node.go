@@ -11,6 +11,7 @@ var nodeCmd = &cobra.Command{
 	Use:   "node",
 	Short: "Node information",
 	Long:  `Node information operations including getting node ID and BLS key.`,
+	RunE:  requireSubcommand,
 }
 
 var nodeIP string

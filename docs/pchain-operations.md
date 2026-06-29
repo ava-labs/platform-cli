@@ -1,17 +1,22 @@
 # P-Chain Operations Reference
 
-| Operation | Command | SDK Method |
-|-----------|---------|------------|
-| Send AVAX | `transfer send` | `IssueBaseTx` |
-| Export | `transfer export` | `IssueExportTx` |
-| Import | `transfer import` | `IssueImportTx` |
-| Add Validator | `validator add` | `IssueAddPermissionlessValidatorTx` |
-| Add Delegator | `validator delegate` | `IssueAddPermissionlessDelegatorTx` |
-| Create Subnet | `subnet create` | `IssueCreateSubnetTx` |
-| Transfer Subnet Ownership | `subnet transfer-ownership` | `IssueTransferSubnetOwnershipTx` |
-| Convert to L1 | `subnet convert-l1` | `IssueConvertSubnetToL1Tx` |
-| Register L1 Validator | `l1 register-validator` | `IssueRegisterL1ValidatorTx` |
-| Set L1 Validator Weight | `l1 set-weight` | `IssueSetL1ValidatorWeightTx` |
-| Increase L1 Balance | `l1 add-balance` | `IssueIncreaseL1ValidatorBalanceTx` |
-| Disable L1 Validator | `l1 disable-validator` | `IssueDisableL1ValidatorTx` |
-| Create Chain | `chain create` | `IssueCreateChainTx` |
+Command names mirror the avalanchego transaction type each one issues. The
+"Previous name" column lists names that were **removed in v2.0.0** (no aliases) —
+use it to migrate existing scripts.
+
+| Tx Type | Command | SDK Method | Previous name (removed in v2.0.0) |
+|---------|---------|------------|-----------------------------------|
+| `BaseTx` | `transfer send` | `IssueBaseTx` | — |
+| `ExportTx` | `transfer export` | `IssueExportTx` | — |
+| `ImportTx` | `transfer import` | `IssueImportTx` | — |
+| `AddPermissionlessValidatorTx` | `validator add-permissionless` | `IssueAddPermissionlessValidatorTx` | `validator add` |
+| `AddPermissionlessDelegatorTx` | `validator add-permissionless-delegator` | `IssueAddPermissionlessDelegatorTx` | `validator delegate` |
+| `CreateSubnetTx` | `subnet create` | `IssueCreateSubnetTx` | — |
+| `TransferSubnetOwnershipTx` | `subnet transfer-ownership` | `IssueTransferSubnetOwnershipTx` | — |
+| `ConvertSubnetToL1Tx` | `subnet convert-to-l1` | `IssueConvertSubnetToL1Tx` | `subnet convert-l1` |
+| `AddSubnetValidatorTx` | `subnet add-validator` | `IssueAddSubnetValidatorTx` | — |
+| `RegisterL1ValidatorTx` | `l1 register-validator` | `IssueRegisterL1ValidatorTx` | — |
+| `SetL1ValidatorWeightTx` | `l1 set-validator-weight` | `IssueSetL1ValidatorWeightTx` | `l1 set-weight` |
+| `IncreaseL1ValidatorBalanceTx` | `l1 increase-validator-balance` | `IssueIncreaseL1ValidatorBalanceTx` | `l1 add-balance` |
+| `DisableL1ValidatorTx` | `l1 disable-validator` | `IssueDisableL1ValidatorTx` | — |
+| `CreateChainTx` | `chain create` | `IssueCreateChainTx` | — |

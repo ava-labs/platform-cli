@@ -20,9 +20,9 @@ cmd/               - Cobra CLI commands (user-facing interface)
 ├── keys.go        - Key management: generate, import, export, delete, default
 ├── wallet.go      - Wallet info: address, balance
 ├── transfer.go    - Transfers: send, p-to-c, c-to-p, export, import
-├── validator.go   - Staking: add validator, delegate
-├── subnet.go      - Subnets: create, transfer-ownership, convert-l1
-├── l1.go          - L1 validators: register, set-weight, add-balance, disable
+├── validator.go   - Staking: add-permissionless, add-permissionless-delegator
+├── subnet.go      - Subnets: create, transfer-ownership, convert-to-l1, add-validator
+├── l1.go          - L1 validators: register-validator, set-validator-weight, increase-validator-balance, disable-validator
 ├── chain.go       - Chains: create chain on subnet
 └── node.go        - Node utilities: info
 
@@ -64,7 +64,7 @@ e2e/               - End-to-end tests (run against real networks)
 
 ```bash
 # Build
-go build -o platform .
+go build -o platform-cli .
 
 # Lint & vet (run before committing)
 go vet ./...
@@ -140,7 +140,7 @@ if err != nil {
 ## Transaction Flow Example
 
 ```
-User runs: platform subnet create --network fuji
+User runs: platform-cli subnet create --network fuji
 
 1. cmd/subnet.go: Parse flags, load key
 2. pkg/wallet/wallet.go: Create wallet from private key

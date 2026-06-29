@@ -6,8 +6,8 @@ before:
     - go vet ./...
 
 builds:
-  - id: platform
-    binary: platform
+  - id: platform-cli
+    binary: platform-cli
     main: .
     env:
       - CGO_ENABLED=1
@@ -26,9 +26,9 @@ builds:
           - CC=aarch64-linux-gnu-gcc
 
 archives:
-  - id: platform
+  - id: platform-cli
     builds:
-      - platform
+      - platform-cli
     format: tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 

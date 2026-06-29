@@ -78,6 +78,11 @@ type convertSubnetToL1TxIssuer interface {
 	IssueConvertSubnetToL1Tx(subnetID ids.ID, chainID ids.ID, address []byte, validators []*txs.ConvertSubnetToL1Validator, options ...common.Option) (*txs.Tx, error)
 }
 
+// addSubnetValidatorTxIssuer issues an AddSubnetValidatorTx.
+type addSubnetValidatorTxIssuer interface {
+	IssueAddSubnetValidatorTx(vdr *txs.SubnetValidator, options ...common.Option) (*txs.Tx, error)
+}
+
 // createChainTxIssuer issues a CreateChainTx.
 type createChainTxIssuer interface {
 	IssueCreateChainTx(subnetID ids.ID, genesis []byte, vmID ids.ID, fxIDs []ids.ID, chainName string, options ...common.Option) (*txs.Tx, error)
@@ -600,6 +605,47 @@ func issueConvertSubnetToL1Tx(
 	tx, err := issuer.IssueConvertSubnetToL1Tx(subnetID, chainID, managerAddr, validators, options...)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue ConvertSubnetToL1Tx: %w", err)
+	}
+	return tx.ID(), nil
+}
+
+// AddSubnetValidatorConfig holds configuration for adding a validator to a
+// permissioned subnet.
+type AddSubnetValidatorConfig struct {
+	SubnetID ids.ID
+	NodeID   ids.NodeID
+	Start    time.Time
+	End      time.Time
+	Weight   uint64 // sampling weight on the subnet (not a stake amount)
+}
+
+// AddSubnetValidator adds a validator to a permissioned subnet
+// (IssueAddSubnetValidatorTx). The node must already validate the primary
+// network, and the subnet owner authorizes the tx via subnet auth (resolved by
+// the wallet backend, so the wallet must track the subnet).
+func AddSubnetValidator(ctx context.Context, w *wallet.Wallet, cfg AddSubnetValidatorConfig) (ids.ID, error) {
+	return issueAddSubnetValidatorTx(w.PWallet(), cfg, common.WithContext(ctx))
+}
+
+func issueAddSubnetValidatorTx(
+	issuer addSubnetValidatorTxIssuer,
+	cfg AddSubnetValidatorConfig,
+	options ...common.Option,
+) (ids.ID, error) {
+	tx, err := issuer.IssueAddSubnetValidatorTx(
+		&txs.SubnetValidator{
+			Validator: txs.Validator{
+				NodeID: cfg.NodeID,
+				Start:  uint64(cfg.Start.Unix()),
+				End:    uint64(cfg.End.Unix()),
+				Wght:   cfg.Weight,
+			},
+			Subnet: cfg.SubnetID,
+		},
+		options...,
+	)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to issue AddSubnetValidatorTx: %w", err)
 	}
 	return tx.ID(), nil
 }

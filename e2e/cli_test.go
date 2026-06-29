@@ -47,7 +47,7 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 	binPath := cliBinaryPath
 	if binPath == "" {
 		// Fallback for direct execution without TestMain setup.
-		binPath = "../platform"
+		binPath = "../platform-cli"
 	}
 	cmd := exec.Command(binPath, fullArgs...)
 	cmd.Env = os.Environ()
@@ -125,7 +125,7 @@ func TestCLIValidatorHelp(t *testing.T) {
 		t.Fatalf("validator help failed: %v", err)
 	}
 
-	expected := []string{"add", "add-auto-renewed", "set-auto-config", "delegate"}
+	expected := []string{"add-permissionless", "add-permissionless-delegator", "add-auto-renewed", "set-auto-renewed-config"}
 	for _, cmd := range expected {
 		if !strings.Contains(stdout, cmd) {
 			t.Errorf("validator help missing subcommand: %s", cmd)
@@ -141,7 +141,7 @@ func TestCLISubnetHelp(t *testing.T) {
 		t.Fatalf("subnet help failed: %v", err)
 	}
 
-	expected := []string{"create", "transfer-ownership", "convert-l1"}
+	expected := []string{"create", "transfer-ownership", "convert-to-l1", "add-validator"}
 	for _, cmd := range expected {
 		if !strings.Contains(stdout, cmd) {
 			t.Errorf("subnet help missing subcommand: %s", cmd)
@@ -157,7 +157,7 @@ func TestCLIL1Help(t *testing.T) {
 		t.Fatalf("l1 help failed: %v", err)
 	}
 
-	expected := []string{"register-validator", "set-weight", "add-balance", "disable-validator"}
+	expected := []string{"register-validator", "set-validator-weight", "increase-validator-balance", "disable-validator"}
 	for _, cmd := range expected {
 		if !strings.Contains(stdout, cmd) {
 			t.Errorf("l1 help missing subcommand: %s", cmd)
@@ -285,7 +285,7 @@ func TestCLISubnetCreate(t *testing.T) {
 // =============================================================================
 
 func TestCLIValidatorAddMissingArgs(t *testing.T) {
-	_, stderr, err := runCLI(t, "validator", "add")
+	_, stderr, err := runCLI(t, "validator", "add-permissionless")
 	if err == nil {
 		t.Error("expected error when missing required args")
 	}
@@ -296,7 +296,7 @@ func TestCLIValidatorAddMissingArgs(t *testing.T) {
 }
 
 func TestCLIValidatorDelegateMissingArgs(t *testing.T) {
-	_, stderr, err := runCLI(t, "validator", "delegate")
+	_, stderr, err := runCLI(t, "validator", "add-permissionless-delegator")
 	if err == nil {
 		t.Error("expected error when missing required args")
 	}
@@ -321,15 +321,15 @@ func TestCLIValidatorAddAutoRenewedHelp(t *testing.T) {
 }
 
 func TestCLIValidatorSetAutoConfigHelp(t *testing.T) {
-	stdout, _, err := runCLI(t, "validator", "set-auto-config", "--help")
+	stdout, _, err := runCLI(t, "validator", "set-auto-renewed-config", "--help")
 	if err != nil {
-		t.Fatalf("set-auto-config help failed: %v", err)
+		t.Fatalf("set-auto-renewed-config help failed: %v", err)
 	}
 
 	expected := []string{"tx-id", "node-id", "period", "auto-compound"}
 	for _, flag := range expected {
 		if !strings.Contains(stdout, flag) {
-			t.Errorf("set-auto-config help missing flag: %s", flag)
+			t.Errorf("set-auto-renewed-config help missing flag: %s", flag)
 		}
 	}
 }
@@ -346,7 +346,7 @@ func TestCLIValidatorAddAutoRenewedMissingArgs(t *testing.T) {
 }
 
 func TestCLIValidatorSetAutoConfigMissingArgs(t *testing.T) {
-	_, stderr, err := runCLI(t, "validator", "set-auto-config")
+	_, stderr, err := runCLI(t, "validator", "set-auto-renewed-config")
 	if err == nil {
 		t.Error("expected error when missing required args")
 	}
@@ -361,7 +361,7 @@ func TestCLIValidatorSetAutoConfigMissingArgs(t *testing.T) {
 // =============================================================================
 
 func TestCLIL1AddBalanceMissingArgs(t *testing.T) {
-	_, stderr, err := runCLI(t, "l1", "add-balance", "--balance", "1")
+	_, stderr, err := runCLI(t, "l1", "increase-validator-balance", "--balance", "1")
 	if err == nil {
 		t.Error("expected error when missing required args")
 	}
@@ -398,7 +398,7 @@ func TestCLIChainCreateMissingArgs(t *testing.T) {
 }
 
 func TestCLISubnetConvertL1MissingArgs(t *testing.T) {
-	_, stderr, err := runCLI(t, "subnet", "convert-l1")
+	_, stderr, err := runCLI(t, "subnet", "convert-to-l1")
 	if err == nil {
 		t.Error("expected error when missing required args")
 	}
@@ -408,9 +408,53 @@ func TestCLISubnetConvertL1MissingArgs(t *testing.T) {
 	}
 }
 
+// TestCLIRemovedOldNamesRejected verifies the v2.0.0 hard cutover: the old
+// command names were removed (no aliases) and are now rejected as unknown.
+func TestCLIRemovedOldNamesRejected(t *testing.T) {
+	cases := [][]string{
+		{"validator", "add"},
+		{"validator", "delegate"},
+		{"subnet", "convert-l1"},
+		{"l1", "set-weight"},
+		{"l1", "add-balance"},
+	}
+	for _, args := range cases {
+		_, stderr, err := runCLI(t, args...)
+		if err == nil {
+			t.Errorf("%v: expected error for removed command name", args)
+		}
+		if !strings.Contains(stderr, "unknown command") {
+			t.Errorf("%v: expected \"unknown command\", got stderr: %s", args, stderr)
+		}
+	}
+}
+
+// TestCLIUnknownSubcommandRejected verifies the root command and every command
+// group reject an unknown subcommand with an error instead of silently printing
+// help and exiting 0 (the footgun requireSubcommand closes).
+func TestCLIUnknownSubcommandRejected(t *testing.T) {
+	cases := [][]string{
+		{"definitely-not-a-command"}, // root
+		{"chain", "bogus"},
+		{"transfer", "bogus"},
+		{"keys", "bogus"},
+		{"wallet", "bogus"},
+		{"node", "bogus"},
+	}
+	for _, args := range cases {
+		_, stderr, err := runCLI(t, args...)
+		if err == nil {
+			t.Errorf("%v: expected error for unknown subcommand", args)
+		}
+		if !strings.Contains(stderr, "unknown command") {
+			t.Errorf("%v: expected \"unknown command\", got stderr: %s", args, stderr)
+		}
+	}
+}
+
 func TestCLISubnetConvertL1EmptyValidators(t *testing.T) {
 	_, stderr, err := runCLI(t,
-		"subnet", "convert-l1",
+		"subnet", "convert-to-l1",
 		"--subnet-id", "2ebCneQ9z9v56N6sryhU6P8L3s1f6BDoed6ox2q6iM8Qv7w6s",
 		"--chain-id", "2ebCneQ9z9v56N6sryhU6P8L3s1f6BDoed6ox2q6iM8Qv7w6s",
 		"--validators", ", , ,",
@@ -421,6 +465,17 @@ func TestCLISubnetConvertL1EmptyValidators(t *testing.T) {
 
 	if !strings.Contains(stderr, "--validators must include at least one non-empty validator address") {
 		t.Logf("stderr: %s", stderr)
+	}
+}
+
+func TestCLISubnetAddValidatorMissingArgs(t *testing.T) {
+	_, stderr, err := runCLI(t, "subnet", "add-validator")
+	if err == nil {
+		t.Error("expected error when missing required args")
+	}
+
+	if !strings.Contains(stderr, "subnet-id") {
+		t.Errorf("expected error to mention subnet-id, got stderr: %s", stderr)
 	}
 }
 
@@ -491,7 +546,7 @@ func TestCLIL1Lifecycle(t *testing.T) {
 
 	// Step 4: Convert subnet to L1 using mock validator
 	t.Log("Step 3: Converting subnet to L1...")
-	convertOut, stderr, err := runCLI(t, "subnet", "convert-l1",
+	convertOut, stderr, err := runCLI(t, "subnet", "convert-to-l1",
 		"--subnet-id", subnetID,
 		"--chain-id", chainID,
 		"--mock-validator")

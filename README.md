@@ -1,4 +1,4 @@
-# platform
+# platform-cli
 
 Minimal CLI for Avalanche P-Chain operations.
 
@@ -8,7 +8,7 @@ Requirements:
 - Go 1.24.13+
 
 ```bash
-go install github.com/ava-labs/platform-cli@latest
+go install github.com/ava-labs/platform-cli@main
 ```
 
 Or build from source:
@@ -16,26 +16,26 @@ Or build from source:
 ```bash
 git clone https://github.com/ava-labs/platform-cli.git
 cd platform-cli
-go build -o platform .
+go build -o platform-cli .
 ```
 
 For Ledger support, build with:
 
 ```bash
-go build -tags ledger -o platform .
+go build -tags ledger -o platform-cli .
 ```
 
 ## Quick Start
 
 ```bash
 # Generate a key
-platform keys generate --name mykey
+platform-cli keys generate --name mykey
 
 # Check your address
-platform wallet address --key-name mykey
+platform-cli wallet address --key-name mykey
 
 # Check balance on Fuji
-platform wallet balance --network fuji --key-name mykey
+platform-cli wallet balance --network fuji --key-name mykey
 ```
 
 ## Documentation
@@ -50,6 +50,6 @@ Detailed docs live in [`docs/`](docs/README.md):
 ## CLI Help
 
 ```bash
-platform --help
-platform <command> --help
+platform-cli --help
+platform-cli <command> --help
 ```

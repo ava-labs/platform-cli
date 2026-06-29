@@ -154,6 +154,19 @@ func (s *stubConvertSubnetToL1TxIssuer) IssueConvertSubnetToL1Tx(subnetID ids.ID
 	return s.tx, s.err
 }
 
+// stubAddSubnetValidatorTxIssuer implements addSubnetValidatorTxIssuer.
+type stubAddSubnetValidatorTxIssuer struct {
+	tx  *txs.Tx
+	err error
+
+	gotVdr *txs.SubnetValidator
+}
+
+func (s *stubAddSubnetValidatorTxIssuer) IssueAddSubnetValidatorTx(vdr *txs.SubnetValidator, _ ...common.Option) (*txs.Tx, error) {
+	s.gotVdr = vdr
+	return s.tx, s.err
+}
+
 // stubCreateChainTxIssuer implements createChainTxIssuer.
 type stubCreateChainTxIssuer struct {
 	tx  *txs.Tx
@@ -509,6 +522,50 @@ func TestIssueConvertSubnetToL1Tx(t *testing.T) {
 	}
 	if len(issuer.gotValidators) != 1 || issuer.gotValidators[0] != validators[0] {
 		t.Fatalf("issueConvertSubnetToL1Tx() validators = %#v, want %#v", issuer.gotValidators, validators)
+	}
+}
+
+func TestIssueAddSubnetValidatorTx(t *testing.T) {
+	subnetID := ids.GenerateTestID()
+	nodeID := ids.GenerateTestNodeID()
+	start := time.Unix(1_700_000_200, 0).UTC()
+	end := start.Add(48 * time.Hour)
+	cfg := AddSubnetValidatorConfig{
+		SubnetID: subnetID,
+		NodeID:   nodeID,
+		Start:    start,
+		End:      end,
+		Weight:   100,
+	}
+	txID := ids.GenerateTestID()
+
+	issuer := &stubAddSubnetValidatorTxIssuer{tx: &txs.Tx{TxID: txID}}
+	gotTxID, err := issueAddSubnetValidatorTx(
+		issuer,
+		cfg,
+	)
+	if err != nil {
+		t.Fatalf("issueAddSubnetValidatorTx() returned error: %v", err)
+	}
+	if gotTxID != txID {
+		t.Fatalf("issueAddSubnetValidatorTx() txID = %s, want %s", gotTxID, txID)
+	}
+	gotVdr := issuer.gotVdr
+	if gotVdr == nil {
+		t.Fatal("issueAddSubnetValidatorTx() validator is nil")
+	}
+	if gotVdr.Subnet != subnetID {
+		t.Fatalf("issueAddSubnetValidatorTx() subnet = %s, want %s", gotVdr.Subnet, subnetID)
+	}
+	if gotVdr.Validator.NodeID != cfg.NodeID {
+		t.Fatalf("issueAddSubnetValidatorTx() nodeID = %s, want %s", gotVdr.Validator.NodeID, cfg.NodeID)
+	}
+	if gotVdr.Validator.Start != uint64(cfg.Start.Unix()) || gotVdr.Validator.End != uint64(cfg.End.Unix()) {
+		t.Fatalf("issueAddSubnetValidatorTx() time range = [%d,%d], want [%d,%d]",
+			gotVdr.Validator.Start, gotVdr.Validator.End, uint64(cfg.Start.Unix()), uint64(cfg.End.Unix()))
+	}
+	if gotVdr.Validator.Wght != cfg.Weight {
+		t.Fatalf("issueAddSubnetValidatorTx() weight = %d, want %d", gotVdr.Validator.Wght, cfg.Weight)
 	}
 }
 

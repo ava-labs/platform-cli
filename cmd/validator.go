@@ -38,12 +38,13 @@ var validatorCmd = &cobra.Command{
 	Use:   "validator",
 	Short: "Primary network staking",
 	Long:  `Add validators and delegators to the Avalanche primary network.`,
+	RunE:  requireSubcommand,
 }
 
 var validatorAddCmd = &cobra.Command{
-	Use:   "add",
-	Short: "Add a primary network validator",
-	Long:  `Add a validator to the Avalanche primary network.`,
+	Use:   "add-permissionless",
+	Short: "Add a primary network validator (AddPermissionlessValidatorTx)",
+	Long:  `Add a permissionless validator to the Avalanche primary network.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
 		defer cancel()
@@ -134,8 +135,8 @@ var validatorAddCmd = &cobra.Command{
 }
 
 var validatorDelegateCmd = &cobra.Command{
-	Use:   "delegate",
-	Short: "Delegate to a primary network validator",
+	Use:   "add-permissionless-delegator",
+	Short: "Delegate to a primary network validator (AddPermissionlessDelegatorTx)",
 	Long:  `Delegate stake to an existing primary network validator.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
@@ -211,7 +212,7 @@ var validatorDelegateCmd = &cobra.Command{
 
 var validatorAddAutoRenewedCmd = &cobra.Command{
 	Use:   "add-auto-renewed",
-	Short: "Add an auto-renewed primary network validator",
+	Short: "Add an auto-renewed primary network validator (AddAutoRenewedValidatorTx)",
 	Long:  `Add an auto-renewed validator to the Avalanche primary network.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
@@ -320,8 +321,8 @@ var validatorAddAutoRenewedCmd = &cobra.Command{
 }
 
 var validatorSetAutoConfigCmd = &cobra.Command{
-	Use:   "set-auto-config",
-	Short: "Set auto-renewed validator config",
+	Use:   "set-auto-renewed-config",
+	Short: "Set auto-renewed validator config (SetAutoRenewedValidatorConfigTx)",
 	Long:  `Set the next-cycle configuration for an auto-renewed validator.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
@@ -450,7 +451,7 @@ func parseAutoRenewPeriod(periodStr string) (time.Duration, error) {
 }
 
 // parseAutoRenewConfigPeriod parses a whole-second next-cycle duration for
-// set-auto-config. A literal "0" (or "0s") means exit after the current cycle.
+// set-auto-renewed-config. A literal "0" (or "0s") means exit after the current cycle.
 func parseAutoRenewConfigPeriod(periodStr string) (time.Duration, error) {
 	if strings.TrimSpace(periodStr) == "0" {
 		return 0, nil
@@ -523,7 +524,7 @@ func init() {
 	validatorAddCmd.Flags().StringVar(&valBLSPublicKey, "bls-public-key", "", "Validator BLS public key (hex, recommended/manual mode)")
 	validatorAddCmd.Flags().StringVar(&valBLSPoP, "bls-pop", "", "Validator BLS proof of possession signature (hex, recommended/manual mode)")
 	validatorAddCmd.Flags().Float64Var(&valStakeAmount, "stake", 0, "Stake amount in AVAX (min 2000)")
-	validatorAddCmd.Flags().StringVar(&valStartTime, "start", "now", "Start time (RFC3339 or 'now')")
+	validatorAddCmd.Flags().StringVar(&valStartTime, "start", "now", "Start time (RFC3339 or 'now'). Post-Durango networks ignore this; validation begins at tx acceptance")
 	validatorAddCmd.Flags().StringVar(&valDuration, "duration", "336h", "Validation duration (min 14 days)")
 	validatorAddCmd.Flags().Float64Var(&valDelegationFee, "delegation-fee", 0.02, "Delegation fee (0.02 = 2%)")
 	validatorAddCmd.Flags().StringVar(&valRewardAddr, "reward-address", "", "Reward address (default: own address)")
@@ -549,7 +550,7 @@ func init() {
 	// Delegate flags
 	validatorDelegateCmd.Flags().StringVar(&valNodeID, "node-id", "", "Node ID to delegate to")
 	validatorDelegateCmd.Flags().Float64Var(&valStakeAmount, "stake", 0, "Stake amount in AVAX (min 25)")
-	validatorDelegateCmd.Flags().StringVar(&valStartTime, "start", "now", "Start time (RFC3339 or 'now')")
+	validatorDelegateCmd.Flags().StringVar(&valStartTime, "start", "now", "Start time (RFC3339 or 'now'). Post-Durango networks ignore this; validation begins at tx acceptance")
 	validatorDelegateCmd.Flags().StringVar(&valDuration, "duration", "336h", "Delegation duration (min 14 days)")
 	validatorDelegateCmd.Flags().StringVar(&valRewardAddr, "reward-address", "", "Reward address (default: own address)")
 }

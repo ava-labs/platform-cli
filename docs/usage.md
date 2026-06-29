@@ -14,22 +14,22 @@ Examples:
 
 ```bash
 # Check Ledger address
-platform wallet address --ledger
+platform-cli wallet address --ledger
 
 # Check balance
-platform wallet balance --ledger --network fuji
+platform-cli wallet balance --ledger --network fuji
 
 # Send AVAX (requires device confirmation)
-platform transfer send --ledger --to <address> --amount 1.0
+platform-cli transfer send --ledger --to <address> --amount 1.0
 
 # Cross-chain transfer
-platform transfer p-to-c --ledger --amount 0.5
+platform-cli transfer p-to-c --ledger --amount 0.5
 
 # Create subnet
-platform subnet create --ledger --network fuji
+platform-cli subnet create --ledger --network fuji
 
 # Use a different address index (default: 0)
-platform wallet address --ledger --ledger-index 2
+platform-cli wallet address --ledger --ledger-index 2
 ```
 
 ## Command Reference
@@ -37,42 +37,42 @@ platform wallet address --ledger --ledger-index 2
 ### Key Management
 
 ```bash
-platform keys generate --name <name> [--encrypt]
-platform keys import --name <name> --private-key "PrivateKey-..."
-platform keys list [--show-addresses]
-platform keys export --name <name> --output-file <path> [--format cb58|hex]
-platform keys export --name <name> --unsafe-stdout [--format cb58|hex]  # discouraged
-platform keys delete --name <name> [--force]
-platform keys default [--name <name>]
+platform-cli keys generate --name <name> [--encrypt]
+platform-cli keys import --name <name> --private-key "PrivateKey-..."
+platform-cli keys list [--show-addresses]
+platform-cli keys export --name <name> --output-file <path> [--format cb58|hex]
+platform-cli keys export --name <name> --unsafe-stdout [--format cb58|hex]  # discouraged
+platform-cli keys delete --name <name> [--force]
+platform-cli keys default [--name <name>]
 ```
 
 ### Wallet
 
 ```bash
-platform wallet address
-platform wallet balance
+platform-cli wallet address
+platform-cli wallet balance
 ```
 
 ### Transfers
 
 ```bash
 # P-Chain to P-Chain
-platform transfer send --to <address> --amount <AVAX>
+platform-cli transfer send --to <address> --amount <AVAX>
 
 # Cross-chain (P <-> C)
-platform transfer p-to-c --amount <AVAX>
-platform transfer c-to-p --amount <AVAX>
+platform-cli transfer p-to-c --amount <AVAX>
+platform-cli transfer c-to-p --amount <AVAX>
 
 # Manual export/import
-platform transfer export --from p --to c --amount <AVAX>
-platform transfer import --from p --to c
+platform-cli transfer export --from p --to c --amount <AVAX>
+platform-cli transfer import --from p --to c
 ```
 
 ### Primary Network Staking
 
 ```bash
 # Add validator (mainnet minimum: 2000 AVAX, 14 days)
-platform validator add \
+platform-cli validator add-permissionless \
   --node-id NodeID-... \
   --bls-public-key <hex> \
   --bls-pop <hex> \
@@ -81,28 +81,44 @@ platform validator add \
   --delegation-fee 0.02
 
 # Delegate to validator (mainnet minimum: 25 AVAX)
-platform validator delegate \
+platform-cli validator add-permissionless-delegator \
   --node-id NodeID-... \
   --stake 100 \
   --duration 336h
 ```
 
+> **Breaking (v2.0.0):** command names now mirror the avalanchego transaction
+> they issue, and the old names were removed (no aliases):
+> `validator add` → `validator add-permissionless`,
+> `validator delegate` → `validator add-permissionless-delegator`,
+> `subnet convert-l1` → `subnet convert-to-l1`,
+> `l1 set-weight` → `l1 set-validator-weight`,
+> `l1 add-balance` → `l1 increase-validator-balance`.
+
 ### Subnets
 
 ```bash
-platform subnet create
-platform subnet transfer-ownership --subnet-id <ID> --new-owner <address>
-platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--manager <hex>]
-platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--contract-address <hex>]
-platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> \
+platform-cli subnet create
+platform-cli subnet transfer-ownership --subnet-id <ID> --new-owner <address>
+platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--manager <hex>]
+platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--contract-address <hex>]
+platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> \
   --validator-node-ids NodeID-...,NodeID-... \
   --validator-bls-public-keys <hex>,<hex> \
   --validator-bls-pops <hex>,<hex> \
   [--manager <hex>]
-platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock-validator
+platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock-validator
+platform-cli subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight <uint> [--start <RFC3339|now>] [--duration <dur>]
 ```
 
-`convert-l1` notes:
+`add-validator` notes:
+- Adds a validator to a **permissioned** subnet (`AddSubnetValidatorTx`).
+- The node must already validate the primary network, and the validation period
+  must fall within its primary network validation window.
+- The subnet owner key authorizes the tx (subnet auth), so load the owner key via
+  `--key-name` or `--ledger`.
+
+`convert-to-l1` notes:
 - `--manager` / `--contract-address` is the validator manager contract address (hex).
 - `--chain-id` is the chain where the validator manager contract is deployed.
   In many setups, this is the same as the new L1 chain ID.
@@ -121,22 +137,22 @@ platform subnet convert-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock
 ### L1 Validators
 
 ```bash
-platform l1 register-validator --balance <AVAX> --pop <hex> --message <hex>   # balance > 0
-platform l1 set-weight --message <hex>
-platform l1 add-balance --validation-id <ID> --balance <AVAX>                  # balance > 0
-platform l1 disable-validator --validation-id <ID>
+platform-cli l1 register-validator --balance <AVAX> --pop <hex> --message <hex>   # balance > 0
+platform-cli l1 set-validator-weight --message <hex>
+platform-cli l1 increase-validator-balance --validation-id <ID> --balance <AVAX>   # balance > 0
+platform-cli l1 disable-validator --validation-id <ID>
 ```
 
 ### Chains
 
 ```bash
-platform chain create --subnet-id <ID> --genesis <file> --name <name>
+platform-cli chain create --subnet-id <ID> --genesis <file> --name <name>
 ```
 
 ### Node Info
 
 ```bash
-platform node info --ip <IP-or-URI> [--allow-insecure-http]
+platform-cli node info --ip <IP-or-URI> [--allow-insecure-http]
 ```
 
 ## Key Loading Priority

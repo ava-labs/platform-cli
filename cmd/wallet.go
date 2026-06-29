@@ -28,6 +28,7 @@ var walletCmd = &cobra.Command{
 	Use:   "wallet",
 	Short: "Wallet operations",
 	Long:  `Wallet operations including balance check and address display.`,
+	RunE:  requireSubcommand,
 }
 
 var balanceCmd = &cobra.Command{

@@ -23,17 +23,23 @@ var (
 	subnetValBalance       float64
 	subnetMockVal          bool
 	subnetValidatorWeights string
+
+	subnetValNodeID    string
+	subnetValWeight    uint64
+	subnetValStartTime string
+	subnetValDuration  string
 )
 
 var subnetCmd = &cobra.Command{
 	Use:   "subnet",
 	Short: "Subnet management",
 	Long:  `Create and manage subnets on the Avalanche P-Chain.`,
+	RunE:  requireSubcommand,
 }
 
 var subnetCreateCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Create a new subnet",
+	Short: "Create a new subnet (CreateSubnetTx)",
 	Long:  `Create a new subnet on the P-Chain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
@@ -67,7 +73,7 @@ var subnetCreateCmd = &cobra.Command{
 
 var subnetTransferOwnershipCmd = &cobra.Command{
 	Use:   "transfer-ownership",
-	Short: "Transfer subnet ownership",
+	Short: "Transfer subnet ownership (TransferSubnetOwnershipTx)",
 	Long:  `Transfer ownership of a subnet to a new address.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
@@ -112,8 +118,8 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 }
 
 var subnetConvertL1Cmd = &cobra.Command{
-	Use:   "convert-l1",
-	Short: "Convert subnet to L1",
+	Use:   "convert-to-l1",
+	Short: "Convert subnet to L1 (ConvertSubnetToL1Tx)",
 	Long:  `Convert a permissioned subnet to an L1 blockchain.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
@@ -237,12 +243,86 @@ var subnetConvertL1Cmd = &cobra.Command{
 	},
 }
 
+var subnetAddValidatorCmd = &cobra.Command{
+	Use:   "add-validator",
+	Short: "Add a validator to a permissioned subnet (AddSubnetValidatorTx)",
+	Long: `Add a validator to a permissioned subnet (AddSubnetValidatorTx).
+
+The node must already be a primary network validator, and the validation period
+must fall within its primary network validation window. The subnet owner key
+authorizes the transaction, so load the owner key via --key-name or --ledger.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx, cancel := getOperationContext()
+		defer cancel()
+
+		if subnetID == "" {
+			return fmt.Errorf("--subnet-id is required")
+		}
+		if subnetValNodeID == "" {
+			return fmt.Errorf("--node-id is required")
+		}
+		if subnetValWeight == 0 {
+			return fmt.Errorf("--weight is required and must be positive")
+		}
+
+		sid, err := ids.FromString(subnetID)
+		if err != nil {
+			return fmt.Errorf("invalid subnet ID: %w", err)
+		}
+
+		nodeID, err := ids.NodeIDFromString(subnetValNodeID)
+		if err != nil {
+			return fmt.Errorf("invalid node ID: %w", err)
+		}
+
+		start, end, err := parseTimeRange(subnetValStartTime, subnetValDuration)
+		if err != nil {
+			return err
+		}
+
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+		if end.Sub(start) < netConfig.MinStakeDuration {
+			return fmt.Errorf("duration too short for %s: minimum is %s", netConfig.Name, netConfig.MinStakeDuration)
+		}
+
+		w, cleanup, err := loadPChainWalletWithSubnet(ctx, netConfig, sid)
+		if err != nil {
+			return fmt.Errorf("failed to create wallet: %w", err)
+		}
+		defer cleanup()
+
+		fmt.Printf("Adding validator %s to subnet %s...\n", nodeID, sid)
+		fmt.Printf("  Weight: %d\n", subnetValWeight)
+		fmt.Printf("  Start: %s\n", start.UTC().Format("2006-01-02 15:04:05 MST"))
+		fmt.Printf("  End: %s\n", end.UTC().Format("2006-01-02 15:04:05 MST"))
+		fmt.Println("Submitting transaction...")
+
+		txID, err := pchain.AddSubnetValidator(ctx, w, pchain.AddSubnetValidatorConfig{
+			SubnetID: sid,
+			NodeID:   nodeID,
+			Start:    start,
+			End:      end,
+			Weight:   subnetValWeight,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("TX ID: %s\n", txID)
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(subnetCmd)
 
 	subnetCmd.AddCommand(subnetCreateCmd)
 	subnetCmd.AddCommand(subnetTransferOwnershipCmd)
 	subnetCmd.AddCommand(subnetConvertL1Cmd)
+	subnetCmd.AddCommand(subnetAddValidatorCmd)
 
 	// Transfer ownership flags
 	subnetTransferOwnershipCmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID")
@@ -260,4 +340,11 @@ func init() {
 	subnetConvertL1Cmd.Flags().Float64Var(&subnetValBalance, "validator-balance", 1.0, "Balance per validator in AVAX")
 	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorWeights, "validator-weights", "", "Comma-separated validator weights (uint64). Must match validator count. Defaults to 100 per validator if omitted.")
 	subnetConvertL1Cmd.Flags().BoolVar(&subnetMockVal, "mock-validator", false, "Use a mock validator (for testing)")
+
+	// Add validator flags
+	subnetAddValidatorCmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID")
+	subnetAddValidatorCmd.Flags().StringVar(&subnetValNodeID, "node-id", "", "Validator node ID (must already validate the primary network)")
+	subnetAddValidatorCmd.Flags().Uint64Var(&subnetValWeight, "weight", 0, "Validator sampling weight on the subnet")
+	subnetAddValidatorCmd.Flags().StringVar(&subnetValStartTime, "start", "now", "Start time (RFC3339 or 'now'). Post-Durango networks ignore this; validation begins at tx acceptance")
+	subnetAddValidatorCmd.Flags().StringVar(&subnetValDuration, "duration", "336h", "Validation duration (must fall within the node's primary network validation period)")
 }

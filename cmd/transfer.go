@@ -29,6 +29,7 @@ Amount Precision:
 
   Warning: Float amounts may lose precision for values > 9007199254740992 nAVAX (~9M AVAX).
   For large transfers, use --amount-navax for guaranteed precision.`,
+	RunE: requireSubcommand,
 }
 
 // getTransferAmountNAVAX returns the transfer amount in nAVAX.
