@@ -8,6 +8,8 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
+	"github.com/ava-labs/avalanchego/vms/platformvm/fx"
+	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/platform-cli/pkg/keystore"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
@@ -275,6 +277,49 @@ func loadPChainWalletWithSubnet(ctx context.Context, netConfig network.Config, s
 		return nil, nil, err
 	}
 	w, err := wallet.NewWalletWithSubnet(ctx, key, netConfig, subnetID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return w, func() {}, nil
+}
+
+// loadPChainWalletWithOwner creates a P-Chain wallet whose backend maps ownerID
+// to owner, enabling owner-authorized transactions (e.g.
+// SetAutoRenewedValidatorConfigTx). It fetches P-Chain state once, replacing the
+// standard wallet load rather than adding a second round-trip.
+func loadPChainWalletWithOwner(ctx context.Context, netConfig network.Config, ownerID ids.ID, owner fx.Owner) (*wallet.Wallet, func(), error) {
+	if useLedger {
+		if !wallet.LedgerEnabled {
+			return nil, nil, fmt.Errorf("ledger support not compiled. Rebuild with: go build -tags ledger")
+		}
+		kc, err := wallet.NewLedgerKeychain(ledgerIndex)
+		if err != nil {
+			return nil, nil, err
+		}
+		w, err := wallet.NewWalletFromKeychainWithOwner(ctx, kc, kc.GetAddress(), netConfig, ownerID, owner)
+		if err != nil {
+			kc.Close()
+			return nil, nil, err
+		}
+		return w, kc.Close, nil
+	}
+
+	keyBytes, err := loadKey()
+	if err != nil {
+		return nil, nil, err
+	}
+	// Clear key bytes after wallet creation
+	defer clearBytesWallet(keyBytes)
+	if netConfig.NetworkID == constants.MainnetID && isEwoqKey(keyBytes) {
+		return nil, nil, fmt.Errorf("ewoq test key cannot be used on mainnet - this is a well-known key with no security")
+	}
+
+	key, err := wallet.ToPrivateKey(keyBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	kc := secp256k1fx.NewKeychain(key)
+	w, err := wallet.NewWalletFromKeychainWithOwner(ctx, kc, key.Address(), netConfig, ownerID, owner)
 	if err != nil {
 		return nil, nil, err
 	}
