@@ -7,7 +7,7 @@
 set -e
 
 REPO="ava-labs/platform-cli"
-BINARY="platform"
+BINARY="platform-cli"
 GITHUB="https://github.com"
 
 # Defaults

@@ -13,20 +13,20 @@ For local networks, devnets, or custom RPC endpoints, use `--rpc-url`:
 
 ```bash
 # Local network (e.g. avalanche-network-runner)
-platform wallet balance --rpc-url http://127.0.0.1:9650 --key-name ewoq
+platform-cli wallet balance --rpc-url http://127.0.0.1:9650 --key-name ewoq
 
 # Custom devnet (auto-detects network ID)
-platform wallet balance --rpc-url https://my-devnet:9650 --key-name mykey
+platform-cli wallet balance --rpc-url https://my-devnet:9650 --key-name mykey
 
 # Explicit network ID if auto-detection fails
-platform wallet balance --rpc-url https://my-devnet:9650 --network-id 12345 --key-name mykey
+platform-cli wallet balance --rpc-url https://my-devnet:9650 --network-id 12345 --key-name mykey
 
 # Works across commands
-platform subnet create --rpc-url https://my-devnet:9650 --key-name mykey
-platform transfer send --rpc-url https://my-devnet:9650 --to <address> --amount 1.0
+platform-cli subnet create --rpc-url https://my-devnet:9650 --key-name mykey
+platform-cli transfer send --rpc-url https://my-devnet:9650 --to <address> --amount 1.0
 
 # Non-local HTTP is blocked by default; enable only on trusted networks
-platform wallet balance --rpc-url http://my-devnet:9650 --allow-insecure-http --key-name mykey
+platform-cli wallet balance --rpc-url http://my-devnet:9650 --allow-insecure-http --key-name mykey
 ```
 
 When using `--rpc-url`:

@@ -64,7 +64,7 @@ e2e/               - End-to-end tests (run against real networks)
 
 ```bash
 # Build
-go build -o platform .
+go build -o platform-cli .
 
 # Lint & vet (run before committing)
 go vet ./...
@@ -140,7 +140,7 @@ if err != nil {
 ## Transaction Flow Example
 
 ```
-User runs: platform subnet create --network fuji
+User runs: platform-cli subnet create --network fuji
 
 1. cmd/subnet.go: Parse flags, load key
 2. pkg/wallet/wallet.go: Create wallet from private key

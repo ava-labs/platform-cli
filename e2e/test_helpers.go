@@ -29,7 +29,7 @@ func buildCLIBinaryForE2E() (string, func(), error) {
 		return "", nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}
 
-	binPath := filepath.Join(tempDir, "platform")
+	binPath := filepath.Join(tempDir, "platform-cli")
 	cmd := exec.Command("go", "build", "-o", binPath, ".")
 	cmd.Dir = ".."
 	if out, err := cmd.CombinedOutput(); err != nil {
