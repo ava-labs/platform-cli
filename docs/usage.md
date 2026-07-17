@@ -113,10 +113,15 @@ platform-cli validator set-auto-renewed-config \
 > `l1 add-balance` → `l1 increase-validator-balance`.
 
 `add-auto-renewed` / `set-auto-renewed-config` notes (ACP-236):
+- These commands require the Helicon upgrade (active on Fuji from
+  2026-07-28 15:00 UTC; not yet scheduled on Mainnet).
 - An auto-renewed validator automatically re-stakes at the end of each cycle
-  instead of expiring, until you exit it.
-- `--period` is the per-cycle duration and must fall within the network's
-  min/max stake duration.
+  instead of expiring, but renewal is conditional: a validator that misses
+  the uptime requirement (90% on Fuji post-Helicon) is removed at the end of
+  the cycle and forfeits that cycle's reward.
+- `--period` is the per-cycle duration and must fall between the Helicon
+  minimum stake duration (12h on Fuji, 48h on Mainnet, 1h custom default)
+  and the network's max stake duration.
 - `--auto-compound` is the fraction of rewards restaked each cycle
   (`1` = 100%, `0.3` = 30%).
 - BLS proof of possession comes from `--bls-public-key`/`--bls-pop` (manual,

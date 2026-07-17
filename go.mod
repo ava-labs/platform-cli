@@ -3,12 +3,12 @@ module github.com/ava-labs/platform-cli
 go 1.25.12
 
 require (
-	github.com/ava-labs/avalanchego v1.14.3-0.20260603151011-1339ef45dc6c
+	github.com/ava-labs/avalanchego v1.14.3-0.20260717165702-e57c7914a68e
 	github.com/ava-labs/ledger-avalanche-go v1.1.0
-	github.com/ava-labs/libevm v1.13.15-0.20260602011657-ad0081e3b988
+	github.com/ava-labs/libevm v1.13.15-0.20260716180230-f887fa4393ca
 	github.com/spf13/cobra v1.9.1
-	golang.org/x/crypto v0.50.0
-	golang.org/x/term v0.42.0
+	golang.org/x/crypto v0.52.0
+	golang.org/x/term v0.43.0
 )
 
 require (
@@ -119,11 +119,11 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
-	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect

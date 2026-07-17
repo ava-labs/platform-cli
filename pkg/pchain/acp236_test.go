@@ -34,28 +34,26 @@ type stubAutoRenewedValidatorTxIssuer struct {
 	gotNodeID                 ids.NodeID
 	gotWeight                 uint64
 	gotSigner                 signer.Signer
-	gotAssetID                ids.ID
 	gotValidationRewardsOwner *secp256k1fx.OutputOwners
 	gotDelegationRewardsOwner *secp256k1fx.OutputOwners
-	gotConfigOwner            *secp256k1fx.OutputOwners
+	gotValidatorAuthority     *secp256k1fx.OutputOwners
 	gotDelegationShares       uint32
 	gotAutoCompoundShares     uint32
-	gotPeriodSeconds          uint64
+	gotPeriod                 time.Duration
 	gotOpts                   []common.Option
 }
 
-func (s *stubAutoRenewedValidatorTxIssuer) IssueAddAutoRenewedValidatorTx(validatorNodeID ids.NodeID, weight uint64, sig signer.Signer, assetID ids.ID, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, configOwner *secp256k1fx.OutputOwners, delegationShares uint32, autoCompoundRewardShares uint32, periodSeconds uint64, options ...common.Option) (*txs.Tx, error) {
+func (s *stubAutoRenewedValidatorTxIssuer) IssueAddAutoRenewedValidatorTx(validatorNodeID ids.NodeID, weight uint64, sig signer.Signer, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, validatorAuthority *secp256k1fx.OutputOwners, delegationShares uint32, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*txs.Tx, error) {
 	s.called = true
 	s.gotNodeID = validatorNodeID
 	s.gotWeight = weight
 	s.gotSigner = sig
-	s.gotAssetID = assetID
 	s.gotValidationRewardsOwner = validationRewardsOwner
 	s.gotDelegationRewardsOwner = delegationRewardsOwner
-	s.gotConfigOwner = configOwner
+	s.gotValidatorAuthority = validatorAuthority
 	s.gotDelegationShares = delegationShares
 	s.gotAutoCompoundShares = autoCompoundRewardShares
-	s.gotPeriodSeconds = periodSeconds
+	s.gotPeriod = period
 	s.gotOpts = options
 	return s.tx, s.err
 }
@@ -68,14 +66,14 @@ type stubSetAutoRenewedValidatorConfigTxIssuer struct {
 	called                bool
 	gotTxID               ids.ID
 	gotAutoCompoundShares uint32
-	gotPeriodSeconds      uint64
+	gotPeriod             time.Duration
 }
 
-func (s *stubSetAutoRenewedValidatorConfigTxIssuer) IssueSetAutoRenewedValidatorConfigTx(txID ids.ID, autoCompoundRewardShares uint32, periodSeconds uint64, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubSetAutoRenewedValidatorConfigTxIssuer) IssueSetAutoRenewedValidatorConfigTx(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, _ ...common.Option) (*txs.Tx, error) {
 	s.called = true
 	s.gotTxID = txID
 	s.gotAutoCompoundShares = autoCompoundRewardShares
-	s.gotPeriodSeconds = periodSeconds
+	s.gotPeriod = period
 	return s.tx, s.err
 }
 
@@ -87,7 +85,6 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
 	rewardAddr := ids.GenerateTestShortID()
 	authorityAddr := ids.GenerateTestShortID()
-	assetID := ids.GenerateTestID()
 	pop := &signer.ProofOfPossession{}
 	cfg := AddAutoRenewedValidatorConfig{
 		NodeID:                   nodeID,
@@ -103,7 +100,7 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 
 	stub := &stubAutoRenewedValidatorTxIssuer{tx: &txs.Tx{TxID: txID}}
 	ctxKey := testContextKey("auto")
-	gotTxID, err := issueAddAutoRenewedValidatorTx(stub, assetID, cfg, common.WithContext(context.WithValue(context.Background(), ctxKey, "v")))
+	gotTxID, err := issueAddAutoRenewedValidatorTx(stub, cfg, common.WithContext(context.WithValue(context.Background(), ctxKey, "v")))
 	if err != nil {
 		t.Fatalf("issueAddAutoRenewedValidatorTx() returned error: %v", err)
 	}
@@ -120,23 +117,20 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 	if !ok || gotPop != pop {
 		t.Fatalf("signer = %T (%p), want %p", stub.gotSigner, gotPop, pop)
 	}
-	if stub.gotAssetID != assetID {
-		t.Fatalf("assetID = %s, want %s", stub.gotAssetID, assetID)
-	}
 	// Validation and delegation rewards go to the same owner.
 	if stub.gotValidationRewardsOwner != stub.gotDelegationRewardsOwner {
 		t.Fatal("validation and delegation rewards owners should be the same pointer")
 	}
 	assertSingleOwner(t, "validation rewards owner", stub.gotValidationRewardsOwner, rewardAddr)
-	assertSingleOwner(t, "config owner", stub.gotConfigOwner, authorityAddr)
+	assertSingleOwner(t, "validator authority", stub.gotValidatorAuthority, authorityAddr)
 	if stub.gotDelegationShares != cfg.DelegationFee {
 		t.Fatalf("delegation shares = %d, want %d", stub.gotDelegationShares, cfg.DelegationFee)
 	}
 	if stub.gotAutoCompoundShares != cfg.AutoCompoundRewardShares {
 		t.Fatalf("auto-compound shares = %d, want %d", stub.gotAutoCompoundShares, cfg.AutoCompoundRewardShares)
 	}
-	if want := uint64(cfg.Period / time.Second); stub.gotPeriodSeconds != want {
-		t.Fatalf("period seconds = %d, want %d", stub.gotPeriodSeconds, want)
+	if stub.gotPeriod != cfg.Period {
+		t.Fatalf("period = %s, want %s", stub.gotPeriod, cfg.Period)
 	}
 	if len(stub.gotOpts) == 0 {
 		t.Fatal("expected options to be forwarded to the issuer")
@@ -145,7 +139,7 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 
 func TestIssueAddAutoRenewedValidatorTxRejectsInvalidPeriod(t *testing.T) {
 	stub := &stubAutoRenewedValidatorTxIssuer{tx: &txs.Tx{TxID: ids.GenerateTestID()}}
-	_, err := issueAddAutoRenewedValidatorTx(stub, ids.GenerateTestID(), AddAutoRenewedValidatorConfig{Period: 1500 * time.Millisecond})
+	_, err := issueAddAutoRenewedValidatorTx(stub, AddAutoRenewedValidatorConfig{Period: 1500 * time.Millisecond})
 	if err == nil || !strings.Contains(err.Error(), "period must be a whole number of seconds") {
 		t.Fatalf("error = %v, want whole-seconds error", err)
 	}
@@ -153,7 +147,7 @@ func TestIssueAddAutoRenewedValidatorTxRejectsInvalidPeriod(t *testing.T) {
 		t.Fatal("issuer should not be called for an invalid period")
 	}
 
-	_, err = issueAddAutoRenewedValidatorTx(stub, ids.GenerateTestID(), AddAutoRenewedValidatorConfig{Period: 0})
+	_, err = issueAddAutoRenewedValidatorTx(stub, AddAutoRenewedValidatorConfig{Period: 0})
 	if err == nil || !strings.Contains(err.Error(), "period must be positive") {
 		t.Fatalf("error = %v, want positive-period error", err)
 	}
@@ -161,7 +155,7 @@ func TestIssueAddAutoRenewedValidatorTxRejectsInvalidPeriod(t *testing.T) {
 
 func TestIssueAddAutoRenewedValidatorTxWrapsIssuerError(t *testing.T) {
 	stub := &stubAutoRenewedValidatorTxIssuer{err: errAssertable}
-	_, err := issueAddAutoRenewedValidatorTx(stub, ids.GenerateTestID(), AddAutoRenewedValidatorConfig{Period: time.Second})
+	_, err := issueAddAutoRenewedValidatorTx(stub, AddAutoRenewedValidatorConfig{Period: time.Second})
 	if err == nil || !strings.Contains(err.Error(), "failed to issue AddAutoRenewedValidatorTx") {
 		t.Fatalf("error = %v, want wrapped issue error", err)
 	}
@@ -194,8 +188,8 @@ func TestIssueSetAutoRenewedValidatorConfigTx(t *testing.T) {
 	if stub.gotAutoCompoundShares != cfg.AutoCompoundRewardShares {
 		t.Fatalf("auto-compound shares = %d, want %d", stub.gotAutoCompoundShares, cfg.AutoCompoundRewardShares)
 	}
-	if want := uint64(cfg.Period / time.Second); stub.gotPeriodSeconds != want {
-		t.Fatalf("period seconds = %d, want %d", stub.gotPeriodSeconds, want)
+	if stub.gotPeriod != cfg.Period {
+		t.Fatalf("period = %s, want %s", stub.gotPeriod, cfg.Period)
 	}
 }
 
@@ -211,8 +205,8 @@ func TestIssueSetAutoRenewedValidatorConfigTxAllowsZeroPeriod(t *testing.T) {
 	if !stub.called {
 		t.Fatal("issuer should be called for a zero (exit-after-cycle) period")
 	}
-	if stub.gotPeriodSeconds != 0 {
-		t.Fatalf("period seconds = %d, want 0", stub.gotPeriodSeconds)
+	if stub.gotPeriod != 0 {
+		t.Fatalf("period = %s, want 0", stub.gotPeriod)
 	}
 }
 

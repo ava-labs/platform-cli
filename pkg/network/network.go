@@ -18,32 +18,35 @@ type Config struct {
 	RPCURL    string
 
 	// Staking parameters
-	MinValidatorStake uint64        // Minimum stake to become a validator (in nAVAX)
-	MinDelegatorStake uint64        // Minimum stake to delegate (in nAVAX)
-	MinStakeDuration  time.Duration // Minimum staking duration
-	MaxStakeDuration  time.Duration // Maximum staking duration (also bounds auto-renewal cycle length)
+	MinValidatorStake       uint64        // Minimum stake to become a validator (in nAVAX)
+	MinDelegatorStake       uint64        // Minimum stake to delegate (in nAVAX)
+	MinStakeDuration        time.Duration // Minimum staking duration
+	MaxStakeDuration        time.Duration // Maximum staking duration (also bounds auto-renewal cycle length)
+	HeliconMinStakeDuration time.Duration // Minimum auto-renewal cycle duration post-Helicon (ACP-236)
 }
 
 // Fuji testnet configuration
 var Fuji = Config{
-	Name:              "fuji",
-	NetworkID:         5,
-	RPCURL:            "https://api.avax-test.network",
-	MinValidatorStake: 1_000_000_000,        // 1 AVAX
-	MinDelegatorStake: 1_000_000_000,        // 1 AVAX
-	MinStakeDuration:  24 * time.Hour,       // 24 hours
-	MaxStakeDuration:  365 * 24 * time.Hour, // 1 year
+	Name:                    "fuji",
+	NetworkID:               5,
+	RPCURL:                  "https://api.avax-test.network",
+	MinValidatorStake:       1_000_000_000,        // 1 AVAX
+	MinDelegatorStake:       1_000_000_000,        // 1 AVAX
+	MinStakeDuration:        24 * time.Hour,       // 24 hours
+	MaxStakeDuration:        365 * 24 * time.Hour, // 1 year
+	HeliconMinStakeDuration: 12 * time.Hour,       // 12 hours
 }
 
 // Mainnet configuration
 var Mainnet = Config{
-	Name:              "mainnet",
-	NetworkID:         1,
-	RPCURL:            "https://api.avax.network",
-	MinValidatorStake: 2000_000_000_000,     // 2000 AVAX
-	MinDelegatorStake: 25_000_000_000,       // 25 AVAX
-	MinStakeDuration:  14 * 24 * time.Hour,  // 14 days
-	MaxStakeDuration:  365 * 24 * time.Hour, // 1 year
+	Name:                    "mainnet",
+	NetworkID:               1,
+	RPCURL:                  "https://api.avax.network",
+	MinValidatorStake:       2000_000_000_000,     // 2000 AVAX
+	MinDelegatorStake:       25_000_000_000,       // 25 AVAX
+	MinStakeDuration:        14 * 24 * time.Hour,  // 14 days
+	MaxStakeDuration:        365 * 24 * time.Hour, // 1 year
+	HeliconMinStakeDuration: 48 * time.Hour,       // 48 hours
 }
 
 // GetConfig returns the network configuration for the given network name.
@@ -109,35 +112,39 @@ func NewCustomConfigWithInsecureHTTP(ctx context.Context, rpcURL string, network
 
 	// Determine reasonable defaults based on network ID
 	var minValidatorStake, minDelegatorStake uint64
-	var minStakeDuration time.Duration
+	var minStakeDuration, heliconMinStakeDuration time.Duration
 
 	switch networkID {
 	case constants.MainnetID:
 		// Mainnet parameters
-		minValidatorStake = 2000_000_000_000   // 2000 AVAX
-		minDelegatorStake = 25_000_000_000     // 25 AVAX
-		minStakeDuration = 14 * 24 * time.Hour // 14 days
+		minValidatorStake = 2000_000_000_000     // 2000 AVAX
+		minDelegatorStake = 25_000_000_000       // 25 AVAX
+		minStakeDuration = 14 * 24 * time.Hour   // 14 days
+		heliconMinStakeDuration = 48 * time.Hour // 48 hours
 	case constants.FujiID:
 		// Fuji parameters
-		minValidatorStake = 1_000_000_000 // 1 AVAX
-		minDelegatorStake = 1_000_000_000 // 1 AVAX
-		minStakeDuration = 24 * time.Hour // 24 hours
+		minValidatorStake = 1_000_000_000        // 1 AVAX
+		minDelegatorStake = 1_000_000_000        // 1 AVAX
+		minStakeDuration = 24 * time.Hour        // 24 hours
+		heliconMinStakeDuration = 12 * time.Hour // 12 hours
 	default:
 		// Default devnet/local parameters (permissive)
-		minValidatorStake = 1_000_000_000 // 1 AVAX
-		minDelegatorStake = 1_000_000_000 // 1 AVAX
-		minStakeDuration = 24 * time.Hour // 24 hours
+		minValidatorStake = 1_000_000_000       // 1 AVAX
+		minDelegatorStake = 1_000_000_000       // 1 AVAX
+		minStakeDuration = 24 * time.Hour       // 24 hours
+		heliconMinStakeDuration = 1 * time.Hour // 1 hour
 	}
 
 	hrp := GetHRP(networkID)
 
 	return Config{
-		Name:              fmt.Sprintf("custom-%s", hrp),
-		NetworkID:         networkID,
-		RPCURL:            normalizedRPCURL,
-		MinValidatorStake: minValidatorStake,
-		MinDelegatorStake: minDelegatorStake,
-		MinStakeDuration:  minStakeDuration,
-		MaxStakeDuration:  365 * 24 * time.Hour, // 1 year
+		Name:                    fmt.Sprintf("custom-%s", hrp),
+		NetworkID:               networkID,
+		RPCURL:                  normalizedRPCURL,
+		MinValidatorStake:       minValidatorStake,
+		MinDelegatorStake:       minDelegatorStake,
+		MinStakeDuration:        minStakeDuration,
+		MaxStakeDuration:        365 * 24 * time.Hour, // 1 year
+		HeliconMinStakeDuration: heliconMinStakeDuration,
 	}, nil
 }

@@ -238,8 +238,8 @@ var validatorAddAutoRenewedCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
 		}
-		if period < netConfig.MinStakeDuration {
-			return fmt.Errorf("period too short for %s: minimum is %s", netConfig.Name, netConfig.MinStakeDuration)
+		if period < netConfig.HeliconMinStakeDuration {
+			return fmt.Errorf("period too short for %s: minimum is %s", netConfig.Name, netConfig.HeliconMinStakeDuration)
 		}
 		if period > netConfig.MaxStakeDuration {
 			return fmt.Errorf("period too long for %s: maximum is %s", netConfig.Name, netConfig.MaxStakeDuration)
@@ -365,8 +365,8 @@ var validatorSetAutoConfigCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
 		}
-		if period > 0 && period < netConfig.MinStakeDuration {
-			return fmt.Errorf("period too short for %s: minimum is %s", netConfig.Name, netConfig.MinStakeDuration)
+		if period > 0 && period < netConfig.HeliconMinStakeDuration {
+			return fmt.Errorf("period too short for %s: minimum is %s", netConfig.Name, netConfig.HeliconMinStakeDuration)
 		}
 		if period > netConfig.MaxStakeDuration {
 			return fmt.Errorf("period too long for %s: maximum is %s", netConfig.Name, netConfig.MaxStakeDuration)
