@@ -130,6 +130,10 @@ platform-cli validator set-auto-renewed-config \
   address); `set-auto-renewed-config` signs with that authority.
 - `set-auto-renewed-config` targets the original `--tx-id`; pass `--period 0`
   to stop auto-renewing and exit gracefully after the current cycle.
+- On `set-auto-renewed-config`, `--period` and `--auto-compound` are both
+  optional, but at least one must be given. Whichever you omit keeps its current
+  on-chain value, so changing one setting will not overwrite the other. The
+  transaction itself always rewrites both fields.
 
 ### Subnets
 

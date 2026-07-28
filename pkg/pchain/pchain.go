@@ -379,6 +379,30 @@ func issueSetAutoRenewedValidatorConfigTx(
 // fetch. The typed client does not yet surface validatorAuthority, so the
 // reply is decoded with purpose-built structs.
 func GetAutoRenewedValidatorAuthority(ctx context.Context, rpcURL string, nodeID ids.NodeID, txID ids.ID) (*secp256k1fx.OutputOwners, error) {
+	config, err := GetAutoRenewedValidatorConfig(ctx, rpcURL, nodeID, txID)
+	if err != nil {
+		return nil, err
+	}
+	return config.Authority, nil
+}
+
+// AutoRenewedValidatorConfig is the current auto-renew configuration of an
+// active auto-renewed validator, as reported by platform.getCurrentValidators.
+//
+// SetAutoRenewedValidatorConfigTx always writes both the auto-compound shares
+// and the next period, so callers changing one of them need the current value of
+// the other to avoid overwriting it.
+type AutoRenewedValidatorConfig struct {
+	Authority                *secp256k1fx.OutputOwners
+	AutoCompoundRewardShares uint32
+	// NextPeriod is the duration of the next cycle, or 0 when the validator is
+	// already set to exit at the end of the current cycle.
+	NextPeriod time.Duration
+}
+
+// GetAutoRenewedValidatorConfig looks up the auto-renewed validator created by
+// txID and returns its current auto-renew configuration.
+func GetAutoRenewedValidatorConfig(ctx context.Context, rpcURL string, nodeID ids.NodeID, txID ids.ID) (*AutoRenewedValidatorConfig, error) {
 	client := platformvm.NewClient(rpcURL)
 	args := &platformvm.GetCurrentValidatorsArgs{}
 	if nodeID != ids.EmptyNodeID {
@@ -396,7 +420,27 @@ func GetAutoRenewedValidatorAuthority(ctx context.Context, rpcURL string, nodeID
 		if validator.ValidatorAuthority == nil {
 			return nil, fmt.Errorf("validator %s did not include validatorAuthority", txID)
 		}
-		return validator.ValidatorAuthority.toOutputOwners()
+		authority, err := validator.ValidatorAuthority.toOutputOwners()
+		if err != nil {
+			return nil, err
+		}
+
+		config := &AutoRenewedValidatorConfig{Authority: authority}
+		if validator.AutoCompoundRewardShares != "" {
+			shares, err := strconv.ParseUint(validator.AutoCompoundRewardShares, 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("invalid autoCompoundRewardShares for %s: %w", txID, err)
+			}
+			config.AutoCompoundRewardShares = uint32(shares)
+		}
+		if validator.NextPeriod != "" {
+			seconds, err := strconv.ParseUint(validator.NextPeriod, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid nextPeriod for %s: %w", txID, err)
+			}
+			config.NextPeriod = time.Duration(seconds) * time.Second
+		}
+		return config, nil
 	}
 	return nil, fmt.Errorf("auto-renewed validator %s not found in current validators", txID)
 }
@@ -406,8 +450,10 @@ type getCurrentValidatorsWithAuthorityReply struct {
 }
 
 type autoRenewedValidatorWithAuthority struct {
-	TxID               string               `json:"txID"`
-	ValidatorAuthority *autoRenewedAPIOwner `json:"validatorAuthority"`
+	TxID                     string               `json:"txID"`
+	ValidatorAuthority       *autoRenewedAPIOwner `json:"validatorAuthority"`
+	AutoCompoundRewardShares string               `json:"autoCompoundRewardShares"`
+	NextPeriod               string               `json:"nextPeriod"`
 }
 
 type autoRenewedAPIOwner struct {

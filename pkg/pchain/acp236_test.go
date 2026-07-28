@@ -408,3 +408,74 @@ func testAPIOwner(t *testing.T, addr ids.ShortID, locktime string, threshold str
 		"addresses": []string{formattedAddr},
 	}
 }
+
+func TestGetAutoRenewedValidatorConfigParsesCurrentValues(t *testing.T) {
+	targetTxID := ids.GenerateTestID()
+	authorityAddr := ids.GenerateTestShortID()
+
+	server := newCurrentValidatorsServer(t, nil, []map[string]any{
+		{
+			"txID":                     targetTxID.String(),
+			"validatorAuthority":       testAPIOwner(t, authorityAddr, "0", "1"),
+			"autoCompoundRewardShares": "300000",
+			"nextPeriod":               "1209600",
+		},
+	})
+	defer server.Close()
+
+	config, err := GetAutoRenewedValidatorConfig(context.Background(), server.URL, ids.EmptyNodeID, targetTxID)
+	if err != nil {
+		t.Fatalf("GetAutoRenewedValidatorConfig() returned error: %v", err)
+	}
+	assertSingleOwner(t, "authority", config.Authority, authorityAddr)
+	if config.AutoCompoundRewardShares != 300_000 {
+		t.Errorf("AutoCompoundRewardShares = %d, want 300000", config.AutoCompoundRewardShares)
+	}
+	if config.NextPeriod != 336*time.Hour {
+		t.Errorf("NextPeriod = %s, want 336h0m0s", config.NextPeriod)
+	}
+}
+
+func TestGetAutoRenewedValidatorConfigHandlesExitingValidator(t *testing.T) {
+	targetTxID := ids.GenerateTestID()
+
+	server := newCurrentValidatorsServer(t, nil, []map[string]any{
+		{
+			"txID":                     targetTxID.String(),
+			"validatorAuthority":       testAPIOwner(t, ids.GenerateTestShortID(), "0", "1"),
+			"autoCompoundRewardShares": "0",
+			"nextPeriod":               "0",
+		},
+	})
+	defer server.Close()
+
+	config, err := GetAutoRenewedValidatorConfig(context.Background(), server.URL, ids.EmptyNodeID, targetTxID)
+	if err != nil {
+		t.Fatalf("GetAutoRenewedValidatorConfig() returned error: %v", err)
+	}
+	// A validator already set to exit must keep a zero next period, so that
+	// changing only --auto-compound does not accidentally restart renewal.
+	if config.NextPeriod != 0 {
+		t.Errorf("NextPeriod = %s, want 0s", config.NextPeriod)
+	}
+	if config.AutoCompoundRewardShares != 0 {
+		t.Errorf("AutoCompoundRewardShares = %d, want 0", config.AutoCompoundRewardShares)
+	}
+}
+
+func TestGetAutoRenewedValidatorConfigRejectsUnparseableFields(t *testing.T) {
+	targetTxID := ids.GenerateTestID()
+
+	server := newCurrentValidatorsServer(t, nil, []map[string]any{
+		{
+			"txID":                     targetTxID.String(),
+			"validatorAuthority":       testAPIOwner(t, ids.GenerateTestShortID(), "0", "1"),
+			"autoCompoundRewardShares": "not-a-number",
+		},
+	})
+	defer server.Close()
+
+	if _, err := GetAutoRenewedValidatorConfig(context.Background(), server.URL, ids.EmptyNodeID, targetTxID); err == nil {
+		t.Fatal("GetAutoRenewedValidatorConfig() error = nil, want an error for an unparseable share count")
+	}
+}
