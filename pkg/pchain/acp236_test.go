@@ -479,3 +479,23 @@ func TestGetAutoRenewedValidatorConfigRejectsUnparseableFields(t *testing.T) {
 		t.Fatal("GetAutoRenewedValidatorConfig() error = nil, want an error for an unparseable share count")
 	}
 }
+
+func TestGetAutoRenewedValidatorConfigRejectsOversizedNextPeriod(t *testing.T) {
+	targetTxID := ids.GenerateTestID()
+
+	server := newCurrentValidatorsServer(t, nil, []map[string]any{
+		{
+			"txID":               targetTxID.String(),
+			"validatorAuthority": testAPIOwner(t, ids.GenerateTestShortID(), "0", "1"),
+			// Fits in a uint64 but not in a time.Duration. Converting it blindly
+			// wraps to a negative period, which would then pass a minimum check
+			// written as period > 0 && period < min.
+			"nextPeriod": "18446744073709551615",
+		},
+	})
+	defer server.Close()
+
+	if _, err := GetAutoRenewedValidatorConfig(context.Background(), server.URL, ids.EmptyNodeID, targetTxID); err == nil {
+		t.Fatal("GetAutoRenewedValidatorConfig() error = nil, want an error for an unrepresentable nextPeriod")
+	}
+}

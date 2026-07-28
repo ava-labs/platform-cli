@@ -4,6 +4,7 @@ package pchain
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -386,6 +387,10 @@ func GetAutoRenewedValidatorAuthority(ctx context.Context, rpcURL string, nodeID
 	return config.Authority, nil
 }
 
+// maxPeriodSeconds is the largest whole-second period representable as a
+// time.Duration, which counts nanoseconds in an int64.
+const maxPeriodSeconds = uint64(math.MaxInt64 / int64(time.Second))
+
 // AutoRenewedValidatorConfig is the current auto-renew configuration of an
 // active auto-renewed validator, as reported by platform.getCurrentValidators.
 //
@@ -437,6 +442,12 @@ func GetAutoRenewedValidatorConfig(ctx context.Context, rpcURL string, nodeID id
 			seconds, err := strconv.ParseUint(validator.NextPeriod, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("invalid nextPeriod for %s: %w", txID, err)
+			}
+			// Reject what will not fit in a time.Duration. Without this an
+			// oversized value wraps to a negative period, which then slips past
+			// the caller's minimum check because that only guards period > 0.
+			if seconds > maxPeriodSeconds {
+				return nil, fmt.Errorf("nextPeriod %s for %s is too large to represent", validator.NextPeriod, txID)
 			}
 			config.NextPeriod = time.Duration(seconds) * time.Second
 		}
