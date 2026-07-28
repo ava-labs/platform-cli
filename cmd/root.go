@@ -123,6 +123,12 @@ func feeToShares(fee float64) (uint32, error) {
 	return fractionToShares("delegation fee", fee)
 }
 
+// sharesToPercent converts shares out of reward.PercentDenominator back to a
+// percentage for display (20,000 -> 2).
+func sharesToPercent(shares uint32) float64 {
+	return float64(shares) * 100 / reward.PercentDenominator
+}
+
 // getOperationContext returns a context with timeout and signal handling.
 // The context will be cancelled on SIGINT/SIGTERM or when the timeout expires.
 // The returned cancel function must be called to release resources.
