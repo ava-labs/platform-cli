@@ -141,7 +141,7 @@ func TestCLISubnetHelp(t *testing.T) {
 		t.Fatalf("subnet help failed: %v", err)
 	}
 
-	expected := []string{"create", "transfer-ownership", "convert-to-l1", "add-validator"}
+	expected := []string{"create", "transfer-ownership", "convert-to-l1", "add-validator", "remove-validator"}
 	for _, cmd := range expected {
 		if !strings.Contains(stdout, cmd) {
 			t.Errorf("subnet help missing subcommand: %s", cmd)
@@ -476,6 +476,28 @@ func TestCLISubnetAddValidatorMissingArgs(t *testing.T) {
 
 	if !strings.Contains(stderr, "subnet-id") {
 		t.Errorf("expected error to mention subnet-id, got stderr: %s", stderr)
+	}
+}
+
+func TestCLISubnetRemoveValidatorMissingArgs(t *testing.T) {
+	_, stderr, err := runCLI(t, "subnet", "remove-validator")
+	if err == nil {
+		t.Error("expected error when missing required args")
+	}
+
+	if !strings.Contains(stderr, "subnet-id") {
+		t.Errorf("expected error to mention subnet-id, got stderr: %s", stderr)
+	}
+}
+
+func TestCLISubnetRemoveValidatorMissingNodeID(t *testing.T) {
+	_, stderr, err := runCLI(t, "subnet", "remove-validator", "--subnet-id", "11111111111111111111111111111111LpoYY")
+	if err == nil {
+		t.Error("expected error when missing --node-id")
+	}
+
+	if !strings.Contains(stderr, "node-id") {
+		t.Errorf("expected error to mention node-id, got stderr: %s", stderr)
 	}
 }
 

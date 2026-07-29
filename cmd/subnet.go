@@ -316,6 +316,71 @@ authorizes the transaction, so load the owner key via --key-name or --ledger.`,
 	},
 }
 
+var subnetRemoveValidatorCmd = &cobra.Command{
+	Use:   "remove-validator",
+	Short: "Remove a validator from a subnet (RemoveSubnetValidatorTx)",
+	Long: `Remove a validator from a subnet (RemoveSubnetValidatorTx).
+
+The subnet owner key authorizes the transaction, so load the owner key via
+--key-name or --ledger.
+
+This removes legacy subnet validators (those added by 'subnet add-validator').
+L1 validators registered under ACP-77 are not removed this way; use
+'l1 disable-validator' or the validator manager contract instead.
+
+This still works after a subnet has been converted to an L1. Converting does not
+remove pre-existing subnet validators, and those leftover validators keep
+contributing weight to the L1's Warp signing set. If they are offline, the
+signable weight can fall below the quorum that initializeValidatorSet requires,
+in which case removing them restores the quorum.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx, cancel := getOperationContext()
+		defer cancel()
+
+		if subnetID == "" {
+			return fmt.Errorf("--subnet-id is required")
+		}
+		if subnetValNodeID == "" {
+			return fmt.Errorf("--node-id is required")
+		}
+
+		sid, err := ids.FromString(subnetID)
+		if err != nil {
+			return fmt.Errorf("invalid subnet ID: %w", err)
+		}
+
+		nodeID, err := ids.NodeIDFromString(subnetValNodeID)
+		if err != nil {
+			return fmt.Errorf("invalid node ID: %w", err)
+		}
+
+		netConfig, err := getNetworkConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
+		w, cleanup, err := loadPChainWalletWithSubnet(ctx, netConfig, sid)
+		if err != nil {
+			return fmt.Errorf("failed to create wallet: %w", err)
+		}
+		defer cleanup()
+
+		fmt.Printf("Removing validator %s from subnet %s...\n", nodeID, sid)
+		fmt.Println("Submitting transaction...")
+
+		txID, err := pchain.RemoveSubnetValidator(ctx, w, pchain.RemoveSubnetValidatorConfig{
+			SubnetID: sid,
+			NodeID:   nodeID,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("TX ID: %s\n", txID)
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(subnetCmd)
 
@@ -323,6 +388,7 @@ func init() {
 	subnetCmd.AddCommand(subnetTransferOwnershipCmd)
 	subnetCmd.AddCommand(subnetConvertL1Cmd)
 	subnetCmd.AddCommand(subnetAddValidatorCmd)
+	subnetCmd.AddCommand(subnetRemoveValidatorCmd)
 
 	// Transfer ownership flags
 	subnetTransferOwnershipCmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID")
@@ -347,4 +413,8 @@ func init() {
 	subnetAddValidatorCmd.Flags().Uint64Var(&subnetValWeight, "weight", 0, "Validator sampling weight on the subnet")
 	subnetAddValidatorCmd.Flags().StringVar(&subnetValStartTime, "start", "now", "Start time (RFC3339 or 'now'). Post-Durango networks ignore this; validation begins at tx acceptance")
 	subnetAddValidatorCmd.Flags().StringVar(&subnetValDuration, "duration", "336h", "Validation duration (must fall within the node's primary network validation period)")
+
+	// Remove validator flags
+	subnetRemoveValidatorCmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID")
+	subnetRemoveValidatorCmd.Flags().StringVar(&subnetValNodeID, "node-id", "", "Validator node ID to remove from the subnet")
 }

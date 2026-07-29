@@ -83,6 +83,11 @@ type addSubnetValidatorTxIssuer interface {
 	IssueAddSubnetValidatorTx(vdr *txs.SubnetValidator, options ...common.Option) (*txs.Tx, error)
 }
 
+// removeSubnetValidatorTxIssuer issues a RemoveSubnetValidatorTx.
+type removeSubnetValidatorTxIssuer interface {
+	IssueRemoveSubnetValidatorTx(nodeID ids.NodeID, subnetID ids.ID, options ...common.Option) (*txs.Tx, error)
+}
+
 // createChainTxIssuer issues a CreateChainTx.
 type createChainTxIssuer interface {
 	IssueCreateChainTx(subnetID ids.ID, genesis []byte, vmID ids.ID, fxIDs []ids.ID, chainName string, options ...common.Option) (*txs.Tx, error)
@@ -641,6 +646,44 @@ func issueAddSubnetValidatorTx(
 	)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue AddSubnetValidatorTx: %w", err)
+	}
+	return tx.ID(), nil
+}
+
+// RemoveSubnetValidatorConfig holds configuration for removing a validator from
+// a subnet.
+type RemoveSubnetValidatorConfig struct {
+	SubnetID ids.ID
+	NodeID   ids.NodeID
+}
+
+// RemoveSubnetValidator removes a validator from a subnet
+// (IssueRemoveSubnetValidatorTx). The subnet owner authorizes the tx via subnet
+// auth (resolved by the wallet backend, so the wallet must track the subnet).
+//
+// This targets legacy subnet validators only (those added by
+// AddSubnetValidatorTx). L1 validators registered under ACP-77 are managed
+// through the validator manager contract instead, via SetL1ValidatorWeightTx or
+// DisableL1ValidatorTx.
+//
+// Removal stays available after a subnet is converted to an L1: the P-Chain
+// gates ConvertSubnetToL1Tx, AddSubnetValidatorTx and TransferSubnetOwnershipTx
+// on the subnet not having been converted, but RemoveSubnetValidatorTx only
+// checks subnet auth. This matters because a converted subnet's leftover legacy
+// validators still contribute weight to the L1's Warp signing set, which can
+// hold the total above what the reachable validators can sign for.
+func RemoveSubnetValidator(ctx context.Context, w *wallet.Wallet, cfg RemoveSubnetValidatorConfig) (ids.ID, error) {
+	return issueRemoveSubnetValidatorTx(w.PWallet(), cfg, common.WithContext(ctx))
+}
+
+func issueRemoveSubnetValidatorTx(
+	issuer removeSubnetValidatorTxIssuer,
+	cfg RemoveSubnetValidatorConfig,
+	options ...common.Option,
+) (ids.ID, error) {
+	tx, err := issuer.IssueRemoveSubnetValidatorTx(cfg.NodeID, cfg.SubnetID, options...)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to issue RemoveSubnetValidatorTx: %w", err)
 	}
 	return tx.ID(), nil
 }

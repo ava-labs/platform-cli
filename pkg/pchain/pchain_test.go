@@ -167,6 +167,21 @@ func (s *stubAddSubnetValidatorTxIssuer) IssueAddSubnetValidatorTx(vdr *txs.Subn
 	return s.tx, s.err
 }
 
+// stubRemoveSubnetValidatorTxIssuer implements removeSubnetValidatorTxIssuer.
+type stubRemoveSubnetValidatorTxIssuer struct {
+	tx  *txs.Tx
+	err error
+
+	gotNodeID   ids.NodeID
+	gotSubnetID ids.ID
+}
+
+func (s *stubRemoveSubnetValidatorTxIssuer) IssueRemoveSubnetValidatorTx(nodeID ids.NodeID, subnetID ids.ID, _ ...common.Option) (*txs.Tx, error) {
+	s.gotNodeID = nodeID
+	s.gotSubnetID = subnetID
+	return s.tx, s.err
+}
+
 // stubCreateChainTxIssuer implements createChainTxIssuer.
 type stubCreateChainTxIssuer struct {
 	tx  *txs.Tx
@@ -566,6 +581,51 @@ func TestIssueAddSubnetValidatorTx(t *testing.T) {
 	}
 	if gotVdr.Validator.Wght != cfg.Weight {
 		t.Fatalf("issueAddSubnetValidatorTx() weight = %d, want %d", gotVdr.Validator.Wght, cfg.Weight)
+	}
+}
+
+func TestIssueRemoveSubnetValidatorTx(t *testing.T) {
+	subnetID := ids.GenerateTestID()
+	nodeID := ids.GenerateTestNodeID()
+	txID := ids.GenerateTestID()
+
+	issuer := &stubRemoveSubnetValidatorTxIssuer{tx: &txs.Tx{TxID: txID}}
+	gotTxID, err := issueRemoveSubnetValidatorTx(
+		issuer,
+		RemoveSubnetValidatorConfig{
+			SubnetID: subnetID,
+			NodeID:   nodeID,
+		},
+	)
+	if err != nil {
+		t.Fatalf("issueRemoveSubnetValidatorTx() returned error: %v", err)
+	}
+	if gotTxID != txID {
+		t.Fatalf("issueRemoveSubnetValidatorTx() txID = %s, want %s", gotTxID, txID)
+	}
+	if issuer.gotSubnetID != subnetID {
+		t.Fatalf("issueRemoveSubnetValidatorTx() subnet = %s, want %s", issuer.gotSubnetID, subnetID)
+	}
+	if issuer.gotNodeID != nodeID {
+		t.Fatalf("issueRemoveSubnetValidatorTx() nodeID = %s, want %s", issuer.gotNodeID, nodeID)
+	}
+}
+
+func TestIssueRemoveSubnetValidatorTxError(t *testing.T) {
+	expectedErr := errors.New("boom")
+	issuer := &stubRemoveSubnetValidatorTxIssuer{err: expectedErr}
+	_, err := issueRemoveSubnetValidatorTx(
+		issuer,
+		RemoveSubnetValidatorConfig{
+			SubnetID: ids.GenerateTestID(),
+			NodeID:   ids.GenerateTestNodeID(),
+		},
+	)
+	if err == nil {
+		t.Fatal("issueRemoveSubnetValidatorTx() expected error")
+	}
+	if !strings.Contains(err.Error(), "failed to issue RemoveSubnetValidatorTx") {
+		t.Fatalf("issueRemoveSubnetValidatorTx() error = %v, want wrapped RemoveSubnetValidatorTx message", err)
 	}
 }
 

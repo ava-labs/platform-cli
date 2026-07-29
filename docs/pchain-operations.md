@@ -17,6 +17,7 @@ use it to migrate existing scripts.
 | `TransferSubnetOwnershipTx` | `subnet transfer-ownership` | `IssueTransferSubnetOwnershipTx` | — |
 | `ConvertSubnetToL1Tx` | `subnet convert-to-l1` | `IssueConvertSubnetToL1Tx` | `subnet convert-l1` |
 | `AddSubnetValidatorTx` | `subnet add-validator` | `IssueAddSubnetValidatorTx` | — |
+| `RemoveSubnetValidatorTx` | `subnet remove-validator` | `IssueRemoveSubnetValidatorTx` | — |
 | `RegisterL1ValidatorTx` | `l1 register-validator` | `IssueRegisterL1ValidatorTx` | — |
 | `SetL1ValidatorWeightTx` | `l1 set-validator-weight` | `IssueSetL1ValidatorWeightTx` | `l1 set-weight` |
 | `IncreaseL1ValidatorBalanceTx` | `l1 increase-validator-balance` | `IssueIncreaseL1ValidatorBalanceTx` | `l1 add-balance` |

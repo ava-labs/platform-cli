@@ -145,6 +145,7 @@ platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id>
   [--manager <hex>]
 platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock-validator
 platform-cli subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight <uint> [--start <RFC3339|now>] [--duration <dur>]
+platform-cli subnet remove-validator --subnet-id <ID> --node-id NodeID-...
 ```
 
 `add-validator` notes:
@@ -153,6 +154,24 @@ platform-cli subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight
   must fall within its primary network validation window.
 - The subnet owner key authorizes the tx (subnet auth), so load the owner key via
   `--key-name` or `--ledger`.
+
+`remove-validator` notes:
+- Removes a legacy subnet validator (`RemoveSubnetValidatorTx`), meaning one added
+  by `subnet add-validator`. It does **not** remove ACP-77 L1 validators; for those
+  use `l1 disable-validator` or the validator manager contract.
+- The subnet owner key authorizes the tx (subnet auth), so load the owner key via
+  `--key-name` or `--ledger`.
+- Works even after the subnet has been converted to an L1. Converting does not
+  remove pre-existing subnet validators, and the P-Chain gates
+  `ConvertSubnetToL1Tx` / `AddSubnetValidatorTx` / `TransferSubnetOwnershipTx` on
+  the subnet not having been converted, but `RemoveSubnetValidatorTx` only checks
+  subnet auth.
+- Why this matters: leftover legacy validators still count toward the L1's Warp
+  signing weight. If they are offline, the weight you can actually collect
+  signatures from may fall under the quorum `initializeValidatorSet` requires
+  (67%), which shows up as signature aggregation hanging or reporting
+  "failed to connect to a threshold of stake". Removing them lowers the total
+  weight and restores the quorum.
 
 `convert-to-l1` notes:
 - `--manager` / `--contract-address` is the validator manager contract address (hex).
