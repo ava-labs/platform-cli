@@ -5,9 +5,11 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
+	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/vms/platformvm/fx"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/platform-cli/pkg/keystore"
@@ -103,32 +105,99 @@ var addressCmd = &cobra.Command{
 	},
 }
 
+// loadKey loads a single signing key. Commands that cannot use multiple keys
+// call this and reject multi-key configurations.
 func loadKey() ([]byte, error) {
-	// Priority 1: Key from keystore by name
-	if keyNameGlobal != "" {
+	allKeys, err := loadKeys()
+	if err != nil {
+		return nil, err
+	}
+	if len(allKeys) != 1 {
+		clearAllKeyBytes(allKeys)
+		return nil, fmt.Errorf("this command supports a single signing key, got %d", len(allKeys))
+	}
+	return allKeys[0], nil
+}
+
+// loadKeys loads all configured signing keys. Multiple keys allow a tx to
+// meet a multisig owner threshold (e.g. a 2-of-3 subnet owner).
+func loadKeys() ([][]byte, error) {
+	// Priority 1: Keys from keystore by name (repeat --key-name for multisig)
+	if len(keyNamesGlobal) > 0 {
 		if privateKey != "" {
 			return nil, fmt.Errorf("use either --key-name or --private-key, not both")
 		}
-		return loadFromKeystore(keyNameGlobal)
+		allKeys := make([][]byte, 0, len(keyNamesGlobal))
+		for _, name := range keyNamesGlobal {
+			keyBytes, err := loadFromKeystore(name)
+			if err != nil {
+				clearAllKeyBytes(allKeys)
+				return nil, err
+			}
+			allKeys = append(allKeys, keyBytes)
+		}
+		return allKeys, nil
 	}
 
 	// Priority 2: Direct private key via flag (discouraged; prefer keystore/Ledger)
 	if privateKey != "" {
-		return wallet.ParsePrivateKey(privateKey)
+		keyBytes, err := wallet.ParsePrivateKey(privateKey)
+		if err != nil {
+			return nil, err
+		}
+		return [][]byte{keyBytes}, nil
 	}
 
 	// Priority 3: Default key from keystore
 	ks, err := keystore.Load()
 	if err == nil && ks.GetDefault() != "" {
-		return loadFromKeystore(ks.GetDefault())
+		keyBytes, err := loadFromKeystore(ks.GetDefault())
+		if err != nil {
+			return nil, err
+		}
+		return [][]byte{keyBytes}, nil
 	}
 
-	// Priority 4: Environment variable
+	// Priority 4: Environment variable (comma-separated for multiple keys)
 	if envKey := os.Getenv("AVALANCHE_PRIVATE_KEY"); envKey != "" {
-		return wallet.ParsePrivateKey(envKey)
+		parts := strings.Split(envKey, ",")
+		allKeys := make([][]byte, 0, len(parts))
+		for _, part := range parts {
+			keyBytes, err := wallet.ParsePrivateKey(strings.TrimSpace(part))
+			if err != nil {
+				clearAllKeyBytes(allKeys)
+				return nil, fmt.Errorf("invalid key in AVALANCHE_PRIVATE_KEY: %w", err)
+			}
+			allKeys = append(allKeys, keyBytes)
+		}
+		return allKeys, nil
 	}
 
 	return nil, fmt.Errorf("no key source provided. Use --key-name (preferred), --private-key, or set AVALANCHE_PRIVATE_KEY env var")
+}
+
+// clearAllKeyBytes zeroes every key in the slice.
+func clearAllKeyBytes(allKeys [][]byte) {
+	for _, keyBytes := range allKeys {
+		clearBytesWallet(keyBytes)
+	}
+}
+
+// toSigningKeys converts raw key bytes into private keys, enforcing the
+// ewoq-on-mainnet guard for every key.
+func toSigningKeys(netConfig network.Config, allKeys [][]byte) ([]*secp256k1.PrivateKey, error) {
+	signingKeys := make([]*secp256k1.PrivateKey, 0, len(allKeys))
+	for _, keyBytes := range allKeys {
+		if netConfig.NetworkID == constants.MainnetID && isEwoqKey(keyBytes) {
+			return nil, fmt.Errorf("ewoq test key cannot be used on mainnet - this is a well-known key with no security")
+		}
+		key, err := wallet.ToPrivateKey(keyBytes)
+		if err != nil {
+			return nil, err
+		}
+		signingKeys = append(signingKeys, key)
+	}
+	return signingKeys, nil
 }
 
 // ewoqPrivateKey is the well-known ewoq test key used in local/test networks.
@@ -223,21 +292,26 @@ func loadPChainWallet(ctx context.Context, netConfig network.Config) (*wallet.Wa
 		return w, kc.Close, nil
 	}
 
-	keyBytes, err := loadKey()
+	allKeys, err := loadKeys()
 	if err != nil {
 		return nil, nil, err
 	}
 	// Clear key bytes after wallet creation
-	defer clearBytesWallet(keyBytes)
-	if netConfig.NetworkID == constants.MainnetID && isEwoqKey(keyBytes) {
-		return nil, nil, fmt.Errorf("ewoq test key cannot be used on mainnet - this is a well-known key with no security")
-	}
+	defer clearAllKeyBytes(allKeys)
 
-	key, err := wallet.ToPrivateKey(keyBytes)
+	signingKeys, err := toSigningKeys(netConfig, allKeys)
 	if err != nil {
 		return nil, nil, err
 	}
-	w, err := wallet.NewWallet(ctx, key, netConfig)
+	if len(signingKeys) == 1 {
+		w, err := wallet.NewWallet(ctx, signingKeys[0], netConfig)
+		if err != nil {
+			return nil, nil, err
+		}
+		return w, func() {}, nil
+	}
+	kc := secp256k1fx.NewKeychain(signingKeys...)
+	w, err := wallet.NewWalletFromKeychain(ctx, kc, signingKeys[0].Address(), netConfig)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -262,21 +336,26 @@ func loadPChainWalletWithSubnet(ctx context.Context, netConfig network.Config, s
 		return w, kc.Close, nil
 	}
 
-	keyBytes, err := loadKey()
+	allKeys, err := loadKeys()
 	if err != nil {
 		return nil, nil, err
 	}
 	// Clear key bytes after wallet creation
-	defer clearBytesWallet(keyBytes)
-	if netConfig.NetworkID == constants.MainnetID && isEwoqKey(keyBytes) {
-		return nil, nil, fmt.Errorf("ewoq test key cannot be used on mainnet - this is a well-known key with no security")
-	}
+	defer clearAllKeyBytes(allKeys)
 
-	key, err := wallet.ToPrivateKey(keyBytes)
+	signingKeys, err := toSigningKeys(netConfig, allKeys)
 	if err != nil {
 		return nil, nil, err
 	}
-	w, err := wallet.NewWalletWithSubnet(ctx, key, netConfig, subnetID)
+	if len(signingKeys) == 1 {
+		w, err := wallet.NewWalletWithSubnet(ctx, signingKeys[0], netConfig, subnetID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return w, func() {}, nil
+	}
+	kc := secp256k1fx.NewKeychain(signingKeys...)
+	w, err := wallet.NewWalletFromKeychainWithSubnet(ctx, kc, signingKeys[0].Address(), netConfig, subnetID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -304,22 +383,19 @@ func loadPChainWalletWithOwner(ctx context.Context, netConfig network.Config, ow
 		return w, kc.Close, nil
 	}
 
-	keyBytes, err := loadKey()
+	allKeys, err := loadKeys()
 	if err != nil {
 		return nil, nil, err
 	}
 	// Clear key bytes after wallet creation
-	defer clearBytesWallet(keyBytes)
-	if netConfig.NetworkID == constants.MainnetID && isEwoqKey(keyBytes) {
-		return nil, nil, fmt.Errorf("ewoq test key cannot be used on mainnet - this is a well-known key with no security")
-	}
+	defer clearAllKeyBytes(allKeys)
 
-	key, err := wallet.ToPrivateKey(keyBytes)
+	signingKeys, err := toSigningKeys(netConfig, allKeys)
 	if err != nil {
 		return nil, nil, err
 	}
-	kc := secp256k1fx.NewKeychain(key)
-	w, err := wallet.NewWalletFromKeychainWithOwner(ctx, kc, key.Address(), netConfig, ownerID, owner)
+	kc := secp256k1fx.NewKeychain(signingKeys...)
+	w, err := wallet.NewWalletFromKeychainWithOwner(ctx, kc, signingKeys[0].Address(), netConfig, ownerID, owner)
 	if err != nil {
 		return nil, nil, err
 	}

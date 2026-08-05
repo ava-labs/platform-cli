@@ -162,6 +162,14 @@ platform-cli subnet remove-validator --subnet-id <ID> --node-id NodeID-...
 - After the transfer, every owner-gated tx (add/remove validator, create chain,
   convert to L1) needs `threshold` of the owner keys. Choose keys you control;
   a transfer to the wrong owner set is unrecoverable.
+- To sign an owner-gated tx with multiple keys, repeat `--key-name` (or
+  comma-separate names, or set `AVALANCHE_PRIVATE_KEY` to a comma-separated
+  list). All keys must be available on one machine; the first key pays fees:
+
+  ```bash
+  platform-cli subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight 20 \
+    --key-name owner1 --key-name owner2
+  ```
 
 `add-validator` notes:
 - Adds a validator to a **permissioned** subnet (`AddSubnetValidatorTx`).
