@@ -135,7 +135,7 @@ platform-cli validator set-auto-renewed-config \
 
 ```bash
 platform-cli subnet create
-platform-cli subnet transfer-ownership --subnet-id <ID> --new-owner <address>
+platform-cli subnet transfer-ownership --subnet-id <ID> --new-owner <address> [--new-owner <address> ...] [--threshold <n>]
 platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--manager <hex>]
 platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--contract-address <hex>]
 platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> \
@@ -146,6 +146,21 @@ platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id>
 platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock-validator
 platform-cli subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight <uint> [--start <RFC3339|now>] [--duration <dur>]
 ```
+
+`transfer-ownership` notes:
+- Accepts bech32 P-Chain addresses (`P-avax1...`/`P-fuji1...`) or CB58 short IDs.
+- Repeat `--new-owner` (or comma-separate) and set `--threshold` to hand the
+  subnet to a multisig owner, e.g. 2-of-3:
+
+  ```bash
+  platform-cli subnet transfer-ownership --subnet-id <ID> \
+    --new-owner P-avax1aaa... --new-owner P-avax1bbb... --new-owner P-avax1ccc... \
+    --threshold 2
+  ```
+
+- After the transfer, every owner-gated tx (add/remove validator, create chain,
+  convert to L1) needs `threshold` of the owner keys. Choose keys you control;
+  a transfer to the wrong owner set is unrecoverable.
 
 `add-validator` notes:
 - Adds a validator to a **permissioned** subnet (`AddSubnetValidatorTx`).

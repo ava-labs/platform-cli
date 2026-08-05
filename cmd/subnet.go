@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	ethcommon "github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
@@ -13,7 +14,8 @@ import (
 
 var (
 	subnetID               string
-	subnetNewOwner         string
+	subnetNewOwners        []string
+	subnetThreshold        uint32
 	subnetChainID          string
 	subnetManager          string
 	subnetValidatorIPs     string
@@ -74,7 +76,11 @@ var subnetCreateCmd = &cobra.Command{
 var subnetTransferOwnershipCmd = &cobra.Command{
 	Use:   "transfer-ownership",
 	Short: "Transfer subnet ownership (TransferSubnetOwnershipTx)",
-	Long:  `Transfer ownership of a subnet to a new address.`,
+	Long: `Transfer ownership of a subnet to a new owner.
+
+The new owner is one or more P-Chain addresses with a signature threshold.
+Pass --new-owner multiple times (or comma-separated) with --threshold to
+set a multisig owner, e.g. 2-of-3.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
 		defer cancel()
@@ -82,7 +88,7 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 		if subnetID == "" {
 			return fmt.Errorf("--subnet-id is required")
 		}
-		if subnetNewOwner == "" {
+		if len(subnetNewOwners) == 0 {
 			return fmt.Errorf("--new-owner is required")
 		}
 
@@ -91,9 +97,18 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 			return fmt.Errorf("invalid subnet ID: %w", err)
 		}
 
-		newOwner, err := ids.ShortFromString(subnetNewOwner)
-		if err != nil {
-			return fmt.Errorf("invalid new owner address: %w", err)
+		newOwners := make([]ids.ShortID, 0, len(subnetNewOwners))
+		for _, addr := range subnetNewOwners {
+			owner, err := parseOwnerAddress(addr)
+			if err != nil {
+				return err
+			}
+			newOwners = append(newOwners, owner)
+		}
+
+		// Validate before loading the wallet so bad input fails fast.
+		if _, err := pchain.NewOwner(newOwners, subnetThreshold); err != nil {
+			return fmt.Errorf("invalid new owner: %w", err)
 		}
 
 		netConfig, err := getNetworkConfig(ctx)
@@ -107,7 +122,9 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 		}
 		defer cleanup()
 
-		txID, err := pchain.TransferSubnetOwnership(ctx, w, sid, newOwner)
+		fmt.Printf("New owner: %d address(es), threshold %d\n", len(newOwners), subnetThreshold)
+
+		txID, err := pchain.TransferSubnetOwnership(ctx, w, sid, newOwners, subnetThreshold)
 		if err != nil {
 			return err
 		}
@@ -115,6 +132,18 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 		fmt.Printf("Transfer Subnet Ownership TX: %s\n", txID)
 		return nil
 	},
+}
+
+// parseOwnerAddress accepts a bech32 P-Chain address (e.g. P-avax1... or
+// P-fuji1...) or a CB58-encoded short ID.
+func parseOwnerAddress(s string) (ids.ShortID, error) {
+	if id, err := address.ParseToID(s); err == nil {
+		return id, nil
+	}
+	if id, err := ids.ShortFromString(s); err == nil {
+		return id, nil
+	}
+	return ids.ShortEmpty, fmt.Errorf("invalid owner address %q: expected a bech32 P-Chain address (P-avax1.../P-fuji1...) or CB58 short ID", s)
 }
 
 var subnetConvertL1Cmd = &cobra.Command{
@@ -326,7 +355,8 @@ func init() {
 
 	// Transfer ownership flags
 	subnetTransferOwnershipCmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID")
-	subnetTransferOwnershipCmd.Flags().StringVar(&subnetNewOwner, "new-owner", "", "New owner P-Chain address")
+	subnetTransferOwnershipCmd.Flags().StringSliceVar(&subnetNewOwners, "new-owner", nil, "New owner P-Chain address (repeat or comma-separate for multisig)")
+	subnetTransferOwnershipCmd.Flags().Uint32Var(&subnetThreshold, "threshold", 1, "Number of owner signatures required to authorize future subnet changes")
 
 	// Convert L1 flags
 	subnetConvertL1Cmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID to convert")

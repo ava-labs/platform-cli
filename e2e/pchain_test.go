@@ -23,6 +23,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
+	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
@@ -407,12 +408,121 @@ func TestCreateSubnetAndTransferOwnership(t *testing.T) {
 
 	// 3. Transfer ownership back to self (testing the operation)
 	t.Logf("Transferring ownership to self...")
-	txID, err := pchain.TransferSubnetOwnership(ctx, subnetWallet, subnetID, w.PChainAddress())
+	txID, err := pchain.TransferSubnetOwnership(ctx, subnetWallet, subnetID, []ids.ShortID{w.PChainAddress()}, 1)
 	if err != nil {
 		t.Fatalf("TransferSubnetOwnership failed: %v", err)
 	}
 
 	t.Logf("Transfer Ownership TX: %s", txID)
+}
+
+func TestTransferSubnetOwnershipMultisig(t *testing.T) {
+	ctx := context.Background()
+	w, netConfig := getTestWallet(t)
+
+	// 1. Create subnet
+	t.Log("Creating subnet...")
+	subnetID, err := pchain.CreateSubnet(ctx, w)
+	if err != nil {
+		t.Fatalf("CreateSubnet failed: %v", err)
+	}
+	t.Logf("Created Subnet ID: %s", subnetID)
+
+	t.Log("Waiting for subnet creation to be accepted...")
+	time.Sleep(3 * time.Second)
+
+	// 2. Create wallet tracking the subnet
+	keyBytes := getPrivateKeyBytes(t)
+	key, _ := wallet.ToPrivateKey(keyBytes)
+	subnetWallet, err := wallet.NewWalletWithSubnet(ctx, key, netConfig, subnetID)
+	if err != nil {
+		t.Fatalf("failed to create subnet wallet: %v", err)
+	}
+
+	// 3. Transfer ownership to a 1-of-2 multisig (own key + throwaway key)
+	// so the test key keeps unilateral control of the subnet.
+	otherKey, err := secp256k1.NewPrivateKey()
+	if err != nil {
+		t.Fatalf("failed to generate second owner key: %v", err)
+	}
+	owners := []ids.ShortID{w.PChainAddress(), otherKey.Address()}
+
+	t.Log("Transferring ownership to 1-of-2 multisig...")
+	txID, err := pchain.TransferSubnetOwnership(ctx, subnetWallet, subnetID, owners, 1)
+	if err != nil {
+		t.Fatalf("TransferSubnetOwnership (1-of-2) failed: %v", err)
+	}
+	t.Logf("Transfer Ownership TX: %s", txID)
+
+	// 4. Verify the on-chain owner set
+	client := platformvm.NewClient(netConfig.RPCURL)
+	waitForSubnetOwners(t, ctx, client, subnetID, owners, 1)
+
+	// 5. Transfer again to a 2-of-2 multisig to exercise a threshold > 1.
+	// The current owner is 1-of-2, so the test key alone can authorize this.
+	subnetWallet, err = wallet.NewWalletWithSubnet(ctx, key, netConfig, subnetID)
+	if err != nil {
+		t.Fatalf("failed to recreate subnet wallet: %v", err)
+	}
+
+	t.Log("Transferring ownership to 2-of-2 multisig...")
+	txID, err = pchain.TransferSubnetOwnership(ctx, subnetWallet, subnetID, owners, 2)
+	if err != nil {
+		t.Fatalf("TransferSubnetOwnership (2-of-2) failed: %v", err)
+	}
+	t.Logf("Transfer Ownership TX: %s", txID)
+
+	waitForSubnetOwners(t, ctx, client, subnetID, owners, 2)
+
+	t.Log("=== Multisig Ownership Transfer Complete ===")
+}
+
+// waitForSubnetOwners polls GetSubnet until the on-chain owner matches the
+// expected control keys (order-insensitive) and threshold. Public API
+// endpoints are load balanced, so the queried node may briefly lag the node
+// that accepted the transfer tx.
+func waitForSubnetOwners(t *testing.T, ctx context.Context, client *platformvm.Client, subnetID ids.ID, wantOwners []ids.ShortID, wantThreshold uint32) {
+	t.Helper()
+
+	// The public API is load balanced and individual nodes can serve state
+	// that lags an accepted tx by tens of seconds, so poll generously.
+	const (
+		pollAttempts = 20
+		pollDelay    = 6 * time.Second
+	)
+
+	var subnet platformvm.GetSubnetClientResponse
+	for attempt := 1; attempt <= pollAttempts; attempt++ {
+		var err error
+		subnet, err = retryRateLimitedOperation(t, "GetSubnet", func() (platformvm.GetSubnetClientResponse, error) {
+			return client.GetSubnet(ctx, subnetID)
+		})
+		if err != nil {
+			t.Fatalf("GetSubnet failed: %v", err)
+		}
+		if subnetOwnersMatch(subnet, wantOwners, wantThreshold) {
+			return
+		}
+		t.Logf("owner set not yet visible (attempt %d/%d): keys=%v threshold=%d", attempt, pollAttempts, subnet.ControlKeys, subnet.Threshold)
+		time.Sleep(pollDelay)
+	}
+	t.Fatalf("subnet owner = keys %v threshold %d, want keys %v threshold %d", subnet.ControlKeys, subnet.Threshold, wantOwners, wantThreshold)
+}
+
+func subnetOwnersMatch(subnet platformvm.GetSubnetClientResponse, wantOwners []ids.ShortID, wantThreshold uint32) bool {
+	if subnet.Threshold != wantThreshold || len(subnet.ControlKeys) != len(wantOwners) {
+		return false
+	}
+	got := make(map[ids.ShortID]bool, len(subnet.ControlKeys))
+	for _, addr := range subnet.ControlKeys {
+		got[addr] = true
+	}
+	for _, addr := range wantOwners {
+		if !got[addr] {
+			return false
+		}
+	}
+	return true
 }
 
 // =============================================================================
@@ -724,7 +834,7 @@ func TestSubnetLifecycle(t *testing.T) {
 
 	// 4. Transfer subnet ownership (to self)
 	t.Log("Step 3: Transferring subnet ownership...")
-	txID, err := pchain.TransferSubnetOwnership(ctx, subnetWallet, subnetID, w.PChainAddress())
+	txID, err := pchain.TransferSubnetOwnership(ctx, subnetWallet, subnetID, []ids.ShortID{w.PChainAddress()}, 1)
 	if err != nil {
 		t.Fatalf("TransferSubnetOwnership failed: %v", err)
 	}
