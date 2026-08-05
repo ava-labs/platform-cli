@@ -10,10 +10,12 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
+	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/avalanchego/vms/platformvm/fx"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/platform-cli/pkg/keystore"
 	"github.com/ava-labs/platform-cli/pkg/network"
+	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -355,6 +357,49 @@ func loadPChainWalletWithSubnet(ctx context.Context, netConfig network.Config, s
 		return w, func() {}, nil
 	}
 	kc := secp256k1fx.NewKeychain(signingKeys...)
+	w, err := wallet.NewWalletFromKeychainWithSubnet(ctx, kc, signingKeys[0].Address(), netConfig, subnetID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return w, func() {}, nil
+}
+
+// loadPartialSignWalletWithSubnet creates a subnet-tracking wallet for
+// building partially signed owner-gated txs. The keychain additionally
+// claims the subnet owner addresses expected to sign (locally held keys
+// first, then remaining owners up to the threshold), so the tx builder
+// allocates signature slots that other signers fill later.
+func loadPartialSignWalletWithSubnet(ctx context.Context, netConfig network.Config, subnetID ids.ID) (*wallet.Wallet, func(), error) {
+	if useLedger {
+		return nil, nil, fmt.Errorf("--output-tx-path is not yet supported with --ledger")
+	}
+
+	allKeys, err := loadKeys()
+	if err != nil {
+		return nil, nil, err
+	}
+	// Clear key bytes after wallet creation
+	defer clearAllKeyBytes(allKeys)
+
+	signingKeys, err := toSigningKeys(netConfig, allKeys)
+	if err != nil {
+		return nil, nil, err
+	}
+	localAddrs := make([]ids.ShortID, len(signingKeys))
+	for i, key := range signingKeys {
+		localAddrs[i] = key.Address()
+	}
+
+	subnet, err := platformvm.NewClient(netConfig.RPCURL).GetSubnet(ctx, subnetID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to fetch subnet owner: %w", err)
+	}
+	authAddrs, err := pchain.SelectAuthSigners(subnet.ControlKeys, subnet.Threshold, localAddrs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	kc := wallet.WithAdditionalAddresses(secp256k1fx.NewKeychain(signingKeys...), authAddrs)
 	w, err := wallet.NewWalletFromKeychainWithSubnet(ctx, kc, signingKeys[0].Address(), netConfig, subnetID)
 	if err != nil {
 		return nil, nil, err

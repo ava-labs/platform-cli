@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -16,6 +17,7 @@ var (
 	subnetID               string
 	subnetNewOwners        []string
 	subnetThreshold        uint32
+	subnetOutputTxPath     string
 	subnetChainID          string
 	subnetManager          string
 	subnetValidatorIPs     string
@@ -80,7 +82,12 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 
 The new owner is one or more P-Chain addresses with a signature threshold.
 Pass --new-owner multiple times (or comma-separated) with --threshold to
-set a multisig owner, e.g. 2-of-3.`,
+set a multisig owner, e.g. 2-of-3.
+
+If the current owner is a multisig whose keys live on different machines,
+pass --output-tx-path to write a partially signed tx file instead of
+submitting. The remaining owners add signatures with "tx sign" and anyone
+submits with "tx commit".`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
 		defer cancel()
@@ -90,6 +97,11 @@ set a multisig owner, e.g. 2-of-3.`,
 		}
 		if len(subnetNewOwners) == 0 {
 			return fmt.Errorf("--new-owner is required")
+		}
+		if subnetOutputTxPath != "" {
+			if _, err := os.Stat(subnetOutputTxPath); err == nil {
+				return fmt.Errorf("output tx path %q already exists", subnetOutputTxPath)
+			}
 		}
 
 		sid, err := ids.FromString(subnetID)
@@ -114,6 +126,33 @@ set a multisig owner, e.g. 2-of-3.`,
 		netConfig, err := getNetworkConfig(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
+		// Partial-sign mode: build the tx with signature slots for the
+		// expected owner signers, sign what local keys allow, and write it
+		// to a file for the other signers instead of submitting.
+		if subnetOutputTxPath != "" {
+			w, cleanup, err := loadPartialSignWalletWithSubnet(ctx, netConfig, sid)
+			if err != nil {
+				return fmt.Errorf("failed to create wallet: %w", err)
+			}
+			defer cleanup()
+
+			fmt.Printf("New owner: %d address(es), threshold %d\n", len(newOwners), subnetThreshold)
+
+			tx, err := pchain.BuildTransferSubnetOwnershipTx(ctx, w, sid, newOwners, subnetThreshold)
+			if err != nil {
+				return err
+			}
+			data, err := pchain.EncodeTxFile(netConfig.NetworkID, tx)
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(subnetOutputTxPath, data, 0o600); err != nil {
+				return fmt.Errorf("failed to write tx file: %w", err)
+			}
+			fmt.Printf("Wrote partially signed tx to %s\n", subnetOutputTxPath)
+			return printSubnetAuthProgress(ctx, netConfig, tx, sid, subnetOutputTxPath)
 		}
 
 		w, cleanup, err := loadPChainWalletWithSubnet(ctx, netConfig, sid)
@@ -423,6 +462,7 @@ func init() {
 	subnetTransferOwnershipCmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID")
 	subnetTransferOwnershipCmd.Flags().StringSliceVar(&subnetNewOwners, "new-owner", nil, "New owner P-Chain address (repeat or comma-separate for multisig)")
 	subnetTransferOwnershipCmd.Flags().Uint32Var(&subnetThreshold, "threshold", 1, "Number of owner signatures required to authorize future subnet changes")
+	subnetTransferOwnershipCmd.Flags().StringVar(&subnetOutputTxPath, "output-tx-path", "", "Write a partially signed tx to this file instead of submitting (complete with 'tx sign' and 'tx commit')")
 
 	// Convert L1 flags
 	subnetConvertL1Cmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID to convert")
