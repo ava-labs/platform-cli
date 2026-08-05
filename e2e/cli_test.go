@@ -4,14 +4,30 @@ package e2e
 
 import (
 	"bytes"
+	"context"
+	"encoding/hex"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/constants"
+	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
+	"github.com/ava-labs/avalanchego/utils/formatting/address"
+	"github.com/ava-labs/avalanchego/vms/platformvm"
 )
 
 // runCLI executes the platform CLI with the given arguments.
 func runCLI(t *testing.T, args ...string) (string, string, error) {
+	t.Helper()
+	return runCLIWithEnvKey(t, os.Getenv(envPrivateKey), args...)
+}
+
+// runCLIWithEnvKey executes the platform CLI with an explicit
+// AVALANCHE_PRIVATE_KEY value (comma-separated for multi-key signing).
+func runCLIWithEnvKey(t *testing.T, envKeyValue string, args ...string) (string, string, error) {
 	t.Helper()
 
 	// For help commands, don't add extra flags
@@ -37,8 +53,8 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 		}
 
 		// Pass private key via environment to avoid exposing it in process args.
-		if envKey := os.Getenv(envPrivateKey); envKey != "" {
-			cliPrivateKeyEnv = envKey
+		if envKeyValue != "" {
+			cliPrivateKeyEnv = envKeyValue
 		} else if *networkFlag == "local" {
 			fullArgs = append(fullArgs, "--key-name", "ewoq")
 		}
@@ -467,6 +483,109 @@ func TestCLISubnetTransferOwnershipDuplicateOwners(t *testing.T) {
 	if !strings.Contains(stderr, "duplicate") {
 		t.Errorf("expected duplicate owner error, got stderr: %s", stderr)
 	}
+}
+
+// TestCLISubnetTransferOwnershipMultisigSigning drives the CLI binary through
+// a multisig signing round trip:
+//
+//  1. create a subnet (1-of-1)
+//  2. transfer it to a 2-of-2 multisig (funded key + generated key)
+//  3. verify a single key can no longer move it
+//  4. move it back to 1-of-1 with both keys via comma-separated
+//     AVALANCHE_PRIVATE_KEY
+func TestCLISubnetTransferOwnershipMultisigSigning(t *testing.T) {
+	requireStateChangingCLITest(t)
+	payerEnvKey := os.Getenv(envPrivateKey)
+	if payerEnvKey == "" {
+		t.Skipf("%s required: this test signs with explicit env keys", envPrivateKey)
+	}
+
+	ctx := context.Background()
+	netConfig := getNetworkConfig(t, ctx)
+	hrp := constants.GetHRP(netConfig.NetworkID)
+
+	// 1. Create subnet
+	stdout, stderr, err := runCLI(t, "subnet", "create")
+	if err != nil {
+		t.Fatalf("subnet create failed: %v\nstderr: %s", err, stderr)
+	}
+	subnetIDStr := valueAfterPrefix(t, stdout, "Subnet ID: ")
+	payerAddrStr := valueAfterPrefix(t, stdout, "Owner: ")
+	t.Logf("Created subnet %s owned by %s", subnetIDStr, payerAddrStr)
+
+	subnetID, err := ids.FromString(subnetIDStr)
+	if err != nil {
+		t.Fatalf("failed to parse subnet ID %q: %v", subnetIDStr, err)
+	}
+	payerAddr, err := address.ParseToID(payerAddrStr)
+	if err != nil {
+		t.Fatalf("failed to parse owner address %q: %v", payerAddrStr, err)
+	}
+
+	// 2. Generate the second owner key
+	key2, err := secp256k1.NewPrivateKey()
+	if err != nil {
+		t.Fatalf("failed to generate second owner key: %v", err)
+	}
+	key2Hex := "0x" + hex.EncodeToString(key2.Bytes())
+	addr2Str, err := address.Format("P", hrp, key2.Address().Bytes())
+	if err != nil {
+		t.Fatalf("failed to format second owner address: %v", err)
+	}
+
+	time.Sleep(3 * time.Second)
+
+	// 3. Transfer to a 2-of-2 multisig, authorized by the single current owner
+	_, stderr, err = runCLI(t,
+		"subnet", "transfer-ownership",
+		"--subnet-id", subnetIDStr,
+		"--new-owner", payerAddrStr,
+		"--new-owner", addr2Str,
+		"--threshold", "2",
+	)
+	if err != nil {
+		t.Fatalf("transfer to 2-of-2 failed: %v\nstderr: %s", err, stderr)
+	}
+
+	client := platformvm.NewClient(netConfig.RPCURL)
+	waitForSubnetOwners(t, ctx, client, subnetID, []ids.ShortID{payerAddr, key2.Address()}, 2)
+
+	// 4. Negative: a single key cannot meet the 2-of-2 threshold
+	_, stderr, err = runCLI(t,
+		"subnet", "transfer-ownership",
+		"--subnet-id", subnetIDStr,
+		"--new-owner", payerAddrStr,
+	)
+	if err == nil {
+		t.Fatal("expected single-key transfer out of 2-of-2 to fail, but it succeeded")
+	}
+	t.Logf("single-key transfer rejected as expected: %s", strings.TrimSpace(stderr))
+
+	// 5. Move back to 1-of-1 signing with both keys
+	_, stderr, err = runCLIWithEnvKey(t, payerEnvKey+","+key2Hex,
+		"subnet", "transfer-ownership",
+		"--subnet-id", subnetIDStr,
+		"--new-owner", payerAddrStr,
+	)
+	if err != nil {
+		t.Fatalf("multi-key transfer back to 1-of-1 failed: %v\nstderr: %s", err, stderr)
+	}
+	waitForSubnetOwners(t, ctx, client, subnetID, []ids.ShortID{payerAddr}, 1)
+
+	t.Log("=== CLI Multisig Signing Round Trip Complete ===")
+}
+
+// valueAfterPrefix returns the trimmed remainder of the first stdout line
+// starting with prefix.
+func valueAfterPrefix(t *testing.T, stdout, prefix string) string {
+	t.Helper()
+	for _, line := range strings.Split(stdout, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		}
+	}
+	t.Fatalf("output missing %q line:\n%s", prefix, stdout)
+	return ""
 }
 
 // TestCLIRemovedOldNamesRejected verifies the v2.0.0 hard cutover: the old
