@@ -107,7 +107,7 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 		}
 		defer cleanup()
 
-		txID, err := pchain.TransferSubnetOwnership(ctx, w, sid, newOwner)
+		txID, err := pchain.TransferSubnetOwnership(ctx, w, sid, []ids.ShortID{newOwner}, 1)
 		if err != nil {
 			return err
 		}
