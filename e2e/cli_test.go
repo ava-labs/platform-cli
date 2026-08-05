@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -573,6 +574,111 @@ func TestCLISubnetTransferOwnershipMultisigSigning(t *testing.T) {
 	waitForSubnetOwners(t, ctx, client, subnetID, []ids.ShortID{payerAddr}, 1)
 
 	t.Log("=== CLI Multisig Signing Round Trip Complete ===")
+}
+
+// TestCLISubnetTransferOwnershipPartialSign simulates a 2-of-2 owner whose
+// keys live on two machines, coordinating through a tx file:
+//
+//  1. create a subnet and move it to a 2-of-2 multisig (payer + generated key)
+//  2. "machine A" (payer key only) builds and partially signs a transfer back
+//     to 1-of-1 with --output-tx-path
+//  3. committing the half-signed tx is refused
+//  4. "machine B" (generated key ONLY, no payer key) completes it via tx sign
+//  5. tx commit submits it; the owner change is verified on-chain
+func TestCLISubnetTransferOwnershipPartialSign(t *testing.T) {
+	requireStateChangingCLITest(t)
+	payerEnvKey := os.Getenv(envPrivateKey)
+	if payerEnvKey == "" {
+		t.Skipf("%s required: this test signs with explicit env keys", envPrivateKey)
+	}
+
+	ctx := context.Background()
+	netConfig := getNetworkConfig(t, ctx)
+	hrp := constants.GetHRP(netConfig.NetworkID)
+
+	// 1. Create subnet and move it to a 2-of-2 multisig
+	stdout, stderr, err := runCLI(t, "subnet", "create")
+	if err != nil {
+		t.Fatalf("subnet create failed: %v\nstderr: %s", err, stderr)
+	}
+	subnetIDStr := valueAfterPrefix(t, stdout, "Subnet ID: ")
+	payerAddrStr := valueAfterPrefix(t, stdout, "Owner: ")
+	subnetID, err := ids.FromString(subnetIDStr)
+	if err != nil {
+		t.Fatalf("failed to parse subnet ID %q: %v", subnetIDStr, err)
+	}
+	payerAddr, err := address.ParseToID(payerAddrStr)
+	if err != nil {
+		t.Fatalf("failed to parse owner address %q: %v", payerAddrStr, err)
+	}
+
+	key2, err := secp256k1.NewPrivateKey()
+	if err != nil {
+		t.Fatalf("failed to generate second owner key: %v", err)
+	}
+	key2Hex := "0x" + hex.EncodeToString(key2.Bytes())
+	addr2Str, err := address.Format("P", hrp, key2.Address().Bytes())
+	if err != nil {
+		t.Fatalf("failed to format second owner address: %v", err)
+	}
+
+	time.Sleep(3 * time.Second)
+
+	_, stderr, err = runCLI(t,
+		"subnet", "transfer-ownership",
+		"--subnet-id", subnetIDStr,
+		"--new-owner", payerAddrStr,
+		"--new-owner", addr2Str,
+		"--threshold", "2",
+	)
+	if err != nil {
+		t.Fatalf("transfer to 2-of-2 failed: %v\nstderr: %s", err, stderr)
+	}
+	client := platformvm.NewClient(netConfig.RPCURL)
+	waitForSubnetOwners(t, ctx, client, subnetID, []ids.ShortID{payerAddr, key2.Address()}, 2)
+
+	// 2. Machine A: build + partially sign the transfer back to 1-of-1
+	txFile := filepath.Join(t.TempDir(), "transfer.json")
+	stdout, stderr, err = runCLI(t,
+		"subnet", "transfer-ownership",
+		"--subnet-id", subnetIDStr,
+		"--new-owner", payerAddrStr,
+		"--output-tx-path", txFile,
+	)
+	if err != nil {
+		t.Fatalf("partial-sign transfer failed: %v\nstderr: %s", err, stderr)
+	}
+	if !strings.Contains(stdout, "Signatures: 1 of 2") {
+		t.Fatalf("expected 1 of 2 signatures after machine A, got output:\n%s", stdout)
+	}
+
+	// 3. Committing a half-signed tx must be refused
+	_, stderr, err = runCLI(t, "tx", "commit", "--tx-path", txFile)
+	if err == nil {
+		t.Fatal("expected commit of half-signed tx to fail, but it succeeded")
+	}
+	if !strings.Contains(stderr, "not fully signed") {
+		t.Fatalf("expected 'not fully signed' error, got stderr: %s", stderr)
+	}
+
+	// 4. Machine B: only key2, no payer key
+	stdout, stderr, err = runCLIWithEnvKey(t, key2Hex, "tx", "sign", "--tx-path", txFile)
+	if err != nil {
+		t.Fatalf("tx sign on machine B failed: %v\nstderr: %s", err, stderr)
+	}
+	if !strings.Contains(stdout, "Fully signed") {
+		t.Fatalf("expected fully signed after machine B, got output:\n%s", stdout)
+	}
+
+	// 5. Submit and verify on-chain
+	stdout, stderr, err = runCLI(t, "tx", "commit", "--tx-path", txFile)
+	if err != nil {
+		t.Fatalf("tx commit failed: %v\nstderr: %s", err, stderr)
+	}
+	t.Logf("commit output:\n%s", strings.TrimSpace(stdout))
+	waitForSubnetOwners(t, ctx, client, subnetID, []ids.ShortID{payerAddr}, 1)
+
+	t.Log("=== CLI Partial Signing Round Trip Complete ===")
 }
 
 // valueAfterPrefix returns the trimmed remainder of the first stdout line

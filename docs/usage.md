@@ -135,7 +135,9 @@ platform-cli validator set-auto-renewed-config \
 
 ```bash
 platform-cli subnet create
-platform-cli subnet transfer-ownership --subnet-id <ID> --new-owner <address> [--new-owner <address> ...] [--threshold <n>]
+platform-cli subnet transfer-ownership --subnet-id <ID> --new-owner <address> [--new-owner <address> ...] [--threshold <n>] [--output-tx-path <file>]
+platform-cli tx sign --tx-path <file>
+platform-cli tx commit --tx-path <file>
 platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--manager <hex>]
 platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> [--contract-address <hex>]
 platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> \
@@ -161,14 +163,34 @@ platform-cli subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight
 - After the transfer, every owner-gated tx (add/remove validator, create chain,
   convert to L1) needs `threshold` of the owner keys. Choose keys you control;
   a transfer to the wrong owner set is unrecoverable.
-- To sign an owner-gated tx with multiple keys, repeat `--key-name` (or
-  comma-separate names, or set `AVALANCHE_PRIVATE_KEY` to a comma-separated
-  list). All keys must be available on one machine; the first key pays fees:
+- To sign an owner-gated tx with multiple keys on one machine, repeat
+  `--key-name` (or comma-separate names, or set `AVALANCHE_PRIVATE_KEY` to a
+  comma-separated list). The first key pays fees:
 
   ```bash
   platform-cli subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight 20 \
     --key-name owner1 --key-name owner2
   ```
+
+- When the owner keys live on different machines, pass the tx around instead
+  of the keys. Signer A builds and partially signs, each remaining signer adds
+  their signature, anyone submits:
+
+  ```bash
+  # Signer A (pays the fee)
+  platform-cli subnet transfer-ownership --subnet-id <ID> --new-owner <address> \
+    --key-name owner1 --output-tx-path transfer.json
+
+  # Signer B, after receiving transfer.json
+  platform-cli tx sign --tx-path transfer.json --key-name owner2
+
+  # Anyone, once fully signed (no key needed)
+  platform-cli tx commit --tx-path transfer.json
+  ```
+
+  `tx sign` prints which owner addresses have signed and which are still
+  missing. `tx commit` refuses to submit an under-signed tx. The partial-sign
+  flow currently supports `TransferSubnetOwnershipTx` only.
 
 `add-validator` notes:
 - Adds a validator to a **permissioned** subnet (`AddSubnetValidatorTx`).
