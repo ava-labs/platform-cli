@@ -28,6 +28,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
+	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/platform-cli/pkg/crosschain"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
@@ -475,6 +476,108 @@ func TestTransferSubnetOwnershipMultisig(t *testing.T) {
 	waitForSubnetOwners(t, ctx, client, subnetID, owners, 2)
 
 	t.Log("=== Multisig Ownership Transfer Complete ===")
+}
+
+// TestTransferSubnetOwnershipMultisigAuth covers transfers OUT of a multisig
+// owner, where the transfer tx itself needs multiple signatures:
+//
+//  1. 1-of-1 -> 2-of-3 where the fee payer stays an owner
+//  2. 2-of-3 -> 2-of-2 replacing the owner set entirely (payer removed),
+//     authorized by two of the three owner keys
+//  3. a non-owner key cannot authorize a transfer (rejected)
+//  4. a single owner key cannot meet threshold 2 (rejected)
+//  5. 2-of-2 -> 1-of-1 back to the payer, authorized by both owner keys
+//     while the (non-owner) payer key pays the fee
+func TestTransferSubnetOwnershipMultisigAuth(t *testing.T) {
+	ctx := context.Background()
+	w, netConfig := getTestWallet(t)
+	payerAddr := w.PChainAddress()
+
+	keyBytes := getPrivateKeyBytes(t)
+	payerKey, _ := wallet.ToPrivateKey(keyBytes)
+
+	key2, err := secp256k1.NewPrivateKey()
+	if err != nil {
+		t.Fatalf("failed to generate owner key 2: %v", err)
+	}
+	key3, err := secp256k1.NewPrivateKey()
+	if err != nil {
+		t.Fatalf("failed to generate owner key 3: %v", err)
+	}
+
+	// Create subnet, owned 1-of-1 by the payer
+	t.Log("Creating subnet...")
+	subnetID, err := pchain.CreateSubnet(ctx, w)
+	if err != nil {
+		t.Fatalf("CreateSubnet failed: %v", err)
+	}
+	t.Logf("Created Subnet ID: %s", subnetID)
+	time.Sleep(3 * time.Second)
+
+	client := platformvm.NewClient(netConfig.RPCURL)
+
+	// newSubnetWallet builds a subnet-tracking wallet holding the given keys.
+	// The payer key is always included so fees can be paid even when the
+	// payer is not part of the owner set.
+	newSubnetWallet := func(ownerKeys ...*secp256k1.PrivateKey) *wallet.Wallet {
+		t.Helper()
+		kc := secp256k1fx.NewKeychain(append([]*secp256k1.PrivateKey{payerKey}, ownerKeys...)...)
+		sw, err := wallet.NewWalletFromKeychainWithSubnet(ctx, kc, payerAddr, netConfig, subnetID)
+		if err != nil {
+			t.Fatalf("failed to create subnet wallet: %v", err)
+		}
+		return sw
+	}
+
+	// 1. 1-of-1 -> 2-of-3 (payer + two generated keys)
+	owners3 := []ids.ShortID{payerAddr, key2.Address(), key3.Address()}
+	t.Log("Transferring ownership to 2-of-3 multisig...")
+	txID, err := pchain.TransferSubnetOwnership(ctx, newSubnetWallet(), subnetID, owners3, 2)
+	if err != nil {
+		t.Fatalf("TransferSubnetOwnership (1-of-1 -> 2-of-3) failed: %v", err)
+	}
+	t.Logf("Transfer Ownership TX: %s", txID)
+	waitForSubnetOwners(t, ctx, client, subnetID, owners3, 2)
+
+	// 2. 2-of-3 -> 2-of-2 replacing the owner set entirely (payer removed),
+	// authorized by payer + key2 (two of the three owners)
+	owners2 := []ids.ShortID{key2.Address(), key3.Address()}
+	t.Log("Transferring ownership to 2-of-2 multisig without the payer...")
+	txID, err = pchain.TransferSubnetOwnership(ctx, newSubnetWallet(key2), subnetID, owners2, 2)
+	if err != nil {
+		t.Fatalf("TransferSubnetOwnership (2-of-3 -> 2-of-2) failed: %v", err)
+	}
+	t.Logf("Transfer Ownership TX: %s", txID)
+	waitForSubnetOwners(t, ctx, client, subnetID, owners2, 2)
+
+	// 3. Negative: the payer is no longer an owner and must not be able to
+	// authorize a transfer on its own.
+	t.Log("Verifying a non-owner cannot transfer ownership...")
+	if _, err := pchain.TransferSubnetOwnership(ctx, newSubnetWallet(), subnetID, []ids.ShortID{payerAddr}, 1); err == nil {
+		t.Fatal("expected non-owner transfer to fail, but it succeeded")
+	} else {
+		t.Logf("non-owner transfer rejected as expected: %v", err)
+	}
+
+	// 4. Negative: a single owner key cannot meet threshold 2.
+	t.Log("Verifying one owner key cannot meet threshold 2...")
+	if _, err := pchain.TransferSubnetOwnership(ctx, newSubnetWallet(key2), subnetID, []ids.ShortID{payerAddr}, 1); err == nil {
+		t.Fatal("expected under-threshold transfer to fail, but it succeeded")
+	} else {
+		t.Logf("under-threshold transfer rejected as expected: %v", err)
+	}
+
+	// 5. 2-of-2 -> 1-of-1 back to the payer, authorized by both owner keys.
+	// The payer key is in the keychain only to pay the fee.
+	t.Log("Transferring ownership back to 1-of-1 with both owner keys signing...")
+	txID, err = pchain.TransferSubnetOwnership(ctx, newSubnetWallet(key2, key3), subnetID, []ids.ShortID{payerAddr}, 1)
+	if err != nil {
+		t.Fatalf("TransferSubnetOwnership (2-of-2 -> 1-of-1) failed: %v", err)
+	}
+	t.Logf("Transfer Ownership TX: %s", txID)
+	waitForSubnetOwners(t, ctx, client, subnetID, []ids.ShortID{payerAddr}, 1)
+
+	t.Log("=== Multisig Authorization Lifecycle Complete ===")
 }
 
 // waitForSubnetOwners polls GetSubnet until the on-chain owner matches the
