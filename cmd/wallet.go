@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
@@ -199,9 +200,33 @@ func getNetworkConfig(ctx context.Context) (network.Config, error) {
 		}
 		hrp := constants.GetHRP(config.NetworkID)
 		fmt.Printf("Using custom RPC: %s (network ID: %d, HRP: %s)\n", config.RPCURL, config.NetworkID, hrp)
+		return applyHeliconMinOverride(config)
+	}
+	config, err := network.GetConfig(networkName)
+	if err != nil {
+		return network.Config{}, err
+	}
+	return applyHeliconMinOverride(config)
+}
+
+// applyHeliconMinOverride applies --helicon-min-stake-duration to a resolved config.
+// No API exposes the node's real minimum, so the built-in values are only a guess
+// for custom networks; this shifts the local check, never the node's own.
+func applyHeliconMinOverride(config network.Config) (network.Config, error) {
+	if heliconMinPeriod == "" {
 		return config, nil
 	}
-	return network.GetConfig(networkName)
+	d, err := time.ParseDuration(heliconMinPeriod)
+	if err != nil {
+		return network.Config{}, fmt.Errorf("invalid --helicon-min-stake-duration: %w", err)
+	}
+	if d <= 0 {
+		return network.Config{}, fmt.Errorf("invalid --helicon-min-stake-duration: must be positive, got %s", d)
+	}
+	fmt.Printf("Minimum auto-renewal cycle duration overridden locally for %s: %s -> %s (the node still enforces its own minimum)\n",
+		config.Name, config.HeliconMinStakeDuration, d)
+	config.HeliconMinStakeDuration = d
+	return config, nil
 }
 
 // loadPChainWallet creates a P-Chain wallet from either Ledger or private key.

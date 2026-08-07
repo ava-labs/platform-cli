@@ -122,6 +122,10 @@ platform-cli validator set-auto-renewed-config \
 - `--period` is the per-cycle duration and must fall between the Helicon
   minimum stake duration (12h on Fuji, 48h on Mainnet, 1h custom default)
   and the network's max stake duration.
+- No API exposes that minimum, so the values above are built into the CLI and the
+  1h custom default is only a guess. If your devnet runs a different
+  `--helicon-min-stake-duration`, pass the same value to align the local check
+  (the node still validates the period on its own).
 - `--auto-compound` is the fraction of rewards restaked each cycle
   (`1` = 100%, `0.3` = 30%).
 - BLS proof of possession comes from `--bls-public-key`/`--bls-pop` (manual,

@@ -32,6 +32,7 @@ var (
 	keyNameGlobal     string // Key name for loading from keystore
 	customRPCURL      string // Custom RPC URL for devnets
 	customNetID       uint32 // Optional network ID for custom RPC (auto-detected if not set)
+	heliconMinPeriod  string // Override for the local ACP-236 minimum check (empty: use network default)
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -72,6 +73,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&keyNameGlobal, "key-name", "", "Name of key to load from keystore")
 	rootCmd.PersistentFlags().StringVar(&customRPCURL, "rpc-url", "", "Custom RPC URL (overrides --network)")
 	rootCmd.PersistentFlags().Uint32Var(&customNetID, "network-id", 0, "Network ID for custom RPC (1=mainnet, 5=fuji, auto-detected if not set)")
+	rootCmd.PersistentFlags().StringVar(&heliconMinPeriod, "helicon-min-stake-duration", "", "Override the ACP-236 minimum auto-renewal cycle duration checked locally, e.g. 5m (default: the built-in value for the network; the node still enforces its own)")
 	_ = rootCmd.PersistentFlags().MarkDeprecated("private-key", "prefer --key-name (keystore) or --ledger to avoid exposing secrets in process arguments")
 
 	rootCmd.AddCommand(&cobra.Command{

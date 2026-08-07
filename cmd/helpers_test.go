@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ava-labs/platform-cli/pkg/network"
 )
 
 func TestAvaxToNAVAX(t *testing.T) {
@@ -311,5 +313,85 @@ func TestIsEwoqKey(t *testing.T) {
 
 	if isEwoqKey([]byte{1, 2, 3}) {
 		t.Fatal("isEwoqKey() expected false for wrong length")
+	}
+}
+
+func TestApplyHeliconMinOverride(t *testing.T) {
+	// Config as resolved for a custom network: the CLI cannot read the node's real
+	// minimum, so it falls back to 1h.
+	base := network.Config{Name: "custom-custom", HeliconMinStakeDuration: time.Hour}
+
+	tests := []struct {
+		name    string
+		flag    string
+		want    time.Duration
+		wantErr bool
+	}{
+		{
+			name: "unset leaves the built-in value untouched",
+			flag: "",
+			want: time.Hour,
+		},
+		{
+			name: "shorter duration, the devnet case",
+			flag: "5m",
+			want: 5 * time.Minute,
+		},
+		{
+			name: "longer duration is allowed too",
+			flag: "72h",
+			want: 72 * time.Hour,
+		},
+		{
+			name:    "zero",
+			flag:    "0s",
+			wantErr: true,
+		},
+		{
+			name:    "negative",
+			flag:    "-5m",
+			wantErr: true,
+		},
+		{
+			name:    "not a duration",
+			flag:    "5 minutes",
+			wantErr: true,
+		},
+		{
+			name:    "bare number without unit",
+			flag:    "300",
+			wantErr: true,
+		},
+	}
+
+	original := heliconMinPeriod
+	t.Cleanup(func() { heliconMinPeriod = original })
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			heliconMinPeriod = tt.flag
+			got, err := applyHeliconMinOverride(base)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("applyHeliconMinOverride(%q) expected error", tt.flag)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("applyHeliconMinOverride(%q) unexpected error: %v", tt.flag, err)
+			}
+			if got.HeliconMinStakeDuration != tt.want {
+				t.Fatalf("applyHeliconMinOverride(%q) = %s, want %s",
+					tt.flag, got.HeliconMinStakeDuration, tt.want)
+			}
+			// Only the Helicon minimum may change.
+			if got.Name != base.Name {
+				t.Fatalf("applyHeliconMinOverride(%q) modified Name: %q", tt.flag, got.Name)
+			}
+			// The caller's config must not be mutated: Config is passed by value.
+			if base.HeliconMinStakeDuration != time.Hour {
+				t.Fatalf("applyHeliconMinOverride(%q) mutated the input config", tt.flag)
+			}
+		})
 	}
 }
