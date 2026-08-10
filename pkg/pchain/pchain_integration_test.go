@@ -212,7 +212,7 @@ func TestIntegration_TransferSubnetOwnership(t *testing.T) {
 	}
 
 	// Transfer ownership
-	txID, err := TransferSubnetOwnership(ctx, w, subnetID, newOwner)
+	txID, err := TransferSubnetOwnership(ctx, w, subnetID, []ids.ShortID{newOwner}, 1)
 	if err != nil {
 		t.Fatalf("TransferSubnetOwnership failed: %v", err)
 	}

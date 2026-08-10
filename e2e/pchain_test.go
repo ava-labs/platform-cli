@@ -407,7 +407,7 @@ func TestCreateSubnetAndTransferOwnership(t *testing.T) {
 
 	// 3. Transfer ownership back to self (testing the operation)
 	t.Logf("Transferring ownership to self...")
-	txID, err := pchain.TransferSubnetOwnership(ctx, subnetWallet, subnetID, w.PChainAddress())
+	txID, err := pchain.TransferSubnetOwnership(ctx, subnetWallet, subnetID, []ids.ShortID{w.PChainAddress()}, 1)
 	if err != nil {
 		t.Fatalf("TransferSubnetOwnership failed: %v", err)
 	}
@@ -724,7 +724,7 @@ func TestSubnetLifecycle(t *testing.T) {
 
 	// 4. Transfer subnet ownership (to self)
 	t.Log("Step 3: Transferring subnet ownership...")
-	txID, err := pchain.TransferSubnetOwnership(ctx, subnetWallet, subnetID, w.PChainAddress())
+	txID, err := pchain.TransferSubnetOwnership(ctx, subnetWallet, subnetID, []ids.ShortID{w.PChainAddress()}, 1)
 	if err != nil {
 		t.Fatalf("TransferSubnetOwnership failed: %v", err)
 	}
