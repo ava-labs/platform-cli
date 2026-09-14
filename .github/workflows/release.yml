@@ -55,13 +55,13 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           go build -tags ledger \
             -ldflags "-s -w -X github.com/ava-labs/platform-cli/cmd.version=${VERSION}" \
-            -o platform .
+            -o platform-cli .
 
       - name: Package tarball
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           TARBALL="platform-cli_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
-          tar -czf "${TARBALL}" platform
+          tar -czf "${TARBALL}" platform-cli
           echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
 
       - name: Upload artifact
