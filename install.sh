@@ -8,6 +8,8 @@ set -e
 
 REPO="ava-labs/platform-cli"
 BINARY="platform-cli"
+# Name the binary was published under in releases up to and including v2.0.1.
+LEGACY_BINARY="platform"
 GITHUB="https://github.com"
 
 # Defaults
@@ -153,13 +155,19 @@ main() {
     # Extract
     tar -xzf "${tmp}/${tarball}" -C "$tmp"
 
-    # Find the binary (may be at top level or in a subdirectory)
+    # Find the binary (may be at top level or in a subdirectory). Older
+    # releases ship it as ${LEGACY_BINARY}; it is still installed as ${BINARY}.
     binary_path=""
-    if [ -f "${tmp}/${BINARY}" ]; then
-        binary_path="${tmp}/${BINARY}"
-    else
-        binary_path="$(find "$tmp" -name "$BINARY" -type f | head -1)"
-    fi
+    for name in "$BINARY" "$LEGACY_BINARY"; do
+        if [ -f "${tmp}/${name}" ]; then
+            binary_path="${tmp}/${name}"
+        else
+            binary_path="$(find "$tmp" -name "$name" -type f | head -1)"
+        fi
+        if [ -n "$binary_path" ]; then
+            break
+        fi
+    done
 
     if [ -z "$binary_path" ]; then
         echo "Error: '${BINARY}' binary not found in release archive" >&2
