@@ -8,6 +8,8 @@ set -e
 
 REPO="ava-labs/platform-cli"
 BINARY="platform-cli"
+# Release archives ship the binary as "platform". Install it as BINARY.
+ARCHIVE_BINARY="platform"
 GITHUB="https://github.com"
 
 # Defaults
@@ -155,11 +157,14 @@ main() {
 
     # Find the binary (may be at top level or in a subdirectory)
     binary_path=""
-    if [ -f "${tmp}/${BINARY}" ]; then
-        binary_path="${tmp}/${BINARY}"
-    else
-        binary_path="$(find "$tmp" -name "$BINARY" -type f | head -1)"
-    fi
+    for name in "$BINARY" "$ARCHIVE_BINARY"; do
+        if [ -f "${tmp}/${name}" ]; then
+            binary_path="${tmp}/${name}"
+        else
+            binary_path="$(find "$tmp" -name "$name" -type f | head -1)"
+        fi
+        [ -n "$binary_path" ] && break
+    done
 
     if [ -z "$binary_path" ]; then
         echo "Error: '${BINARY}' binary not found in release archive" >&2
