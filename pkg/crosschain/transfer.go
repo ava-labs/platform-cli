@@ -3,6 +3,7 @@ package crosschain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -59,10 +60,14 @@ func ImportToCChain(ctx context.Context, w *wallet.FullWallet) (ids.ID, error) {
 	cWallet := w.CWallet()
 	ethAddr := w.EthAddress()
 
-	// Issue the import transaction
-	importTx, err := cWallet.IssueImportTx(constants.PlatformChainID, ethAddr, common.WithContext(ctx))
+	// Issue the import transaction. The wallet's own acceptance wait uses
+	// avax.getAtomicTxStatus, which Helicon C-Chain endpoints do not serve.
+	importTx, err := cWallet.IssueImportTx(constants.PlatformChainID, ethAddr, common.WithContext(ctx), common.WithAssumeDecided())
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue C-Chain import tx: %w", err)
+	}
+	if err := awaitCChainAtomicTx(ctx, w.Config().RPCURL, importTx.ID()); err != nil {
+		return importTx.ID(), fmt.Errorf("C-Chain import: %w", err)
 	}
 
 	return importTx.ID(), nil
@@ -79,13 +84,16 @@ func ExportFromCChain(ctx context.Context, w *wallet.FullWallet, amountNAVAX uin
 		Addrs:     []ids.ShortID{w.PChainAddress()},
 	}
 
-	// Issue the export transaction
+	// Issue the export transaction. See ImportToCChain for why we wait here.
 	exportTx, err := cWallet.IssueExportTx(constants.PlatformChainID, []*secp256k1fx.TransferOutput{{
 		Amt:          amountNAVAX,
 		OutputOwners: owner,
-	}}, common.WithContext(ctx))
+	}}, common.WithContext(ctx), common.WithAssumeDecided())
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue C-Chain export tx: %w", err)
+	}
+	if err := awaitCChainAtomicTx(ctx, w.Config().RPCURL, exportTx.ID()); err != nil {
+		return exportTx.ID(), fmt.Errorf("C-Chain export: %w", err)
 	}
 
 	return exportTx.ID(), nil
@@ -195,8 +203,9 @@ func importWithRetry(ctx context.Context, importFn func() (ids.ID, error)) (ids.
 			return txID, nil
 		}
 
-		// Only retry on transient UTXO visibility errors
-		if !isRetryableImportError(err) {
+		// Only retry on transient UTXO visibility errors. Never re-issue a tx
+		// that the node already took.
+		if errors.Is(err, errIssuedNotConfirmed) || !isRetryableImportError(err) {
 			return ids.Empty, err
 		}
 
