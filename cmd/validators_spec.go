@@ -257,6 +257,30 @@ func setL1ValidatorOwners(
 	return nil
 }
 
+// finalizeL1Validators sets the validator owners with setL1ValidatorOwners and
+// then sorts the validators with sortAndValidateL1Validators. The owner lists
+// align with validators in input order, so the owners must be set before the
+// sort.
+func finalizeL1Validators(
+	validators []*txs.ConvertSubnetToL1Validator,
+	remainingBalanceOwners []ids.ShortID,
+	deactivationOwners []ids.ShortID,
+	defaultOwner ids.ShortID,
+	allowEmpty bool,
+) error {
+	err := setL1ValidatorOwners(
+		validators,
+		remainingBalanceOwners,
+		deactivationOwners,
+		defaultOwner,
+		allowEmpty,
+	)
+	if err != nil {
+		return err
+	}
+	return sortAndValidateL1Validators(validators)
+}
+
 // validatorOwner returns owners[i], or defaultOwner if owners is nil, as a
 // threshold 1 owner. An empty address returns the empty owner.
 func validatorOwner(owners []ids.ShortID, i int, defaultOwner ids.ShortID) message.PChainOwner {

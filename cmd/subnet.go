@@ -237,8 +237,6 @@ remaining balance. The command refuses to issue an empty owner unless you set
 			return fmt.Errorf("failed to get network config: %w", err)
 		}
 
-		// Owner lists align with the validators in input order, so set the
-		// owners before sorting.
 		hrp := network.GetHRP(netConfig.NetworkID)
 		remainingBalanceOwners, err := parseValidatorOwners(subnetValRemainingBalanceOwner, hrp, len(validators))
 		if err != nil {
@@ -255,7 +253,7 @@ remaining balance. The command refuses to issue an empty owner unless you set
 		}
 		defer cleanup()
 
-		err = setL1ValidatorOwners(
+		err = finalizeL1Validators(
 			validators,
 			remainingBalanceOwners,
 			deactivationOwners,
@@ -263,9 +261,6 @@ remaining balance. The command refuses to issue an empty owner unless you set
 			subnetAllowEmptyOwners,
 		)
 		if err != nil {
-			return err
-		}
-		if err := sortAndValidateL1Validators(validators); err != nil {
 			return err
 		}
 
