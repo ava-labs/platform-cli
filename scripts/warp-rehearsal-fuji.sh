@@ -71,6 +71,26 @@ l1_validators() {
 		jq -r '.result.validators[] | "\(.validationID) \(.nodeID) \(.deactivationOwner.threshold // "0")"'
 }
 
+# wait_for_warp_set waits until the Warp canonical set at the proposed height
+# holds the expected number of validators. A freshly converted L1 needs time for
+# its validators to enter the validator set that Warp verification reads.
+# getCurrentValidators shows them first, and the proposed height set lags. A
+# rotation that starts before this set is populated fails with an empty set.
+wait_for_warp_set() {
+	local want="$1" n i streak=0 need=3
+	for ((i = 0; i < POLL_ATTEMPTS * 4; i++)); do
+		n="$(pcall platform.getValidatorsAt "{\"height\":\"proposed\",\"subnetID\":\"$SUBNET_ID\"}" | jq -r '.result | length')"
+		if [[ "$n" == "$want" ]]; then
+			streak=$((streak + 1))
+			[[ "$streak" -ge "$need" ]] && return 0
+		else
+			streak=0
+		fi
+		sleep "$POLL_SECONDS"
+	done
+	fail "proposed-height Warp set not stable at $want (last count $n)"
+}
+
 # wait_for_validators waits until the subnet has the expected number of L1
 # validators.
 wait_for_validators() {
@@ -102,7 +122,7 @@ main() {
 	node_ids="$(awk '{print $1}' "$WORK_DIR/validators.txt" | paste -sd, -)"
 	bls_keys="$(awk '{print $2}' "$WORK_DIR/validators.txt" | paste -sd, -)"
 	bls_pops="$(awk '{print $3}' "$WORK_DIR/validators.txt" | paste -sd, -)"
-	weights="$(yes "$WEIGHT" | head -n "$NUM_VALIDATORS" | paste -sd, -)"
+	weights="$(for ((wi = 0; wi < NUM_VALIDATORS; wi++)); do echo "$WEIGHT"; done | paste -sd, -)"
 
 	log "Create the subnet and the manager chain"
 	SUBNET_ID="$(platform subnet create | awk '/^Subnet ID:/ {print $3}')"
@@ -126,6 +146,9 @@ main() {
 	wait_for_validators "$NUM_VALIDATORS"
 	l1_validators | tee "$WORK_DIR/before.txt"
 	awk '$3 != 0 {exit 1}' "$WORK_DIR/before.txt" || fail "a validator already has a deactivation owner"
+
+	log "Wait for the proposed-height Warp set to populate"
+	wait_for_warp_set "$NUM_VALIDATORS"
 
 	log "warp plan"
 	platform warp plan \
