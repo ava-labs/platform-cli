@@ -1,11 +1,15 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/platform-cli/pkg/crosschain"
+	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
+	"github.com/ava-labs/platform-cli/pkg/wallet"
 	"github.com/spf13/cobra"
 )
 
@@ -16,6 +20,31 @@ var (
 	transferTo          string
 	transferDest        string
 )
+
+var errZeroDestinationAddress = errors.New("destination is the zero address")
+
+// parseDestinationAddress parses a P-Chain address ("P-<hrp>1...") for the
+// network with the given HRP. It also accepts the raw short ID form that
+// earlier versions required.
+func parseDestinationAddress(addr, hrp string) (ids.ShortID, error) {
+	var (
+		dest ids.ShortID
+		err  error
+	)
+	if strings.Contains(addr, "-") {
+		dest, err = parsePChainAddress(addr, hrp)
+	} else {
+		dest, err = ids.ShortFromString(addr)
+	}
+	if err != nil {
+		return ids.ShortEmpty, err
+	}
+	// Nobody holds the key for the zero address, so funds sent to it are lost.
+	if dest == ids.ShortEmpty {
+		return ids.ShortEmpty, errZeroDestinationAddress
+	}
+	return dest, nil
+}
 
 var transferCmd = &cobra.Command{
 	Use:   "transfer",
@@ -64,14 +93,14 @@ var transferSendCmd = &cobra.Command{
 			return fmt.Errorf("invalid amount: %w", err)
 		}
 
-		destAddr, err := ids.ShortFromString(transferDest)
-		if err != nil {
-			return fmt.Errorf("invalid destination address: %w", err)
-		}
-
 		netConfig, err := getNetworkConfig(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
+		destAddr, err := parseDestinationAddress(transferDest, network.GetHRP(netConfig.NetworkID))
+		if err != nil {
+			return fmt.Errorf("invalid --to address %q: %w", transferDest, err)
 		}
 
 		w, cleanup, err := loadPChainWallet(ctx, netConfig)
@@ -80,7 +109,7 @@ var transferSendCmd = &cobra.Command{
 		}
 		defer cleanup()
 
-		fmt.Printf("Sending %d nAVAX (%.9f AVAX) to %s...\n", amountNAVAX, float64(amountNAVAX)/1e9, destAddr)
+		fmt.Printf("Sending %d nAVAX (%.9f AVAX) to %s...\n", amountNAVAX, float64(amountNAVAX)/1e9, wallet.FormatPChainAddress(destAddr, netConfig.NetworkID))
 
 		txID, err := pchain.Send(ctx, w, destAddr, amountNAVAX)
 		if err != nil {
@@ -292,7 +321,7 @@ func init() {
 	// Flags for P-Chain send
 	transferSendCmd.Flags().Float64Var(&transferAmount, "amount", 0, "Amount in AVAX to send")
 	transferSendCmd.Flags().Uint64Var(&transferAmountNAVAX, "amount-navax", 0, "Amount in nAVAX (for precision-sensitive transfers)")
-	transferSendCmd.Flags().StringVar(&transferDest, "to", "", "Destination P-Chain address")
+	transferSendCmd.Flags().StringVar(&transferDest, "to", "", "Destination P-Chain address (P-avax1..., P-fuji1...)")
 	transferSendCmd.MarkFlagsMutuallyExclusive("amount", "amount-navax")
 
 	// Flags for combined transfer commands
