@@ -408,6 +408,67 @@ func TestCLISubnetConvertL1MissingArgs(t *testing.T) {
 	}
 }
 
+func TestCLISubnetTransferOwnershipMissingArgs(t *testing.T) {
+	_, stderr, err := runCLI(t, "subnet", "transfer-ownership")
+	if err == nil {
+		t.Error("expected error when missing required args")
+	}
+
+	if !strings.Contains(stderr, "subnet-id") {
+		t.Logf("stderr: %s", stderr)
+	}
+}
+
+func TestCLISubnetTransferOwnershipInvalidAddress(t *testing.T) {
+	_, stderr, err := runCLI(t,
+		"subnet", "transfer-ownership",
+		"--subnet-id", "11111111111111111111111111111111LpoYY",
+		"--new-owner", "not-an-address",
+	)
+	if err == nil {
+		t.Error("expected error for invalid owner address")
+	}
+
+	if !strings.Contains(stderr, "invalid owner address") {
+		t.Errorf("expected invalid owner address error, got stderr: %s", stderr)
+	}
+}
+
+// TestCLISubnetTransferOwnershipInvalidThreshold verifies that a threshold
+// larger than the owner set is rejected before any wallet or network access.
+func TestCLISubnetTransferOwnershipInvalidThreshold(t *testing.T) {
+	_, stderr, err := runCLI(t,
+		"subnet", "transfer-ownership",
+		"--subnet-id", "11111111111111111111111111111111LpoYY",
+		"--new-owner", "P-fuji18jma8ppw3nhx5r4ap8clazz0dps7rv5u6wmu4t",
+		"--threshold", "2",
+	)
+	if err == nil {
+		t.Error("expected error for threshold exceeding owner count")
+	}
+
+	if !strings.Contains(stderr, "threshold") {
+		t.Errorf("expected threshold error, got stderr: %s", stderr)
+	}
+}
+
+func TestCLISubnetTransferOwnershipDuplicateOwners(t *testing.T) {
+	addr := "P-fuji18jma8ppw3nhx5r4ap8clazz0dps7rv5u6wmu4t"
+	_, stderr, err := runCLI(t,
+		"subnet", "transfer-ownership",
+		"--subnet-id", "11111111111111111111111111111111LpoYY",
+		"--new-owner", addr,
+		"--new-owner", addr,
+	)
+	if err == nil {
+		t.Error("expected error for duplicate owner addresses")
+	}
+
+	if !strings.Contains(stderr, "duplicate") {
+		t.Errorf("expected duplicate owner error, got stderr: %s", stderr)
+	}
+}
+
 // TestCLIRemovedOldNamesRejected verifies the v2.0.0 hard cutover: the old
 // command names were removed (no aliases) and are now rejected as unknown.
 func TestCLIRemovedOldNamesRejected(t *testing.T) {
