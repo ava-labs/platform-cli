@@ -148,6 +148,9 @@ platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id>
   --validator-bls-pops <hex>,<hex> \
   [--manager <hex>]
 platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --mock-validator
+platform-cli subnet convert-to-l1 --subnet-id <ID> --chain-id <manager-chain-id> --validators <nodes> \
+  [--validator-remaining-balance-owner P-...[,P-...]] \
+  [--validator-deactivation-owner P-...[,P-...]]
 platform-cli subnet add-validator --subnet-id <ID> --node-id NodeID-... --weight <uint> [--start <RFC3339|now>] [--duration <dur>]
 platform-cli subnet remove-validator --subnet-id <ID> --node-id NodeID-...
 ```
@@ -192,6 +195,22 @@ platform-cli subnet remove-validator --subnet-id <ID> --node-id NodeID-...
   - `--validator-node-ids`
   - `--validator-bls-public-keys`
   - `--validator-bls-pops`
+- Each validator has two P-Chain owners. The P-Chain cannot change them after
+  the conversion.
+  - `--validator-remaining-balance-owner`: the address that receives the
+    validator's remaining balance when the validator is disabled or removed.
+  - `--validator-deactivation-owner`: the address that can disable the
+    validator (`l1 disable-validator`).
+- Both owners default to the P-Chain address of the issuing key, with threshold 1.
+- Each owner flag takes 1 P-Chain address (`P-avax1...`, `P-fuji1...`) for all
+  validators, or a comma-separated list with 1 address per validator. The list
+  order must match the `--validators` or `--validator-node-ids` order. The CLI
+  rejects addresses for other chains or networks.
+- The CLI prints both owners of each validator before it submits the transaction.
+- An empty owner has threshold 0, so any funded P-Chain key can disable the
+  validator and spend its remaining balance. The CLI refuses to issue an empty
+  owner. `--allow-empty-owners` turns off the default to your own address and
+  lets unset owners stay empty. Do not use it on a real L1.
 
 ### L1 Validators
 
