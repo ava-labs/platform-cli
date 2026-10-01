@@ -2,11 +2,15 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +19,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
+	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs/executor"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
@@ -30,6 +35,8 @@ import (
 const (
 	warpTypeWeight   = "weight"
 	warpTypeRegister = "register"
+
+	blsKeyFileName = "signer.key"
 
 	// blsSecretKeyLen is the size of the raw secret key avalanchego writes to
 	// staking/signer.key.
@@ -61,7 +68,8 @@ var (
 	warpManagerAddress        string
 	warpSubnetID              string
 	warpMessage               string
-	warpBLSKey                string
+	warpBLSKeys               []string
+	warpBLSKeyDir             string
 	warpYes                   bool
 	warpRPC                   string
 	warpSigs                  []string
@@ -216,54 +224,168 @@ func verifyRegisterExpiry(expiry uint64, now time.Time) error {
 
 var warpSignCmd = &cobra.Command{
 	Use:   "sign",
-	Short: "Sign an unsigned Warp message with a validator BLS key",
-	Long: `Sign an unsigned Warp message with the BLS key of a validator.
+	Short: "Sign Warp messages with validator BLS keys",
+	Long: `Sign Warp messages with the BLS keys of validators.
 
-Run this on the validator machine. --bls-key is the avalanchego
-staking/signer.key file (the 32-byte raw secret key). The key never leaves
-this process: it is never printed or written.
+Run this on the validator machine. A key is an avalanchego staking/signer.key
+file (the 32-byte raw secret key). Keys never leave this process: they are
+never printed or written.
 
-Before it signs, the command prints every field of the message and the signer
-public key, and asks you to type 'yes'. A BLS signature over these bytes
-authorizes the change on the P-Chain, so read the fields first. --yes skips
-the prompt.
+Single message:
+  warp sign --bls-key <signer.key> --message <hex>
+  Output: one "<public key hex>:<signature hex>" blob for "warp aggregate --sig".
 
-Output: one "<public key hex>:<signature hex>" blob for "warp aggregate --sig".`,
+Rotation plan (batch):
+  warp sign --plan plan.json --bls-key <signer.key> [--bls-key ...] [--bls-key-dir <dir>]
+  Signs every plan message with every key and writes one bundle file (--out)
+  for "warp rotate --sigs". The bundle also holds each key's proof of
+  possession, which the re-add needs. --bls-key-dir uses every file named
+  signer.key under the directory.
+
+Before it signs, the command prints every field of every message and the
+signer public keys, and asks you to type 'yes'. A BLS signature over these
+bytes authorizes the change on the P-Chain, so read the fields first. --yes
+skips the prompt.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if warpBLSKey == "" || warpMessage == "" {
-			return fmt.Errorf("%w: --bls-key and --message", errWarpMissingFlag)
+		if (warpPlanPath == "") == (warpMessage == "") {
+			return fmt.Errorf("%w: exactly one of --plan and --message", errWarpMissingFlag)
 		}
-		msgBytes, err := decodeHex(warpMessage)
-		if err != nil {
-			return fmt.Errorf("invalid --message: %w", err)
-		}
-		decoded, err := warp.Decode(msgBytes)
-		if err != nil {
-			return fmt.Errorf("refusing to sign: %w", err)
-		}
-		now := time.Now()
-		if err := verifyDecodedExpiry(decoded, now); err != nil {
-			return fmt.Errorf("refusing to sign: %w", err)
-		}
-
-		signer, err := loadBLSKey(warpBLSKey)
+		paths, err := blsKeyPaths(warpBLSKeys, warpBLSKeyDir)
 		if err != nil {
 			return err
 		}
-
-		fmt.Print(describeWarpMessage(decoded, now))
-		fmt.Printf("Signer BLS public key: 0x%x\n\n", bls.PublicKeyToCompressedBytes(signer.PublicKey()))
-		if err := confirm("Type 'yes' to sign this message: ", warpYes); err != nil {
-			return err
+		if warpPlanPath != "" {
+			return signPlan(warpPlanPath, paths)
 		}
-
-		sig, err := warp.Sign(signer, decoded.Message)
-		if err != nil {
-			return err
+		if len(paths) != 1 {
+			return fmt.Errorf("%w: --message takes exactly one --bls-key, got %d", errWarpMissingFlag, len(paths))
 		}
-		fmt.Printf("Signature: %s\n", sig)
-		return nil
+		return signMessage(warpMessage, paths[0])
 	},
+}
+
+func signMessage(msgHex, keyPath string) error {
+	msgBytes, err := decodeHex(msgHex)
+	if err != nil {
+		return fmt.Errorf("invalid --message: %w", err)
+	}
+	decoded, err := warp.Decode(msgBytes)
+	if err != nil {
+		return fmt.Errorf("refusing to sign: %w", err)
+	}
+	now := time.Now()
+	if err := verifyDecodedExpiry(decoded, now); err != nil {
+		return fmt.Errorf("refusing to sign: %w", err)
+	}
+
+	signer, err := loadBLSKey(keyPath)
+	if err != nil {
+		return err
+	}
+
+	fmt.Print(describeWarpMessage(decoded, now))
+	fmt.Printf("Signer BLS public key: 0x%x\n\n", bls.PublicKeyToCompressedBytes(signer.PublicKey()))
+	if err := confirm("Type 'yes' to sign this message: ", warpYes); err != nil {
+		return err
+	}
+
+	sig, err := warp.Sign(signer, decoded.Message)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Signature: %s\n", sig)
+	return nil
+}
+
+func signPlan(planPath string, keyPaths []string) error {
+	p, planned, err := loadPlan(planPath)
+	if err != nil {
+		return fmt.Errorf("refusing to sign: %w", err)
+	}
+	now := time.Now()
+	for _, t := range planned {
+		if err := verifyDecodedExpiry(t.Readd, now); err != nil {
+			return fmt.Errorf("refusing to sign: %w", err)
+		}
+	}
+
+	signers := make([]bls.Signer, 0, len(keyPaths))
+	seen := set.NewSet[string](len(keyPaths))
+	for _, path := range keyPaths {
+		s, err := loadBLSKey(path)
+		if err != nil {
+			return err
+		}
+		pk := string(bls.PublicKeyToCompressedBytes(s.PublicKey()))
+		if seen.Contains(pk) {
+			return fmt.Errorf("%w %s: same key as another --bls-key", errWarpBadKeyFile, path)
+		}
+		seen.Add(pk)
+		signers = append(signers, s)
+	}
+
+	printPlanSummary(p, planned, now)
+	for i, t := range planned {
+		fmt.Printf("\n--- Target %d removal ---\n%s", i, describeWarpMessage(t.Removal, now))
+		fmt.Printf("--- Target %d re-add ---\n%s", i, describeWarpMessage(t.Readd, now))
+	}
+	fmt.Printf("\nSigning keys:\n")
+	for i, s := range signers {
+		pk := s.PublicKey()
+		note := "in the plan snapshot"
+		if !inWarpSet(p.Snapshot, pk) {
+			note = "NOT in the plan snapshot: its signatures will not count"
+		}
+		fmt.Printf("  %s 0x%x (%s)\n", keyPaths[i], bls.PublicKeyToCompressedBytes(pk), note)
+	}
+	fmt.Printf("\n%d messages x %d keys\n", 2*len(planned), len(signers))
+	if err := confirm("Type 'yes' to sign every message above: ", warpYes); err != nil {
+		return err
+	}
+
+	b, err := warp.SignPlan(planned, signers)
+	if err != nil {
+		return err
+	}
+	if err := writeNewJSONFile(warpBundleOut, b); err != nil {
+		return err
+	}
+	fmt.Printf("Wrote signature bundle: %s\n", warpBundleOut)
+	return nil
+}
+
+func inWarpSet(vdrs validators.WarpSet, pk *bls.PublicKey) bool {
+	pkBytes := bls.PublicKeyToUncompressedBytes(pk)
+	for _, v := range vdrs.Validators {
+		if bytes.Equal(v.PublicKeyBytes, pkBytes) {
+			return true
+		}
+	}
+	return false
+}
+
+// blsKeyPaths returns the paths in keys and every file named signer.key under
+// dir.
+func blsKeyPaths(keys []string, dir string) ([]string, error) {
+	paths := slices.Clone(keys)
+	if dir != "" {
+		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && d.Name() == blsKeyFileName {
+				paths = append(paths, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to search --bls-key-dir: %w", err)
+		}
+	}
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("%w: --bls-key or --bls-key-dir with a %s file", errWarpMissingFlag, blsKeyFileName)
+	}
+	return paths, nil
 }
 
 // loadBLSKey reads an avalanchego signer.key file. The file bytes are cleared
@@ -329,11 +451,11 @@ Submit the output with "l1 set-validator-weight --message" or
 			}
 		}
 
-		client, err := pChainClient()
+		uri, err := pChainURI()
 		if err != nil {
 			return err
 		}
-		height, vdrs, err := proposedValidatorSet(ctx, client, subnetID)
+		height, vdrs, err := proposedValidatorSet(ctx, platformvm.NewClient(uri), subnetID)
 		if err != nil {
 			return err
 		}
@@ -369,15 +491,14 @@ func printAggregation(agg *warp.Aggregation, vdrs validators.WarpSet) {
 	)
 }
 
-// pChainClient returns a P-Chain client for --rpc, or for the --network
-// endpoint if --rpc is unset. --rpc accepts a node URL with or without the
-// /ext/bc/P suffix.
-func pChainClient() (*platformvm.Client, error) {
+// pChainURI returns the node URL in --rpc, or the --network endpoint if --rpc
+// is unset. --rpc accepts a node URL with or without the /ext/bc/P suffix.
+func pChainURI() (string, error) {
 	uri := warpRPC
 	if uri == "" {
 		config, err := network.GetConfig(networkName)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		uri = config.RPCURL
 	}
@@ -386,9 +507,9 @@ func pChainClient() (*platformvm.Client, error) {
 	uri = strings.TrimSuffix(uri, "/ext/P")
 	uri, err := nodeutil.NormalizeNodeURIWithInsecureHTTP(uri, allowInsecureHTTP)
 	if err != nil {
-		return nil, fmt.Errorf("invalid --rpc: %w", err)
+		return "", fmt.Errorf("invalid --rpc: %w", err)
 	}
-	return platformvm.NewClient(uri), nil
+	return uri, nil
 }
 
 // proposedValidatorSet returns the canonical validator set of subnetID at the
@@ -516,8 +637,11 @@ func init() {
 	_ = warpBuildMessageCmd.MarkFlagRequired("type")
 
 	f = warpSignCmd.Flags()
-	f.StringVar(&warpBLSKey, "bls-key", "", "Path to the avalanchego staking/signer.key file")
+	f.StringArrayVar(&warpBLSKeys, "bls-key", nil, "Path to an avalanchego staking/signer.key file (repeatable with --plan)")
+	f.StringVar(&warpBLSKeyDir, "bls-key-dir", "", "Directory to search for signer.key files (with --plan)")
 	f.StringVar(&warpMessage, "message", "", "Unsigned Warp message (hex) from warp build-message")
+	f.StringVar(&warpPlanPath, "plan", "", "Plan file from warp plan: sign every message in it")
+	f.StringVar(&warpBundleOut, "out", "bundle.json", "Signature bundle file to create with --plan (never overwritten)")
 	f.BoolVar(&warpYes, "yes", false, "Sign without the interactive confirmation")
 
 	f = warpAggregateCmd.Flags()
