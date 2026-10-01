@@ -11,7 +11,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,9 +22,12 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
+	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
+	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 	nodeutil "github.com/ava-labs/platform-cli/pkg/node"
+	"github.com/ava-labs/platform-cli/pkg/wallet"
 )
 
 const defaultValidatorWeight uint64 = 100
@@ -157,6 +162,122 @@ func parseValidatorAddrs(addrList string) []string {
 		}
 	}
 	return addrs
+}
+
+var (
+	errNoOwnerAddresses    = errors.New("no owner addresses provided")
+	errOwnerCountMismatch  = errors.New("owner count must be 1 or match validator count")
+	errNotPChainAddress    = errors.New("not a P-Chain address")
+	errWrongNetworkAddress = errors.New("address is for a different network")
+	errEmptyValidatorOwner = errors.New("validator owner is empty")
+)
+
+// parseValidatorOwners parses a comma-separated list of P-Chain addresses for
+// the network with the given HRP. It returns one owner per validator: a single
+// address applies to every validator, otherwise the list must align with the
+// validators by index. An unset list returns nil.
+func parseValidatorOwners(list, hrp string, numValidators int) ([]ids.ShortID, error) {
+	if strings.TrimSpace(list) == "" {
+		return nil, nil
+	}
+	addrs := parseValidatorAddrs(list)
+	if len(addrs) == 0 {
+		return nil, errNoOwnerAddresses
+	}
+	if len(addrs) != 1 && len(addrs) != numValidators {
+		return nil, fmt.Errorf("%w: got %d, validators %d", errOwnerCountMismatch, len(addrs), numValidators)
+	}
+
+	owners := make([]ids.ShortID, len(addrs))
+	for i, addr := range addrs {
+		owner, err := parsePChainAddress(addr, hrp)
+		if err != nil {
+			return nil, fmt.Errorf("invalid owner address %q: %w", addr, err)
+		}
+		owners[i] = owner
+	}
+	if len(owners) == 1 {
+		return slices.Repeat(owners, numValidators), nil
+	}
+	return owners, nil
+}
+
+// parsePChainAddress parses a bech32 P-Chain address ("P-<hrp>1...") and
+// rejects addresses for other chains or networks.
+func parsePChainAddress(addr, hrp string) (ids.ShortID, error) {
+	chain, addrHRP, addrBytes, err := address.Parse(addr)
+	if err != nil {
+		return ids.ShortEmpty, err
+	}
+	if chain != "P" {
+		return ids.ShortEmpty, fmt.Errorf("%w: chain %q", errNotPChainAddress, chain)
+	}
+	if addrHRP != hrp {
+		return ids.ShortEmpty, fmt.Errorf("%w: got HRP %q, want %q", errWrongNetworkAddress, addrHRP, hrp)
+	}
+	return ids.ToShortID(addrBytes)
+}
+
+// setL1ValidatorOwners sets the remaining balance owner and the deactivation
+// owner of each validator. remainingBalanceOwners and deactivationOwners are
+// either nil or aligned with validators by index.
+//
+// A nil list defaults to defaultOwner with threshold 1. If allowEmpty is set, a
+// nil list leaves the owner empty instead. An empty owner has threshold 0, so
+// any P-Chain key can disable the validator and spend its remaining balance.
+// Unless allowEmpty is set, an empty owner returns errEmptyValidatorOwner.
+func setL1ValidatorOwners(
+	validators []*txs.ConvertSubnetToL1Validator,
+	remainingBalanceOwners []ids.ShortID,
+	deactivationOwners []ids.ShortID,
+	defaultOwner ids.ShortID,
+	allowEmpty bool,
+) error {
+	if allowEmpty {
+		defaultOwner = ids.ShortEmpty
+	}
+	for i, v := range validators {
+		v.RemainingBalanceOwner = validatorOwner(remainingBalanceOwners, i, defaultOwner)
+		v.DeactivationOwner = validatorOwner(deactivationOwners, i, defaultOwner)
+		if allowEmpty {
+			continue
+		}
+		if v.RemainingBalanceOwner.Threshold == 0 {
+			return fmt.Errorf("%w: remaining balance owner of validator %d", errEmptyValidatorOwner, i)
+		}
+		if v.DeactivationOwner.Threshold == 0 {
+			return fmt.Errorf("%w: deactivation owner of validator %d", errEmptyValidatorOwner, i)
+		}
+	}
+	return nil
+}
+
+// validatorOwner returns owners[i], or defaultOwner if owners is nil, as a
+// threshold 1 owner. An empty address returns the empty owner.
+func validatorOwner(owners []ids.ShortID, i int, defaultOwner ids.ShortID) message.PChainOwner {
+	owner := defaultOwner
+	if owners != nil {
+		owner = owners[i]
+	}
+	if owner == ids.ShortEmpty {
+		return message.PChainOwner{}
+	}
+	return message.PChainOwner{
+		Threshold: 1,
+		Addresses: []ids.ShortID{owner},
+	}
+}
+
+// formatPChainOwner returns a readable form of owner for the given network.
+func formatPChainOwner(owner message.PChainOwner, networkID uint32) string {
+	if owner.Threshold == 0 {
+		return "EMPTY (threshold 0: any P-Chain key can use it)"
+	}
+	addrs := make([]string, len(owner.Addresses))
+	for i, addr := range owner.Addresses {
+		addrs[i] = wallet.FormatPChainAddress(addr, networkID)
+	}
+	return fmt.Sprintf("threshold %d of [%s]", owner.Threshold, strings.Join(addrs, ", "))
 }
 
 // parseValidatorWeights splits a comma-separated list of uint64 weights.
