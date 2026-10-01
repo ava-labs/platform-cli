@@ -60,7 +60,7 @@ type RotateConfig struct {
 	// the next target starts. Use it for a human check on the explorer. An
 	// error stops the rotation.
 	AfterTarget func(PlannedTarget, TargetResult) error
-	Log     io.Writer
+	Log         io.Writer
 	// Retry bounds the retries of each P-Chain read and transaction after a
 	// rate limit or a proposed height lag.
 	Retry RetryPolicy
