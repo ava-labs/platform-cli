@@ -221,6 +221,64 @@ platform-cli l1 increase-validator-balance --validation-id <ID> --balance <AVAX>
 platform-cli l1 disable-validator --validation-id <ID>
 ```
 
+### Offline Warp Signing
+
+Use these commands when the validator manager cannot emit a Warp message, for
+example to rotate the owners of L1 validators. Validators sign with their BLS
+key (`staking/signer.key`, the 32-byte raw key) on their own machine. The key
+is never printed or written.
+
+One message:
+
+```bash
+# Coordinator: build a removal (weight 0, nonce MaxUint64)
+platform-cli warp build-message --type weight --remove --validation-id <ID> \
+  --manager-blockchain-id <ID> --manager-address <0x...>
+
+# Coordinator: build a re-add (expiry at most 24h ahead)
+platform-cli warp build-message --type register --subnet-id <ID> --node-id <NodeID-...> \
+  --bls-public-key <hex> --weight <n> --expiry <unix> \
+  --remaining-balance-owner <P-addr> --deactivation-owner <P-addr> \
+  --manager-blockchain-id <ID> --manager-address <0x...>
+
+# Each validator machine: review the decoded fields, then type 'yes'
+platform-cli warp sign --bls-key ~/.avalanchego/staking/signer.key --message <unsigned hex>
+
+# Coordinator: refuses below 67% of the subnet weight
+platform-cli warp aggregate --subnet-id <ID> --message <unsigned hex> --sig <blob> --sig <blob>
+
+# Coordinator: submit
+platform-cli l1 set-validator-weight --message <signed hex>
+platform-cli l1 register-validator --balance <AVAX> --pop <hex> --message <signed hex>
+```
+
+Use `--remove` for a removal. Do not type the nonce `18446744073709551615` by
+hand: a wrong digit changes the weight instead of removing the validator.
+`--remove` refuses a non-zero `--weight` and an explicit `--nonce`.
+
+Full rotation (one removal and one re-add per validator):
+
+```bash
+# Coordinator: select validators with an empty deactivation owner, or pass --validation-ids
+platform-cli warp plan --subnet-id <ID> --rpc <node URL> \
+  --manager-blockchain-id <ID> --manager-address <0x...> \
+  --remaining-balance-owner <P-addr> --deactivation-owner <P-addr> --balance <AVAX> --out plan.json
+
+# Each validator machine: one bundle that signs every plan message
+platform-cli warp sign --plan plan.json --bls-key ~/.avalanchego/staking/signer.key --out bundle.json
+
+# Coordinator: one validator at a time, with a confirm before each
+platform-cli warp rotate --plan plan.json --sigs bundle-1.json --sigs bundle-2.json --key-name <key>
+```
+
+- The re-adds expire 23h after `warp plan` by default. If they expire, run
+  `warp plan` again and collect new bundles. `warp rotate` still uses the
+  removal signatures of old bundles and prints a warning for each message
+  that is not in the new plan.
+- `warp rotate` retries rate limits (HTTP 429, Cloudflare 1015) and a proposed
+  height lag for about 60s. If it stops, run the same command again. It skips
+  rotated validators and re-adds a removed one first.
+
 ### Chains
 
 ```bash

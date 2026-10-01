@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -188,5 +189,59 @@ func TestSignPlan(t *testing.T) {
 		if got := len(c.Signatures[msgID]); got != 2 {
 			t.Errorf("len(Signatures[%s]) = %d, want 2", msgID, got)
 		}
+	}
+}
+
+// TestBuildWeightPayloadRemove checks that --remove builds the same message
+// as the removal typed by hand, so no operator needs to type MaxUint64.
+func TestBuildWeightPayloadRemove(t *testing.T) {
+	validationID := ids.GenerateTestID().String()
+	chainID := ids.GenerateTestID()
+	manager := make([]byte, 20)
+
+	removal, err := buildWeightPayload(validationID, 0, 0, true, false)
+	if err != nil {
+		t.Fatalf("buildWeightPayload(remove) error = %v", err)
+	}
+	byHand, err := buildWeightPayload(validationID, 18446744073709551615, 0, false, true)
+	if err != nil {
+		t.Fatalf("buildWeightPayload(by hand) error = %v", err)
+	}
+	got, err := warp.NewUnsignedMessage(5, chainID, manager, removal)
+	if err != nil {
+		t.Fatalf("warp.NewUnsignedMessage(remove) error = %v", err)
+	}
+	want, err := warp.NewUnsignedMessage(5, chainID, manager, byHand)
+	if err != nil {
+		t.Fatalf("warp.NewUnsignedMessage(by hand) error = %v", err)
+	}
+	if !bytes.Equal(got.Bytes(), want.Bytes()) {
+		t.Fatalf("--remove message = %x, want %x", got.Bytes(), want.Bytes())
+	}
+}
+
+func TestBuildWeightPayloadRemoveRejectsConflicts(t *testing.T) {
+	validationID := ids.GenerateTestID().String()
+	tests := []struct {
+		name     string
+		weight   uint64
+		nonceSet bool
+	}{
+		{
+			name:   "non_zero_weight",
+			weight: 100,
+		},
+		{
+			name:     "explicit_nonce",
+			nonceSet: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := buildWeightPayload(validationID, 1, tt.weight, true, tt.nonceSet)
+			if !errors.Is(err, errWarpRemoveFlags) {
+				t.Fatalf("buildWeightPayload() error = %v, want %v", err, errWarpRemoveFlags)
+			}
+		})
 	}
 }

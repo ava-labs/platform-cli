@@ -52,6 +52,7 @@ var (
 	errWarpExpiryTooFar = errors.New("expiry is beyond the P-Chain expiry window")
 	errWarpNotConfirmed = errors.New("not confirmed")
 	errWarpBadKeyFile   = errors.New("invalid BLS key file")
+	errWarpRemoveFlags  = errors.New("--remove sets the weight and the nonce")
 )
 
 var (
@@ -59,6 +60,7 @@ var (
 	warpValidationID          string
 	warpWeight                uint64
 	warpNonce                 uint64
+	warpRemove                bool
 	warpNodeID                string
 	warpBLSPublicKey          string
 	warpRemainingBalanceOwner string
@@ -98,7 +100,8 @@ var warpBuildMessageCmd = &cobra.Command{
 The message is an AddressedCall from --manager-address on --manager-blockchain-id.
 This command is offline. It takes the network ID from --network or --network-id.
 
-  --type weight     L1ValidatorWeight: --validation-id, --weight (0 removes), --nonce
+  --type weight     L1ValidatorWeight: --validation-id, and --remove to remove the
+                    validator, or --weight and --nonce to change its weight
   --type register   RegisterL1Validator: --subnet-id, --node-id, --bls-public-key,
                     --weight, --expiry, --remaining-balance-owner, --deactivation-owner
 
@@ -124,8 +127,17 @@ The validator balance is not part of the message. Set it on
 		var p message.Payload
 		switch warpType {
 		case warpTypeWeight:
-			p, err = buildWeightPayload()
+			p, err = buildWeightPayload(
+				warpValidationID,
+				warpNonce,
+				warpWeight,
+				warpRemove,
+				cmd.Flags().Changed("nonce"),
+			)
 		case warpTypeRegister:
+			if warpRemove {
+				return fmt.Errorf("%w: --remove needs --type %s", errWarpRemoveFlags, warpTypeWeight)
+			}
 			p, err = buildRegisterPayload(networkID, time.Now())
 		default:
 			return fmt.Errorf("%w %q (want %q or %q)", errWarpUnknownType, warpType, warpTypeWeight, warpTypeRegister)
@@ -150,15 +162,33 @@ The validator balance is not part of the message. Set it on
 	},
 }
 
-func buildWeightPayload() (*message.L1ValidatorWeight, error) {
-	if warpValidationID == "" {
+// buildWeightPayload builds an L1ValidatorWeight payload. remove sets weight 0
+// and nonce MaxUint64, so an operator never types the removal nonce by hand.
+// remove refuses a non-zero weight and an explicit nonce (nonceSet).
+func buildWeightPayload(
+	validationIDStr string,
+	nonce uint64,
+	weight uint64,
+	remove bool,
+	nonceSet bool,
+) (*message.L1ValidatorWeight, error) {
+	if validationIDStr == "" {
 		return nil, fmt.Errorf("%w: --validation-id", errWarpMissingFlag)
 	}
-	validationID, err := ids.FromString(warpValidationID)
+	validationID, err := ids.FromString(validationIDStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid --validation-id: %w", err)
 	}
-	return message.NewL1ValidatorWeight(validationID, warpNonce, warpWeight)
+	if remove {
+		if weight != 0 {
+			return nil, fmt.Errorf("%w: do not set --weight %d", errWarpRemoveFlags, weight)
+		}
+		if nonceSet {
+			return nil, fmt.Errorf("%w: do not set --nonce", errWarpRemoveFlags)
+		}
+		nonce = warp.RemovalNonce
+	}
+	return message.NewL1ValidatorWeight(validationID, nonce, weight)
 }
 
 func buildRegisterPayload(networkID uint32, now time.Time) (*message.RegisterL1Validator, error) {
@@ -627,8 +657,9 @@ func init() {
 	f.StringVar(&warpManagerAddress, "manager-address", "", "Validator manager contract address (0x..., Warp source address)")
 	f.StringVar(&warpSubnetID, "subnet-id", "", "L1 subnet ID (register)")
 	f.StringVar(&warpValidationID, "validation-id", "", "Validation ID to change (weight)")
-	f.Uint64Var(&warpNonce, "nonce", 0, "Message nonce, at least the current minNonce from platform.getL1Validator (weight)")
-	f.Uint64Var(&warpWeight, "weight", 0, "Validator weight; 0 removes the validator (weight, register)")
+	f.BoolVar(&warpRemove, "remove", false, "Remove the validator: weight 0 and nonce MaxUint64. Do not set --weight or --nonce with it (weight)")
+	f.Uint64Var(&warpNonce, "nonce", 0, "Message nonce, at least the current minNonce from platform.getL1Validator (weight). Use --remove for a removal")
+	f.Uint64Var(&warpWeight, "weight", 0, "New validator weight (weight, register). Use --remove for a removal")
 	f.StringVar(&warpNodeID, "node-id", "", "Validator node ID (register)")
 	f.StringVar(&warpBLSPublicKey, "bls-public-key", "", "Validator BLS public key, 48 bytes hex (register)")
 	f.StringVar(&warpRemainingBalanceOwner, "remaining-balance-owner", "", "P-Chain address that receives the remaining balance (register)")
