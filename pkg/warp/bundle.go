@@ -3,6 +3,8 @@ package warp
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
@@ -79,11 +81,18 @@ type Collected struct {
 	// PoPs maps a compressed BLS public key to its verified proof of
 	// possession.
 	PoPs map[string][bls.SignatureLen]byte
+	// Skipped has one error per message ID that a bundle signs but the plan
+	// does not hold, in ID order. Each one wraps errUnknownMessageID.
+	Skipped []error
 }
 
 // Collect verifies every signature and proof of possession in bundles against
-// planned. It rejects a bundle that signs a message outside the plan, an
-// invalid signature, and a key that appears twice.
+// planned. It rejects an invalid signature and a key that appears twice.
+//
+// It skips a signature of a message outside the plan and reports the message
+// ID in Skipped. After a re-plan, old bundles sign re-adds with a changed
+// expiry, but their removal signatures are still valid, because a removal
+// message does not change.
 func Collect(planned []PlannedTarget, bundles []*Bundle) (*Collected, error) {
 	msgs := make(map[ids.ID]*Decoded, 2*len(planned))
 	for _, t := range planned {
@@ -95,6 +104,7 @@ func Collect(planned []PlannedTarget, bundles []*Bundle) (*Collected, error) {
 		Signatures: make(map[ids.ID][]Signature, len(msgs)),
 		PoPs:       make(map[string][bls.SignatureLen]byte),
 	}
+	skipped := make(map[ids.ID]int)
 	for i, b := range bundles {
 		if b.Version != BundleVersion {
 			return nil, fmt.Errorf("bundle %d: %w: %d", i, errBundleVersion, b.Version)
@@ -113,7 +123,8 @@ func Collect(planned []PlannedTarget, bundles []*Bundle) (*Collected, error) {
 			for msgID, sigBytes := range bs.Signatures {
 				d, ok := msgs[msgID]
 				if !ok {
-					return nil, fmt.Errorf("bundle %d: %w: %s", i, errUnknownMessageID, msgID)
+					skipped[msgID]++
+					continue
 				}
 				blsSig, err := bls.SignatureFromBytes(sigBytes)
 				if err != nil {
@@ -129,6 +140,9 @@ func Collect(planned []PlannedTarget, bundles []*Bundle) (*Collected, error) {
 				c.Signatures[msgID] = append(c.Signatures[msgID], sig)
 			}
 		}
+	}
+	for _, msgID := range slices.SortedFunc(maps.Keys(skipped), ids.ID.Compare) {
+		c.Skipped = append(c.Skipped, fmt.Errorf("%w: %s (%d signatures skipped)", errUnknownMessageID, msgID, skipped[msgID]))
 	}
 	return c, nil
 }

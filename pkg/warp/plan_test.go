@@ -194,7 +194,6 @@ func TestCollect(t *testing.T) {
 
 func TestCollectRejectsBadBundles(t *testing.T) {
 	_, planned, _, signers := newTestPlan(t, []uint64{10, 20, 30}, 10)
-	_, otherPlanned, _, _ := newTestPlan(t, []uint64{10}, 10)
 
 	signPlan := func(planned []PlannedTarget, s ...bls.Signer) *Bundle {
 		b, err := SignPlan(planned, s)
@@ -209,13 +208,6 @@ func TestCollectRejectsBadBundles(t *testing.T) {
 		bundles func() []*Bundle
 		wantErr error
 	}{
-		{
-			name: "message_outside_plan",
-			bundles: func() []*Bundle {
-				return []*Bundle{signPlan(otherPlanned, signers[0])}
-			},
-			wantErr: errUnknownMessageID,
-		},
 		{
 			name: "swapped_signatures",
 			bundles: func() []*Bundle {
@@ -254,5 +246,75 @@ func TestCollectRejectsBadBundles(t *testing.T) {
 				t.Fatalf("Collect() error = %v, want %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// replan returns p rebuilt with a new re-add expiry, as after the old re-adds
+// expire. The removal messages do not change.
+func replan(t *testing.T, p *Plan, planned []PlannedTarget) []PlannedTarget {
+	t.Helper()
+	targets := make([]TargetValidator, len(planned))
+	for i, pt := range planned {
+		targets[i] = TargetValidator{
+			ValidationID: pt.ValidationID,
+			NodeID:       pt.NodeID,
+			PublicKey:    pt.PublicKey,
+			Weight:       pt.Weight,
+		}
+	}
+	readd := planned[0].ReaddPayload
+	newPlan, err := NewPlan(PlanConfig{
+		NetworkID:             p.NetworkID,
+		SubnetID:              p.SubnetID,
+		ManagerBlockchainID:   p.ManagerBlockchainID,
+		ManagerAddress:        p.ManagerAddress,
+		RemainingBalanceOwner: readd.RemainingBalanceOwner,
+		DeactivationOwner:     readd.DisableOwner,
+		Balance:               p.Balance,
+		Expiry:                p.Expiry + 3600,
+		Snapshot:              p.Snapshot,
+	}, targets)
+	if err != nil {
+		t.Fatalf("NewPlan() error = %v", err)
+	}
+	newPlanned, err := newPlan.Decode()
+	if err != nil {
+		t.Fatalf("%T.Decode() error = %v", newPlan, err)
+	}
+	return newPlanned
+}
+
+// TestCollectSkipsUnknownMessages checks that a bundle from an earlier plan
+// still gives its removal signature after a re-plan changes the re-add.
+func TestCollectSkipsUnknownMessages(t *testing.T) {
+	p, planned, _, signers := newTestPlan(t, []uint64{10, 20, 30}, 10)
+	oldBundle, err := SignPlan(planned, []bls.Signer{signers[0]})
+	if err != nil {
+		t.Fatalf("SignPlan() error = %v", err)
+	}
+	newPlanned := replan(t, p, planned)
+
+	removalID := newPlanned[0].Removal.Message.ID()
+	oldReaddID := planned[0].Readd.Message.ID()
+	newReaddID := newPlanned[0].Readd.Message.ID()
+	if removalID != planned[0].Removal.Message.ID() || oldReaddID == newReaddID {
+		t.Fatal("re-plan must keep the removal and change the re-add")
+	}
+
+	c, err := Collect(newPlanned, []*Bundle{oldBundle})
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	if got := len(c.Signatures[removalID]); got != 1 {
+		t.Errorf("len(Signatures[removal]) = %d, want 1", got)
+	}
+	if got := len(c.Signatures[newReaddID]); got != 0 {
+		t.Errorf("len(Signatures[new re-add]) = %d, want 0", got)
+	}
+	if _, ok := c.Signatures[oldReaddID]; ok {
+		t.Error("Signatures holds the old re-add")
+	}
+	if len(c.Skipped) != 1 || !errors.Is(c.Skipped[0], errUnknownMessageID) {
+		t.Fatalf("Skipped = %v, want 1 error wrapping %v", c.Skipped, errUnknownMessageID)
 	}
 }

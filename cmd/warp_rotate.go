@@ -309,6 +309,9 @@ re-add balances. It asks for a confirm before each target unless --yes.`,
 		if err != nil {
 			return fmt.Errorf("invalid signature bundles: %w", err)
 		}
+		for _, skipped := range collected.Skipped {
+			fmt.Printf("warning: %v\n", skipped)
+		}
 
 		netConfig, err := getNetworkConfig(ctx)
 		if err != nil {
