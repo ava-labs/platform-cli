@@ -202,8 +202,8 @@ platform-cli subnet remove-validator --subnet-id <ID> --node-id NodeID-...
   - `--validator-deactivation-owner`: the address that can disable the
     validator (`l1 disable-validator`).
 - Both owners default to the P-Chain address of the issuing key, with threshold 1.
-- Each owner flag takes 1 P-Chain address (`P-avax1...`, `P-fuji1...`) for all
-  validators, or a comma-separated list with 1 address per validator. The list
+- Each owner flag takes one P-Chain address (`P-avax1...`, `P-fuji1...`) for all
+  validators, or a comma-separated list with one address per validator. The list
   order must match the `--validators` or `--validator-node-ids` order. The CLI
   rejects addresses for other chains or networks.
 - The CLI prints both owners of each validator before it submits the transaction.
