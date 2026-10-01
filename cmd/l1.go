@@ -5,6 +5,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
+	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
 )
@@ -167,7 +168,14 @@ var l1AddBalanceCmd = &cobra.Command{
 var l1DisableValidatorCmd = &cobra.Command{
 	Use:   "disable-validator",
 	Short: "Disable an L1 validator (DisableL1ValidatorTx)",
-	Long:  `Disable a validator on an L1 blockchain and return remaining funds.`,
+	Long: `Disable a validator on an L1 blockchain (DisableL1ValidatorTx).
+
+The validator stops validating, and its remaining balance goes to its remaining
+balance owner. Sign with the key of the validator's deactivation owner. For a
+validator created by 'subnet convert-to-l1', this is the key that issued the
+conversion, unless the conversion set --validator-deactivation-owner.
+
+Use 'l1 increase-validator-balance' to make a disabled validator active again.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
 		defer cancel()
@@ -186,11 +194,28 @@ var l1DisableValidatorCmd = &cobra.Command{
 			return fmt.Errorf("failed to get network config: %w", err)
 		}
 
-		w, cleanup, err := loadPChainWallet(ctx, netConfig)
+		validator, _, err := platformvm.NewClient(netConfig.RPCURL).GetL1Validator(ctx, validationID)
+		if err != nil {
+			return fmt.Errorf("failed to fetch L1 validator %s: %w", validationID, err)
+		}
+
+		// The builder resolves the deactivation owner from the wallet backend, so
+		// load a wallet that maps the validation ID to it.
+		w, cleanup, err := loadPChainWalletWithOwner(ctx, netConfig, validationID, validator.DeactivationOwner)
 		if err != nil {
 			return fmt.Errorf("failed to create wallet: %w", err)
 		}
 		defer cleanup()
+
+		if err := checkCanDisableL1Validator(validator, w.PChainAddress(), netConfig.NetworkID); err != nil {
+			return fmt.Errorf("cannot disable L1 validator %s: %w", validationID, err)
+		}
+
+		fmt.Printf("Disabling L1 validator %s...\n", validationID)
+		fmt.Printf("  Node ID: %s\n", validator.NodeID)
+		fmt.Printf("  Subnet ID: %s\n", validator.SubnetID)
+		fmt.Printf("  Refund: %.9f AVAX to %s\n", float64(validator.Balance)/1e9, formatOutputOwners(validator.RemainingBalanceOwner, netConfig.NetworkID))
+		fmt.Println("Submitting transaction...")
 
 		txID, err := pchain.DisableL1Validator(ctx, w, validationID)
 		if err != nil {

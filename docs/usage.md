@@ -214,6 +214,17 @@ platform-cli subnet remove-validator --subnet-id <ID> --node-id NodeID-...
 
 ### L1 Validators
 
+`disable-validator` notes:
+- Sign with the key of the validator's deactivation owner. For a validator
+  created by `subnet convert-to-l1`, this is the key that issued the conversion,
+  unless the conversion set `--validator-deactivation-owner`.
+- The CLI reads the validator from the P-Chain before it signs. It refuses when
+  your key is not the deactivation owner, when the owner needs more than one
+  signature, or when the validator is already inactive.
+- The remaining balance goes to the validator's remaining balance owner. The
+  CLI prints the amount and the owner before it submits the transaction.
+- `l1 increase-validator-balance` makes a disabled validator active again.
+
 ```bash
 platform-cli l1 register-validator --balance <AVAX> --pop <hex> --message <hex>   # balance > 0
 platform-cli l1 set-validator-weight --message <hex>
