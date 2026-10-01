@@ -453,9 +453,9 @@ func init() {
 	subnetConvertL1Cmd.Flags().Float64Var(&subnetValBalance, "validator-balance", 1.0, "Balance per validator in AVAX")
 	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorWeights, "validator-weights", "", "Comma-separated validator weights (uint64). Must match validator count. Defaults to 100 per validator if omitted.")
 	subnetConvertL1Cmd.Flags().BoolVar(&subnetMockVal, "mock-validator", false, "Use a mock validator (for testing)")
-	subnetConvertL1Cmd.Flags().StringVar(&subnetValRemainingBalanceOwner, "validator-remaining-balance-owner", "", "Comma-separated P-Chain addresses that receive each validator's remaining balance. Give 1 address for all validators or 1 per validator. Defaults to your own address.")
-	subnetConvertL1Cmd.Flags().StringVar(&subnetValDeactivationOwner, "validator-deactivation-owner", "", "Comma-separated P-Chain addresses that can disable each validator. Give 1 address for all validators or 1 per validator. Defaults to your own address.")
-	subnetConvertL1Cmd.Flags().BoolVar(&subnetAllowEmptyOwners, "allow-empty-owners", false, "Do not default unset owners to your own address. An empty owner lets any P-Chain key disable the validator and spend its balance (unsafe)")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetValRemainingBalanceOwner, "validator-remaining-balance-owner", "", "Comma-separated P-Chain addresses that receive each validator's remaining balance. Give one address for all validators, or one address per validator. Defaults to your own address.")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetValDeactivationOwner, "validator-deactivation-owner", "", "Comma-separated P-Chain addresses that can disable each validator. Give one address for all validators, or one address per validator. Defaults to your own address.")
+	subnetConvertL1Cmd.Flags().BoolVar(&subnetAllowEmptyOwners, "allow-empty-owners", false, "Do not default unset owners to your own address. An empty owner lets any P-Chain key disable the validator and spend its balance (unsafe).")
 
 	// Add validator flags
 	subnetAddValidatorCmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID")

@@ -300,7 +300,7 @@ func validatorOwner(owners []ids.ShortID, i int, defaultOwner ids.ShortID) messa
 // formatPChainOwner returns a readable form of owner for the given network.
 func formatPChainOwner(owner message.PChainOwner, networkID uint32) string {
 	if owner.Threshold == 0 {
-		return "EMPTY (threshold 0: any P-Chain key can use it)"
+		return "EMPTY (threshold 0: no signature required)"
 	}
 	addrs := make([]string, len(owner.Addresses))
 	for i, addr := range owner.Addresses {
