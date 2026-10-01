@@ -57,7 +57,7 @@ platform-cli wallet balance
 
 ```bash
 # P-Chain to P-Chain
-platform-cli transfer send --to <address> --amount <AVAX>
+platform-cli transfer send --to P-fuji1... --amount <AVAX>
 
 # Cross-chain (P <-> C)
 platform-cli transfer p-to-c --amount <AVAX>
