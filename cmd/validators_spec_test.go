@@ -552,6 +552,12 @@ func TestParseValidatorOwners(t *testing.T) {
 			wantErr:       errWrongNetworkAddress,
 		},
 		{
+			name:          "zero_address",
+			list:          formatTestAddress(t, "P", hrp, ids.ShortEmpty),
+			numValidators: 1,
+			wantErr:       errZeroOwnerAddress,
+		},
+		{
 			name:          "missing_chain_prefix",
 			list:          strings.TrimPrefix(p1, "P-"),
 			numValidators: 1,

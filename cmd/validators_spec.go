@@ -169,6 +169,7 @@ var (
 	errOwnerCountMismatch  = errors.New("owner count must be 1 or match validator count")
 	errNotPChainAddress    = errors.New("not a P-Chain address")
 	errWrongNetworkAddress = errors.New("address is for a different network")
+	errZeroOwnerAddress    = errors.New("owner address is the zero address")
 	errEmptyValidatorOwner = errors.New("validator owner is empty")
 )
 
@@ -193,6 +194,10 @@ func parseValidatorOwners(list, hrp string, numValidators int) ([]ids.ShortID, e
 		owner, err := parsePChainAddress(addr, hrp)
 		if err != nil {
 			return nil, fmt.Errorf("invalid owner address %q: %w", addr, err)
+		}
+		// validatorOwner treats the zero address as unset.
+		if owner == ids.ShortEmpty {
+			return nil, fmt.Errorf("%w: %q", errZeroOwnerAddress, addr)
 		}
 		owners[i] = owner
 	}
