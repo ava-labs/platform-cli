@@ -34,6 +34,12 @@ const (
 	defaultWaitTimeout      = 5 * time.Minute
 	defaultPollInterval     = 2 * time.Second
 	defaultReaddExpiryLimit = 30 * time.Minute
+
+	// A rate limit or a proposed height lag clears within about 30s. These
+	// values retry for about 60s, then stop so a rerun resumes.
+	retryAttempts   = 6
+	retryBackoff    = 2 * time.Second
+	retryMaxBackoff = 16 * time.Second
 )
 
 var (
@@ -275,6 +281,10 @@ proof of possession, and that the re-add does not expire within
 --expiry-margin. It never removes a second validator while one is out of the
 set. A rerun skips rotated targets and re-adds a removed one.
 
+Rate limits (HTTP 429, Cloudflare 1015) and a proposed height lag ("failed
+verifying warp messages") are retried for about 60s. A transaction is never
+issued again if the P-Chain already accepted it. Other errors stop at once.
+
 The --key-name, --ledger, or --private-key wallet pays the fees and the
 re-add balances. It asks for a confirm before each target unless --yes.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -343,12 +353,17 @@ re-add balances. It asks for a confirm before each target unless --yes.`,
 				client: platformvm.NewClient(uri),
 				wallet: w,
 			},
-			SubnetID:     p.SubnetID,
-			Balance:      p.Balance,
-			Planned:      planned,
-			Collected:    collected,
-			Confirm:      confirmTarget,
-			Log:          os.Stdout,
+			SubnetID:  p.SubnetID,
+			Balance:   p.Balance,
+			Planned:   planned,
+			Collected: collected,
+			Confirm:   confirmTarget,
+			Log:       os.Stdout,
+			Retry: warp.RetryPolicy{
+				Attempts:   retryAttempts,
+				Backoff:    retryBackoff,
+				MaxBackoff: retryMaxBackoff,
+			},
 			PollInterval: warpPollInterval,
 			WaitTimeout:  warpWaitTimeout,
 			ExpiryMargin: warpExpiryMargin,

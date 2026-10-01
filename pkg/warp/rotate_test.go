@@ -38,6 +38,12 @@ type fakeChain struct {
 	txs []string
 	// emptyOwners makes RegisterL1Validator ignore the message owners.
 	emptyOwners bool
+	// fail holds the errors that the next calls of a method return, by
+	// method name. failAfterApply holds errors that a transaction returns
+	// after it takes effect, as when the confirmation is rate limited.
+	fail           map[string][]error
+	failAfterApply map[string][]error
+	calls          map[string]int
 	// watch is the node IDs of the plan targets. maxMissing is the largest
 	// number of them that were out of the set at the same time.
 	watch      []ids.NodeID
@@ -45,6 +51,23 @@ type fakeChain struct {
 
 	stale     map[ids.NodeID]*validators.GetValidatorOutput
 	staleLeft int
+}
+
+// injected counts a call of method and returns its next error from m.
+func (f *fakeChain) injected(m map[string][]error, method string) error {
+	if m == nil || len(m[method]) == 0 {
+		return nil
+	}
+	err := m[method][0]
+	m[method] = m[method][1:]
+	return err
+}
+
+func (f *fakeChain) count(method string) {
+	if f.calls == nil {
+		f.calls = make(map[string]int)
+	}
+	f.calls[method]++
 }
 
 func (f *fakeChain) accepted() map[ids.NodeID]*validators.GetValidatorOutput {
@@ -70,6 +93,10 @@ func (f *fakeChain) proposed() map[ids.NodeID]*validators.GetValidatorOutput {
 }
 
 func (f *fakeChain) ValidatorSet(context.Context, ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error) {
+	f.count("ValidatorSet")
+	if err := f.injected(f.fail, "ValidatorSet"); err != nil {
+		return nil, err
+	}
 	vdrs := f.proposed()
 	if f.staleLeft > 0 {
 		f.staleLeft--
@@ -78,6 +105,10 @@ func (f *fakeChain) ValidatorSet(context.Context, ids.ID) (map[ids.NodeID]*valid
 }
 
 func (f *fakeChain) L1Validator(_ context.Context, validationID ids.ID) (L1Validator, bool, error) {
+	f.count("L1Validator")
+	if err := f.injected(f.fail, "L1Validator"); err != nil {
+		return L1Validator{}, false, err
+	}
 	v, ok := f.l1[validationID]
 	if !ok {
 		return L1Validator{}, false, nil
@@ -122,6 +153,10 @@ func (f *fakeChain) apply() {
 }
 
 func (f *fakeChain) SetL1ValidatorWeight(_ context.Context, msgBytes []byte) (ids.ID, error) {
+	f.count("SetL1ValidatorWeight")
+	if err := f.injected(f.fail, "SetL1ValidatorWeight"); err != nil {
+		return ids.Empty, err
+	}
 	p, err := f.verify(msgBytes)
 	if err != nil {
 		return ids.Empty, err
@@ -138,10 +173,17 @@ func (f *fakeChain) SetL1ValidatorWeight(_ context.Context, msgBytes []byte) (id
 		v.Weight = w.Weight
 	}
 	f.txs = append(f.txs, "remove "+v.NodeID.String())
+	if err := f.injected(f.failAfterApply, "SetL1ValidatorWeight"); err != nil {
+		return ids.Empty, err
+	}
 	return ids.GenerateTestID(), nil
 }
 
 func (f *fakeChain) RegisterL1Validator(_ context.Context, _ uint64, pop [bls.SignatureLen]byte, msgBytes []byte) (ids.ID, error) {
+	f.count("RegisterL1Validator")
+	if err := f.injected(f.fail, "RegisterL1Validator"); err != nil {
+		return ids.Empty, err
+	}
 	p, err := f.verify(msgBytes)
 	if err != nil {
 		return ids.Empty, err
@@ -184,6 +226,9 @@ func (f *fakeChain) RegisterL1Validator(_ context.Context, _ uint64, pop [bls.Si
 	}
 	f.l1[r.ValidationID()] = v
 	f.txs = append(f.txs, "add "+nodeID.String())
+	if err := f.injected(f.failAfterApply, "RegisterL1Validator"); err != nil {
+		return ids.Empty, err
+	}
 	return ids.GenerateTestID(), nil
 }
 
@@ -259,6 +304,7 @@ func (rt *rotationTest) rotate(t *testing.T, signerWeights ...uint64) ([]TargetR
 		Planned:      rt.planned,
 		Collected:    c,
 		Log:          io.Discard,
+		Retry:        testRetryPolicy,
 		PollInterval: time.Millisecond,
 		WaitTimeout:  time.Second,
 		ExpiryMargin: time.Hour,
@@ -456,5 +502,74 @@ func TestRotateStopsWhenNotConfirmed(t *testing.T) {
 	}
 	if len(rt.chain.txs) != 0 {
 		t.Fatalf("Rotate() submitted %v", rt.chain.txs)
+	}
+}
+
+// TestRotateRetriesTransientErrors checks that rate limits and a proposed
+// height lag do not stop a rotation.
+func TestRotateRetriesTransientErrors(t *testing.T) {
+	rt := newRotationTest(t, []uint64{10, 20, 30, 40}, 10, 20)
+	rt.chain.fail = map[string][]error{
+		"ValidatorSet":         {err429},
+		"L1Validator":          {errCloudflare1015},
+		"SetL1ValidatorWeight": {err429},
+		"RegisterL1Validator":  {errWarpLag, errWarpLag},
+	}
+
+	_, err := rt.rotate(t, 10, 20, 30, 40)
+	if err != nil {
+		t.Fatalf("Rotate() error = %v", err)
+	}
+	want := []string{
+		"remove " + rt.planned[0].NodeID.String(),
+		"add " + rt.planned[0].NodeID.String(),
+		"remove " + rt.planned[1].NodeID.String(),
+		"add " + rt.planned[1].NodeID.String(),
+	}
+	if !slices.Equal(rt.chain.txs, want) {
+		t.Fatalf("transactions = %v, want %v", rt.chain.txs, want)
+	}
+	// 2 targets, 1 extra removal call and 2 extra re-add calls.
+	if got := rt.chain.calls["SetL1ValidatorWeight"]; got != 3 {
+		t.Errorf("SetL1ValidatorWeight calls = %d, want 3", got)
+	}
+	if got := rt.chain.calls["RegisterL1Validator"]; got != 4 {
+		t.Errorf("RegisterL1Validator calls = %d, want 4", got)
+	}
+}
+
+// TestRotateDoesNotResubmitAcceptedTx checks that a transaction that took
+// effect but returned a rate limit error is not issued again.
+func TestRotateDoesNotResubmitAcceptedTx(t *testing.T) {
+	rt := newRotationTest(t, []uint64{10, 20, 30, 40}, 10)
+	rt.chain.failAfterApply = map[string][]error{
+		"SetL1ValidatorWeight": {err429},
+		"RegisterL1Validator":  {errCloudflare1015},
+	}
+
+	_, err := rt.rotate(t, 10, 20, 30, 40)
+	if err != nil {
+		t.Fatalf("Rotate() error = %v", err)
+	}
+	if got := rt.chain.calls["SetL1ValidatorWeight"]; got != 1 {
+		t.Errorf("SetL1ValidatorWeight calls = %d, want 1", got)
+	}
+	if got := rt.chain.calls["RegisterL1Validator"]; got != 1 {
+		t.Errorf("RegisterL1Validator calls = %d, want 1", got)
+	}
+}
+
+func TestRotateDoesNotRetryLogicError(t *testing.T) {
+	rt := newRotationTest(t, []uint64{10, 20, 30, 40}, 10)
+	rt.chain.fail = map[string][]error{
+		"RegisterL1Validator": {errLogic},
+	}
+
+	_, err := rt.rotate(t, 10, 20, 30, 40)
+	if !errors.Is(err, errLogic) {
+		t.Fatalf("Rotate() error = %v, want %v", err, errLogic)
+	}
+	if got := rt.chain.calls["RegisterL1Validator"]; got != 1 {
+		t.Errorf("RegisterL1Validator calls = %d, want 1", got)
 	}
 }

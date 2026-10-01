@@ -57,6 +57,9 @@ type RotateConfig struct {
 	// stops the rotation. Nil skips the confirmation.
 	Confirm func(PlannedTarget) error
 	Log     io.Writer
+	// Retry bounds the retries of each P-Chain read and transaction after a
+	// rate limit or a proposed height lag.
+	Retry RetryPolicy
 	// PollInterval and WaitTimeout control the wait for the validator set to
 	// update after each transaction.
 	PollInterval time.Duration
@@ -161,9 +164,9 @@ func (r *rotator) rotateTarget(ctx context.Context, i int, t PlannedTarget) (Tar
 		return res, fmt.Errorf("%w: 0x%x", errMissingPoP, t.BLSPublicKey)
 	}
 
-	vdrSet, err := r.cfg.Chain.ValidatorSet(ctx, r.cfg.SubnetID)
+	vdrSet, err := r.validatorSet(ctx)
 	if err != nil {
-		return res, fmt.Errorf("failed to read validator set: %w", err)
+		return res, err
 	}
 	readdSet := vdrSet
 	var removal *Aggregation
@@ -190,7 +193,7 @@ func (r *rotator) rotateTarget(ctx context.Context, i int, t PlannedTarget) (Tar
 			percent(readd),
 		)
 	} else {
-		r.logf("[%d] %s is removed; re-add signed by %.2f%% of weight", i, t.NodeID, percent(readd))
+		r.logf("[%d] %s is removed, re-add signed by %.2f%% of weight", i, t.NodeID, percent(readd))
 	}
 	if r.cfg.Confirm != nil {
 		if err := r.cfg.Confirm(t); err != nil {
@@ -199,7 +202,19 @@ func (r *rotator) rotateTarget(ctx context.Context, i int, t PlannedTarget) (Tar
 	}
 
 	if state == stateActive {
-		res.RemovalTxID, err = r.cfg.Chain.SetL1ValidatorWeight(ctx, removal.Message.Bytes())
+		res.RemovalTxID, err = retry(
+			ctx,
+			r.cfg.Retry,
+			r.logf,
+			"submit removal",
+			func(ctx context.Context) (bool, error) {
+				s, err := r.state(ctx, t)
+				return s != stateActive, err
+			},
+			func(ctx context.Context) (ids.ID, error) {
+				return r.submitRemoval(ctx, t)
+			},
+		)
 		if err != nil {
 			return res, fmt.Errorf("failed to submit removal: %w", err)
 		}
@@ -214,18 +229,21 @@ func (r *rotator) rotateTarget(ctx context.Context, i int, t PlannedTarget) (Tar
 		if err != nil {
 			return res, err
 		}
-
-		vdrSet, err = r.cfg.Chain.ValidatorSet(ctx, r.cfg.SubnetID)
-		if err != nil {
-			return res, fmt.Errorf("failed to read validator set: %w", err)
-		}
-		readd, err = r.aggregate(t.Readd, vdrSet)
-		if err != nil {
-			return res, fmt.Errorf("re-add: %w", err)
-		}
 	}
 
-	res.ReaddTxID, err = r.cfg.Chain.RegisterL1Validator(ctx, r.cfg.Balance, pop, readd.Message.Bytes())
+	res.ReaddTxID, err = retry(
+		ctx,
+		r.cfg.Retry,
+		r.logf,
+		"submit re-add",
+		func(ctx context.Context) (bool, error) {
+			s, err := r.state(ctx, t)
+			return s == stateRotated, err
+		},
+		func(ctx context.Context) (ids.ID, error) {
+			return r.submitReadd(ctx, t, pop)
+		},
+	)
 	if err != nil {
 		return res, fmt.Errorf("failed to submit re-add: %w", err)
 	}
@@ -250,8 +268,60 @@ func (r *rotator) rotateTarget(ctx context.Context, i int, t PlannedTarget) (Tar
 	return res, nil
 }
 
+// submitRemoval aggregates the removal against the current set and submits
+// it. Each retry aggregates again, so a retry after a proposed height lag
+// uses the set that the P-Chain verifies against.
+func (r *rotator) submitRemoval(ctx context.Context, t PlannedTarget) (ids.ID, error) {
+	// The submit retry covers this read, so it is not retried on its own.
+	vdrSet, err := r.cfg.Chain.ValidatorSet(ctx, r.cfg.SubnetID)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to read validator set: %w", err)
+	}
+	agg, err := r.aggregate(t.Removal, vdrSet)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("removal: %w", err)
+	}
+	return r.cfg.Chain.SetL1ValidatorWeight(ctx, agg.Message.Bytes())
+}
+
+// submitReadd aggregates the re-add against the current set and submits it.
+func (r *rotator) submitReadd(ctx context.Context, t PlannedTarget, pop [bls.SignatureLen]byte) (ids.ID, error) {
+	vdrSet, err := r.cfg.Chain.ValidatorSet(ctx, r.cfg.SubnetID)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("failed to read validator set: %w", err)
+	}
+	agg, err := r.aggregate(t.Readd, vdrSet)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("re-add: %w", err)
+	}
+	return r.cfg.Chain.RegisterL1Validator(ctx, r.cfg.Balance, pop, agg.Message.Bytes())
+}
+
+func (r *rotator) validatorSet(ctx context.Context) (map[ids.NodeID]*validators.GetValidatorOutput, error) {
+	vdrSet, err := retry(ctx, r.cfg.Retry, r.logf, "read validator set", nil, func(ctx context.Context) (map[ids.NodeID]*validators.GetValidatorOutput, error) {
+		return r.cfg.Chain.ValidatorSet(ctx, r.cfg.SubnetID)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to read validator set: %w", err)
+	}
+	return vdrSet, nil
+}
+
+type foundL1Validator struct {
+	v     L1Validator
+	found bool
+}
+
+func (r *rotator) l1Validator(ctx context.Context, validationID ids.ID) (L1Validator, bool, error) {
+	res, err := retry(ctx, r.cfg.Retry, r.logf, "read L1 validator", nil, func(ctx context.Context) (foundL1Validator, error) {
+		v, found, err := r.cfg.Chain.L1Validator(ctx, validationID)
+		return foundL1Validator{v: v, found: found}, err
+	})
+	return res.v, res.found, err
+}
+
 func (r *rotator) state(ctx context.Context, t PlannedTarget) (targetState, error) {
-	_, found, err := r.cfg.Chain.L1Validator(ctx, t.ReaddValidationID)
+	_, found, err := r.l1Validator(ctx, t.ReaddValidationID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read re-added validator: %w", err)
 	}
@@ -259,7 +329,7 @@ func (r *rotator) state(ctx context.Context, t PlannedTarget) (targetState, erro
 		return stateRotated, nil
 	}
 	// The P-Chain deletes a validator when its weight is set to 0.
-	_, found, err = r.cfg.Chain.L1Validator(ctx, t.ValidationID)
+	_, found, err = r.l1Validator(ctx, t.ValidationID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read validator: %w", err)
 	}
@@ -273,9 +343,9 @@ func (r *rotator) state(ctx context.Context, t PlannedTarget) (targetState, erro
 // proposed height equals want. A present target must have its planned
 // weight.
 func (r *rotator) inSet(ctx context.Context, t PlannedTarget, want bool) (bool, error) {
-	vdrSet, err := r.cfg.Chain.ValidatorSet(ctx, r.cfg.SubnetID)
+	vdrSet, err := r.validatorSet(ctx)
 	if err != nil {
-		return false, fmt.Errorf("failed to read validator set: %w", err)
+		return false, err
 	}
 	vdr, ok := vdrSet[t.NodeID]
 	if !want {
@@ -303,7 +373,7 @@ func (r *rotator) aggregate(d *Decoded, vdrSet map[ids.NodeID]*validators.GetVal
 }
 
 func (r *rotator) checkOwners(ctx context.Context, t PlannedTarget) (message.PChainOwner, error) {
-	v, found, err := r.cfg.Chain.L1Validator(ctx, t.ReaddValidationID)
+	v, found, err := r.l1Validator(ctx, t.ReaddValidationID)
 	if err != nil {
 		return message.PChainOwner{}, fmt.Errorf("failed to read re-added validator: %w", err)
 	}
@@ -331,10 +401,13 @@ func (r *rotator) waitFor(ctx context.Context, what string, done func(context.Co
 	defer ticker.Stop()
 	for {
 		ok, err := done(ctx)
-		if err != nil {
+		if err != nil && !isTransient(err) {
 			return fmt.Errorf("failed waiting for %s: %w", what, err)
 		}
-		if ok {
+		if err != nil {
+			r.logf("waiting for %s: transient error, polling again: %v", what, err)
+		}
+		if err == nil && ok {
 			return nil
 		}
 		select {
