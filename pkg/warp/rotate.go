@@ -56,6 +56,10 @@ type RotateConfig struct {
 	// Confirm is called before the first transaction of each target. An error
 	// stops the rotation. Nil skips the confirmation.
 	Confirm func(PlannedTarget) error
+	// AfterTarget is called after a target is fully rotated and verified, before
+	// the next target starts. Use it for a human check on the explorer. An
+	// error stops the rotation.
+	AfterTarget func(PlannedTarget, TargetResult) error
 	Log     io.Writer
 	// Retry bounds the retries of each P-Chain read and transaction after a
 	// rate limit or a proposed height lag.
@@ -115,6 +119,11 @@ func Rotate(ctx context.Context, cfg RotateConfig) ([]TargetResult, error) {
 			return results, fmt.Errorf("target %d (%s): %w", i, t.NodeID, err)
 		}
 		results = append(results, res)
+		if cfg.AfterTarget != nil && !res.AlreadyRotated {
+			if err := cfg.AfterTarget(t, res); err != nil {
+				return results, err
+			}
+		}
 	}
 	return results, nil
 }

@@ -346,9 +346,17 @@ re-add balances. It asks for a confirm before each target unless --yes.`,
 		fmt.Printf("Fee payer:               %s\n\n", w.FormattedPChainAddress())
 
 		var confirmTarget func(warp.PlannedTarget) error
+		var afterTarget func(warp.PlannedTarget, warp.TargetResult) error
 		if !warpYes {
 			confirmTarget = func(t warp.PlannedTarget) error {
 				return confirm(fmt.Sprintf("Type 'yes' to remove and re-add %s: ", t.NodeID), false)
+			}
+			afterTarget = func(t warp.PlannedTarget, res warp.TargetResult) error {
+				fmt.Printf("\n  %s rotated.\n", t.NodeID)
+				fmt.Printf("    new validation ID:   %s\n", t.ReaddValidationID)
+				fmt.Printf("    deactivation owner:  threshold %d\n", res.DeactivationOwner.Threshold)
+				fmt.Printf("    Confirm this validator is Active with a threshold-%d owner on the explorer before you continue.\n", res.DeactivationOwner.Threshold)
+				return pauseContinue("  Press Enter to continue to the next validator, or type 'stop' to halt: ", false)
 			}
 		}
 		results, err := warp.Rotate(ctx, warp.RotateConfig{
@@ -360,8 +368,9 @@ re-add balances. It asks for a confirm before each target unless --yes.`,
 			Balance:   p.Balance,
 			Planned:   planned,
 			Collected: collected,
-			Confirm:   confirmTarget,
-			Log:       os.Stdout,
+			Confirm:     confirmTarget,
+			AfterTarget: afterTarget,
+			Log:         os.Stdout,
 			Retry: warp.RetryPolicy{
 				Attempts:   retryAttempts,
 				Backoff:    retryBackoff,

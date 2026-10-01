@@ -645,6 +645,26 @@ func confirm(prompt string, skip bool) error {
 	return nil
 }
 
+// pauseContinue waits for the operator to review and press Enter. Enter (or
+// yes) continues. stop, no, or abort halts the rotation. It is a human
+// checkpoint, for example to confirm a validator on the explorer.
+func pauseContinue(prompt string, skip bool) error {
+	if skip {
+		return nil
+	}
+	fmt.Print(prompt)
+	response, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read input: %w", err)
+	}
+	switch strings.TrimSpace(strings.ToLower(response)) {
+	case "stop", "no", "n", "abort", "halt":
+		return errWarpNotConfirmed
+	default:
+		return nil
+	}
+}
+
 func init() {
 	rootCmd.AddCommand(warpCmd)
 	warpCmd.AddCommand(warpBuildMessageCmd)
