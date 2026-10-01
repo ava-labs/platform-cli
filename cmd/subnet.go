@@ -7,6 +7,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	ethcommon "github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
 	"github.com/spf13/cobra"
 )
@@ -23,6 +24,10 @@ var (
 	subnetValBalance       float64
 	subnetMockVal          bool
 	subnetValidatorWeights string
+
+	subnetValRemainingBalanceOwner string
+	subnetValDeactivationOwner     string
+	subnetAllowEmptyOwners         bool
 
 	subnetValNodeID    string
 	subnetValWeight    uint64
@@ -120,7 +125,22 @@ var subnetTransferOwnershipCmd = &cobra.Command{
 var subnetConvertL1Cmd = &cobra.Command{
 	Use:   "convert-to-l1",
 	Short: "Convert subnet to L1 (ConvertSubnetToL1Tx)",
-	Long:  `Convert a permissioned subnet to an L1 blockchain.`,
+	Long: `Convert a permissioned subnet to an L1 blockchain.
+
+Each initial validator has two P-Chain owners:
+  - The remaining balance owner receives the validator's unspent balance when
+    the validator is disabled or removed.
+  - The deactivation owner can disable the validator (DisableL1ValidatorTx).
+
+Both owners default to the address of the issuing key, with threshold 1. Use
+--validator-remaining-balance-owner and --validator-deactivation-owner to set
+other P-Chain addresses. Give one address for all validators, or one address
+per validator in the same order as the validators.
+
+The P-Chain cannot change the owners after the conversion. An empty owner has
+threshold 0, so any funded P-Chain key can disable the validator and spend its
+remaining balance. The command refuses to issue an empty owner unless you set
+--allow-empty-owners.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := getOperationContext()
 		defer cancel()
@@ -211,13 +231,22 @@ var subnetConvertL1Cmd = &cobra.Command{
 				return err
 			}
 		}
-		if err := sortAndValidateL1Validators(validators); err != nil {
-			return err
-		}
 
 		netConfig, err := getNetworkConfig(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
+		}
+
+		// Owner lists align with the validators in input order, so set the
+		// owners before sorting.
+		hrp := network.GetHRP(netConfig.NetworkID)
+		remainingBalanceOwners, err := parseValidatorOwners(subnetValRemainingBalanceOwner, hrp, len(validators))
+		if err != nil {
+			return fmt.Errorf("invalid --validator-remaining-balance-owner: %w", err)
+		}
+		deactivationOwners, err := parseValidatorOwners(subnetValDeactivationOwner, hrp, len(validators))
+		if err != nil {
+			return fmt.Errorf("invalid --validator-deactivation-owner: %w", err)
 		}
 
 		w, cleanup, err := loadPChainWalletWithSubnet(ctx, netConfig, sid)
@@ -226,10 +255,33 @@ var subnetConvertL1Cmd = &cobra.Command{
 		}
 		defer cleanup()
 
+		err = setL1ValidatorOwners(
+			validators,
+			remainingBalanceOwners,
+			deactivationOwners,
+			w.PChainAddress(),
+			subnetAllowEmptyOwners,
+		)
+		if err != nil {
+			return err
+		}
+		if err := sortAndValidateL1Validators(validators); err != nil {
+			return err
+		}
+
 		fmt.Println("Converting subnet to L1...")
 		fmt.Printf("  Subnet ID: %s\n", sid)
 		fmt.Printf("  Chain ID: %s\n", cid)
 		fmt.Printf("  Validators: %d\n", len(validators))
+		for _, v := range validators {
+			nodeID, err := ids.ToNodeID(v.NodeID)
+			if err != nil {
+				return fmt.Errorf("invalid validator node ID: %w", err)
+			}
+			fmt.Printf("  - %s\n", nodeID)
+			fmt.Printf("      Remaining balance owner: %s\n", formatPChainOwner(v.RemainingBalanceOwner, netConfig.NetworkID))
+			fmt.Printf("      Deactivation owner: %s\n", formatPChainOwner(v.DeactivationOwner, netConfig.NetworkID))
+		}
 		fmt.Println("Submitting transaction...")
 
 		txID, err := pchain.ConvertSubnetToL1(ctx, w, sid, cid, managerAddr, validators)
@@ -406,6 +458,9 @@ func init() {
 	subnetConvertL1Cmd.Flags().Float64Var(&subnetValBalance, "validator-balance", 1.0, "Balance per validator in AVAX")
 	subnetConvertL1Cmd.Flags().StringVar(&subnetValidatorWeights, "validator-weights", "", "Comma-separated validator weights (uint64). Must match validator count. Defaults to 100 per validator if omitted.")
 	subnetConvertL1Cmd.Flags().BoolVar(&subnetMockVal, "mock-validator", false, "Use a mock validator (for testing)")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetValRemainingBalanceOwner, "validator-remaining-balance-owner", "", "Comma-separated P-Chain addresses that receive each validator's remaining balance. Give 1 address for all validators or 1 per validator. Defaults to your own address.")
+	subnetConvertL1Cmd.Flags().StringVar(&subnetValDeactivationOwner, "validator-deactivation-owner", "", "Comma-separated P-Chain addresses that can disable each validator. Give 1 address for all validators or 1 per validator. Defaults to your own address.")
+	subnetConvertL1Cmd.Flags().BoolVar(&subnetAllowEmptyOwners, "allow-empty-owners", false, "Do not default unset owners to your own address. An empty owner lets any P-Chain key disable the validator and spend its balance (unsafe)")
 
 	// Add validator flags
 	subnetAddValidatorCmd.Flags().StringVar(&subnetID, "subnet-id", "", "Subnet ID")

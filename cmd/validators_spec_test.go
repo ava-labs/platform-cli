@@ -4,15 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
+	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
+	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 )
 
 // newTestPoP generates a valid BLS proof of possession for tests.
@@ -479,5 +483,188 @@ func TestGenerateMockValidator(t *testing.T) {
 	// Negative balance is rejected.
 	if _, err := generateMockValidator(-1, 0); err == nil {
 		t.Fatal("generateMockValidator() expected error for negative balance")
+	}
+}
+
+// formatTestAddress formats addr as a bech32 address on chain for hrp.
+func formatTestAddress(t *testing.T, chain, hrp string, addr ids.ShortID) string {
+	t.Helper()
+	formatted, err := address.Format(chain, hrp, addr[:])
+	if err != nil {
+		t.Fatalf("address.Format() error = %v", err)
+	}
+	return formatted
+}
+
+func TestParseValidatorOwners(t *testing.T) {
+	hrp := constants.FujiHRP
+	addr1 := ids.GenerateTestShortID()
+	addr2 := ids.GenerateTestShortID()
+	p1 := formatTestAddress(t, "P", hrp, addr1)
+	p2 := formatTestAddress(t, "P", hrp, addr2)
+
+	tests := []struct {
+		name          string
+		list          string
+		numValidators int
+		want          []ids.ShortID
+		wantErr       error
+	}{
+		{
+			name:          "unset",
+			list:          " ",
+			numValidators: 2,
+		},
+		{
+			name:          "one_for_all",
+			list:          p1,
+			numValidators: 3,
+			want:          []ids.ShortID{addr1, addr1, addr1},
+		},
+		{
+			name:          "one_per_validator",
+			list:          " " + p1 + " , " + p2 + " ",
+			numValidators: 2,
+			want:          []ids.ShortID{addr1, addr2},
+		},
+		{
+			name:          "only_separators",
+			list:          ",,",
+			numValidators: 1,
+			wantErr:       errNoOwnerAddresses,
+		},
+		{
+			name:          "count_mismatch",
+			list:          p1 + "," + p2,
+			numValidators: 3,
+			wantErr:       errOwnerCountMismatch,
+		},
+		{
+			name:          "x_chain_address",
+			list:          formatTestAddress(t, "X", hrp, addr1),
+			numValidators: 1,
+			wantErr:       errNotPChainAddress,
+		},
+		{
+			name:          "mainnet_address_on_fuji",
+			list:          formatTestAddress(t, "P", constants.MainnetHRP, addr1),
+			numValidators: 1,
+			wantErr:       errWrongNetworkAddress,
+		},
+		{
+			name:          "missing_chain_prefix",
+			list:          strings.TrimPrefix(p1, "P-"),
+			numValidators: 1,
+			wantErr:       address.ErrNoSeparator,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseValidatorOwners(tt.list, hrp, tt.numValidators)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("parseValidatorOwners() error = %v, want %v", err, tt.wantErr)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("parseValidatorOwners() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetL1ValidatorOwners(t *testing.T) {
+	defaultAddr := ids.GenerateTestShortID()
+	addr1 := ids.GenerateTestShortID()
+	addr2 := ids.GenerateTestShortID()
+	ownerOf := func(addr ids.ShortID) message.PChainOwner {
+		return message.PChainOwner{
+			Threshold: 1,
+			Addresses: []ids.ShortID{addr},
+		}
+	}
+
+	tests := []struct {
+		name                   string
+		remainingBalanceOwners []ids.ShortID
+		deactivationOwners     []ids.ShortID
+		defaultOwner           ids.ShortID
+		allowEmpty             bool
+		wantRemaining          []message.PChainOwner
+		wantDeactivation       []message.PChainOwner
+		wantErr                error
+	}{
+		{
+			name:             "defaults_to_issuer",
+			defaultOwner:     defaultAddr,
+			wantRemaining:    []message.PChainOwner{ownerOf(defaultAddr), ownerOf(defaultAddr)},
+			wantDeactivation: []message.PChainOwner{ownerOf(defaultAddr), ownerOf(defaultAddr)},
+		},
+		{
+			name:                   "explicit_owners",
+			remainingBalanceOwners: []ids.ShortID{addr1, addr2},
+			deactivationOwners:     []ids.ShortID{addr2, addr1},
+			defaultOwner:           defaultAddr,
+			wantRemaining:          []message.PChainOwner{ownerOf(addr1), ownerOf(addr2)},
+			wantDeactivation:       []message.PChainOwner{ownerOf(addr2), ownerOf(addr1)},
+		},
+		{
+			name:                   "explicit_remaining_default_deactivation",
+			remainingBalanceOwners: []ids.ShortID{addr1, addr1},
+			defaultOwner:           defaultAddr,
+			wantRemaining:          []message.PChainOwner{ownerOf(addr1), ownerOf(addr1)},
+			wantDeactivation:       []message.PChainOwner{ownerOf(defaultAddr), ownerOf(defaultAddr)},
+		},
+		{
+			name:    "refuses_empty_default",
+			wantErr: errEmptyValidatorOwner,
+		},
+		{
+			name:                   "refuses_empty_deactivation_owner",
+			remainingBalanceOwners: []ids.ShortID{addr1, addr2},
+			wantErr:                errEmptyValidatorOwner,
+		},
+		{
+			name:             "allow_empty_skips_default",
+			defaultOwner:     defaultAddr,
+			allowEmpty:       true,
+			wantRemaining:    []message.PChainOwner{{}, {}},
+			wantDeactivation: []message.PChainOwner{{}, {}},
+		},
+		{
+			name:               "allow_empty_keeps_explicit_owner",
+			deactivationOwners: []ids.ShortID{addr1, addr2},
+			defaultOwner:       defaultAddr,
+			allowEmpty:         true,
+			wantRemaining:      []message.PChainOwner{{}, {}},
+			wantDeactivation:   []message.PChainOwner{ownerOf(addr1), ownerOf(addr2)},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			validators := []*txs.ConvertSubnetToL1Validator{
+				{NodeID: []byte{0x01}},
+				{NodeID: []byte{0x02}},
+			}
+			err := setL1ValidatorOwners(
+				validators,
+				tt.remainingBalanceOwners,
+				tt.deactivationOwners,
+				tt.defaultOwner,
+				tt.allowEmpty,
+			)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("setL1ValidatorOwners() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr != nil {
+				return
+			}
+			for i, v := range validators {
+				if !reflect.DeepEqual(v.RemainingBalanceOwner, tt.wantRemaining[i]) {
+					t.Errorf("validator %d RemainingBalanceOwner = %+v, want %+v", i, v.RemainingBalanceOwner, tt.wantRemaining[i])
+				}
+				if !reflect.DeepEqual(v.DeactivationOwner, tt.wantDeactivation[i]) {
+					t.Errorf("validator %d DeactivationOwner = %+v, want %+v", i, v.DeactivationOwner, tt.wantDeactivation[i])
+				}
+			}
+		})
 	}
 }
