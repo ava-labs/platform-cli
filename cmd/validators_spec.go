@@ -169,6 +169,7 @@ var (
 	errOwnerCountMismatch  = errors.New("owner count must be 1 or match validator count")
 	errNotPChainAddress    = errors.New("not a P-Chain address")
 	errWrongNetworkAddress = errors.New("address is for a different network")
+	errZeroOwnerAddress    = errors.New("owner address is the zero address")
 	errEmptyValidatorOwner = errors.New("validator owner is empty")
 )
 
@@ -193,6 +194,10 @@ func parseValidatorOwners(list, hrp string, numValidators int) ([]ids.ShortID, e
 		owner, err := parsePChainAddress(addr, hrp)
 		if err != nil {
 			return nil, fmt.Errorf("invalid owner address %q: %w", addr, err)
+		}
+		// validatorOwner treats the zero address as unset.
+		if owner == ids.ShortEmpty {
+			return nil, fmt.Errorf("%w: %q", errZeroOwnerAddress, addr)
 		}
 		owners[i] = owner
 	}
@@ -252,6 +257,30 @@ func setL1ValidatorOwners(
 	return nil
 }
 
+// finalizeL1Validators sets the validator owners with setL1ValidatorOwners and
+// then sorts the validators with sortAndValidateL1Validators. The owner lists
+// align with validators in input order, so the owners must be set before the
+// sort.
+func finalizeL1Validators(
+	validators []*txs.ConvertSubnetToL1Validator,
+	remainingBalanceOwners []ids.ShortID,
+	deactivationOwners []ids.ShortID,
+	defaultOwner ids.ShortID,
+	allowEmpty bool,
+) error {
+	err := setL1ValidatorOwners(
+		validators,
+		remainingBalanceOwners,
+		deactivationOwners,
+		defaultOwner,
+		allowEmpty,
+	)
+	if err != nil {
+		return err
+	}
+	return sortAndValidateL1Validators(validators)
+}
+
 // validatorOwner returns owners[i], or defaultOwner if owners is nil, as a
 // threshold 1 owner. An empty address returns the empty owner.
 func validatorOwner(owners []ids.ShortID, i int, defaultOwner ids.ShortID) message.PChainOwner {
@@ -271,7 +300,7 @@ func validatorOwner(owners []ids.ShortID, i int, defaultOwner ids.ShortID) messa
 // formatPChainOwner returns a readable form of owner for the given network.
 func formatPChainOwner(owner message.PChainOwner, networkID uint32) string {
 	if owner.Threshold == 0 {
-		return "EMPTY (threshold 0: any P-Chain key can use it)"
+		return "EMPTY (threshold 0: no signature required)"
 	}
 	addrs := make([]string, len(owner.Addresses))
 	for i, addr := range owner.Addresses {

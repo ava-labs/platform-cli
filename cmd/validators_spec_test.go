@@ -552,6 +552,12 @@ func TestParseValidatorOwners(t *testing.T) {
 			wantErr:       errWrongNetworkAddress,
 		},
 		{
+			name:          "zero_address",
+			list:          formatTestAddress(t, "P", hrp, ids.ShortEmpty),
+			numValidators: 1,
+			wantErr:       errZeroOwnerAddress,
+		},
+		{
 			name:          "missing_chain_prefix",
 			list:          strings.TrimPrefix(p1, "P-"),
 			numValidators: 1,
@@ -666,5 +672,47 @@ func TestSetL1ValidatorOwners(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestFinalizeL1ValidatorsKeepsOwnersWithValidators checks that per-validator
+// owners follow their validator through the sort by NodeID.
+func TestFinalizeL1ValidatorsKeepsOwnersWithValidators(t *testing.T) {
+	addr1 := ids.GenerateTestShortID()
+	addr2 := ids.GenerateTestShortID()
+	validators := []*txs.ConvertSubnetToL1Validator{
+		{NodeID: []byte{0x02}},
+		{NodeID: []byte{0x01}},
+	}
+
+	err := finalizeL1Validators(
+		validators,
+		[]ids.ShortID{addr1, addr2},
+		[]ids.ShortID{addr1, addr2},
+		ids.GenerateTestShortID(),
+		false,
+	)
+	if err != nil {
+		t.Fatalf("finalizeL1Validators() error = %v", err)
+	}
+
+	want := map[byte]ids.ShortID{
+		0x02: addr1,
+		0x01: addr2,
+	}
+	for i, v := range validators {
+		wantOwner := message.PChainOwner{
+			Threshold: 1,
+			Addresses: []ids.ShortID{want[v.NodeID[0]]},
+		}
+		if !reflect.DeepEqual(v.RemainingBalanceOwner, wantOwner) {
+			t.Errorf("validator %x RemainingBalanceOwner = %+v, want %+v", v.NodeID, v.RemainingBalanceOwner, wantOwner)
+		}
+		if !reflect.DeepEqual(v.DeactivationOwner, wantOwner) {
+			t.Errorf("validator %x DeactivationOwner = %+v, want %+v", v.NodeID, v.DeactivationOwner, wantOwner)
+		}
+		if i > 0 && bytes.Compare(validators[i-1].NodeID, v.NodeID) >= 0 {
+			t.Errorf("validators not sorted by NodeID: %x before %x", validators[i-1].NodeID, v.NodeID)
+		}
 	}
 }
