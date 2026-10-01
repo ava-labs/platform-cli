@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
@@ -491,7 +492,8 @@ func TestIssueTransferSubnetOwnershipTx(t *testing.T) {
 	gotTxID, err := issueTransferSubnetOwnershipTx(
 		issuer,
 		subnetID,
-		newOwner,
+		[]ids.ShortID{newOwner},
+		1,
 	)
 	if err != nil {
 		t.Fatalf("issueTransferSubnetOwnershipTx() returned error: %v", err)
@@ -504,6 +506,93 @@ func TestIssueTransferSubnetOwnershipTx(t *testing.T) {
 	}
 	if issuer.gotOwner == nil || len(issuer.gotOwner.Addrs) != 1 || issuer.gotOwner.Addrs[0] != newOwner {
 		t.Fatalf("issueTransferSubnetOwnershipTx() owner addrs = %#v, want [%s]", issuer.gotOwner, newOwner)
+	}
+	if issuer.gotOwner.Threshold != 1 {
+		t.Fatalf("issueTransferSubnetOwnershipTx() threshold = %d, want 1", issuer.gotOwner.Threshold)
+	}
+}
+
+func TestIssueTransferSubnetOwnershipTxMultisig(t *testing.T) {
+	subnetID := ids.GenerateTestID()
+	txID := ids.GenerateTestID()
+	owners := []ids.ShortID{
+		ids.GenerateTestShortID(),
+		ids.GenerateTestShortID(),
+		ids.GenerateTestShortID(),
+	}
+
+	issuer := &stubTransferSubnetOwnershipTxIssuer{tx: &txs.Tx{TxID: txID}}
+	gotTxID, err := issueTransferSubnetOwnershipTx(
+		issuer,
+		subnetID,
+		owners,
+		2,
+	)
+	if err != nil {
+		t.Fatalf("issueTransferSubnetOwnershipTx() returned error: %v", err)
+	}
+	if gotTxID != txID {
+		t.Fatalf("issueTransferSubnetOwnershipTx() txID = %s, want %s", gotTxID, txID)
+	}
+	if issuer.gotOwner == nil {
+		t.Fatal("issueTransferSubnetOwnershipTx() owner is nil")
+	}
+	if issuer.gotOwner.Threshold != 2 {
+		t.Fatalf("issueTransferSubnetOwnershipTx() threshold = %d, want 2", issuer.gotOwner.Threshold)
+	}
+	if len(issuer.gotOwner.Addrs) != len(owners) {
+		t.Fatalf("issueTransferSubnetOwnershipTx() owner count = %d, want %d", len(issuer.gotOwner.Addrs), len(owners))
+	}
+	if !utils.IsSortedAndUnique(issuer.gotOwner.Addrs) {
+		t.Fatalf("issueTransferSubnetOwnershipTx() owner addrs not sorted and unique: %v", issuer.gotOwner.Addrs)
+	}
+	want := make(map[ids.ShortID]bool, len(owners))
+	for _, addr := range owners {
+		want[addr] = true
+	}
+	for _, addr := range issuer.gotOwner.Addrs {
+		if !want[addr] {
+			t.Fatalf("issueTransferSubnetOwnershipTx() unexpected owner addr %s", addr)
+		}
+	}
+}
+
+func TestNewOwnerValidation(t *testing.T) {
+	addr1 := ids.GenerateTestShortID()
+	addr2 := ids.GenerateTestShortID()
+
+	tests := []struct {
+		name      string
+		addrs     []ids.ShortID
+		threshold uint32
+		wantErr   bool
+	}{
+		{name: "single owner threshold 1", addrs: []ids.ShortID{addr1}, threshold: 1},
+		{name: "two owners threshold 2", addrs: []ids.ShortID{addr1, addr2}, threshold: 2},
+		{name: "no owners", addrs: nil, threshold: 1, wantErr: true},
+		{name: "zero threshold", addrs: []ids.ShortID{addr1}, threshold: 0, wantErr: true},
+		{name: "threshold exceeds owners", addrs: []ids.ShortID{addr1}, threshold: 2, wantErr: true},
+		{name: "duplicate owners", addrs: []ids.ShortID{addr1, addr1}, threshold: 1, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			owner, err := NewOwner(tt.addrs, tt.threshold)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("NewOwner() expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewOwner() returned error: %v", err)
+			}
+			if owner.Threshold != tt.threshold {
+				t.Fatalf("NewOwner() threshold = %d, want %d", owner.Threshold, tt.threshold)
+			}
+			if !utils.IsSortedAndUnique(owner.Addrs) {
+				t.Fatalf("NewOwner() addrs not sorted and unique: %v", owner.Addrs)
+			}
+		})
 	}
 }
 
