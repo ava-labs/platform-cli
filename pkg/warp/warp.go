@@ -272,6 +272,14 @@ func Aggregate(
 	}, nil
 }
 
+// SelectSigners returns the signatures in sigs whose signer is in vdrs.
+func SelectSigners(vdrs validators.WarpSet, sigs []Signature) []Signature {
+	return slices.DeleteFunc(slices.Clone(sigs), func(s Signature) bool {
+		_, ok := canonicalIndex(vdrs.Validators, bls.PublicKeyToUncompressedBytes(s.PublicKey))
+		return !ok
+	})
+}
+
 func canonicalIndex(vdrs []*validators.Warp, pkBytes []byte) (int, bool) {
 	for i, vdr := range vdrs {
 		if bytes.Equal(vdr.PublicKeyBytes, pkBytes) {

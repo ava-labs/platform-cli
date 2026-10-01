@@ -305,9 +305,7 @@ func TestAggregate(t *testing.T) {
 				wantWeight  uint64
 			)
 			for i, w := range tt.signerWeights {
-				idx := slices.IndexFunc(vdrs.Validators, func(v *validators.Warp) bool {
-					return v.Weight == w
-				})
+				idx := indexByWeight(vdrs, w)
 				sig, err := Sign(signers[idx], msg)
 				if err != nil {
 					t.Fatalf("Sign() error = %v", err)
