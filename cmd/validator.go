@@ -316,8 +316,36 @@ var validatorAddAutoRenewedCmd = &cobra.Command{
 		}
 
 		fmt.Printf("TX ID: %s\n", txID)
+		warnIfValidatorNotConnected(ctx, netConfig.RPCURL, nodeID)
 		return nil
 	},
+}
+
+// warnIfValidatorNotConnected reports when the network cannot see the node that
+// was just staked. Auto-renewal is conditioned on reward eligibility, so a node
+// the network never reaches is removed at the first cycle boundary and forfeits
+// that cycle's rewards instead of renewing. The transaction has already been
+// accepted by this point, so every failure here is advisory only.
+func warnIfValidatorNotConnected(ctx context.Context, rpcURL string, nodeID ids.NodeID) {
+	health, err := pchain.GetValidatorHealth(ctx, rpcURL, nodeID)
+	if err != nil {
+		fmt.Printf("\nNote: could not check whether %s is connected: %v\n", nodeID, err)
+		return
+	}
+	if !health.Found {
+		fmt.Printf("\nNote: %s is not in the validator set yet. Confirm the node is connected once it appears.\n", nodeID)
+		return
+	}
+	if health.Connected {
+		return
+	}
+
+	fmt.Printf("\nWarning: the network does not currently see %s as connected.\n", nodeID)
+	fmt.Println("Auto-renewal requires meeting the uptime requirement at each cycle boundary. A node")
+	fmt.Println("that stays unreachable is removed at the end of the cycle, forfeiting that cycle's")
+	fmt.Println("rewards, rather than renewing.")
+	fmt.Println("Check that the node is running with the BLS key used here, that --public-ip is set,")
+	fmt.Println("and that inbound TCP port 9651 is reachable.")
 }
 
 var validatorSetAutoConfigCmd = &cobra.Command{
