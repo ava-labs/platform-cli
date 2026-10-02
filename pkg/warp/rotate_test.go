@@ -27,10 +27,10 @@ type fakeValidator struct {
 	publicKey *bls.PublicKey
 }
 
-// fakeChain is an in-memory P-Chain. After each transaction, the set that
-// ValidatorSet returns lags the accepted state for lag reads. It verifies
-// each Warp message against the accepted set, because the height a block is
-// verified at can be ahead of an earlier read.
+// fakeChain is an in-memory P-Chain. After each transaction, the epoch set
+// lags the accepted state for lag reads of ValidatorSet. Like the P-Chain
+// after Granite, it verifies each Warp message against the epoch set, not
+// the accepted state.
 type fakeChain struct {
 	now time.Time
 	lag int
@@ -121,13 +121,14 @@ func (f *fakeChain) verify(msgBytes []byte) (message.Payload, error) {
 	if err != nil {
 		return nil, err
 	}
-	vdrs, err := validators.FlattenValidatorSet(f.accepted())
+	vdrs, err := validators.FlattenValidatorSet(f.proposed())
 	if err != nil {
 		return nil, err
 	}
 	err = msg.Signature.Verify(&msg.UnsignedMessage, testNetworkID, vdrs, QuorumNumerator, QuorumDenominator)
 	if err != nil {
-		return nil, err
+		// The P-Chain error text, which Rotate retries.
+		return nil, fmt.Errorf("failed verifying warp messages: %w", err)
 	}
 	call, err := payload.ParseAddressedCall(msg.Payload)
 	if err != nil {
@@ -363,6 +364,33 @@ func TestRotate(t *testing.T) {
 	}
 }
 
+// TestRotateWithLaggingEpoch checks that a rotation does not wait for the
+// epoch set to catch up. The epoch set holds the pre-rotation set for the
+// whole run, as when an epoch lasts longer than the rotation. Each message is
+// aggregated against the epoch set, which still has the target, so the P-Chain
+// accepts it at once.
+func TestRotateWithLaggingEpoch(t *testing.T) {
+	weights := []uint64{100, 101, 102, 103, 104, 105, 106, 107, 108, 109}
+	rt := newRotationTest(t, weights, 100, 104, 109)
+	rt.chain.stale = rt.chain.accepted()
+	rt.chain.lag = 1_000_000
+	rt.chain.staleLeft = rt.chain.lag
+
+	if _, err := rt.rotate(t, weights...); err != nil {
+		t.Fatalf("Rotate() error = %v", err)
+	}
+	var wantTxs []string
+	for _, pt := range rt.planned {
+		wantTxs = append(wantTxs, "remove "+pt.NodeID.String(), "add "+pt.NodeID.String())
+	}
+	if !slices.Equal(rt.chain.txs, wantTxs) {
+		t.Errorf("transactions = %v, want %v", rt.chain.txs, wantTxs)
+	}
+	if got := rt.chain.calls["RegisterL1Validator"]; got != len(rt.planned) {
+		t.Errorf("RegisterL1Validator calls = %d, want %d", got, len(rt.planned))
+	}
+}
+
 // TestRotateRefusesBeforeRemoval checks the conditions under which Rotate
 // must not submit any transaction, so a validator is never removed without a
 // way to re-add it.
@@ -505,10 +533,12 @@ func TestRotateStopsWhenNotConfirmed(t *testing.T) {
 	}
 }
 
-// TestRotateRetriesTransientErrors checks that rate limits and a proposed
-// height lag do not stop a rotation.
+// TestRotateRetriesTransientErrors checks that rate limits and an epoch
+// change during submit do not stop a rotation.
 func TestRotateRetriesTransientErrors(t *testing.T) {
 	rt := newRotationTest(t, []uint64{10, 20, 30, 40}, 10, 20)
+	// No epoch lag, so the only retries are the injected errors.
+	rt.chain.lag = 0
 	rt.chain.fail = map[string][]error{
 		"ValidatorSet":         {err429},
 		"L1Validator":          {errCloudflare1015},
@@ -571,5 +601,38 @@ func TestRotateDoesNotRetryLogicError(t *testing.T) {
 	}
 	if got := rt.chain.calls["RegisterL1Validator"]; got != 1 {
 		t.Errorf("RegisterL1Validator calls = %d, want 1", got)
+	}
+}
+
+// TestAggregateForSubmitVariesMessage checks that submits of the same message
+// against the same set are not all the same bytes, so a node that cached a
+// rejected transaction checks a retry again, and that each one is valid.
+func TestAggregateForSubmitVariesMessage(t *testing.T) {
+	weights := []uint64{100, 101, 102, 103, 104, 105, 106, 107, 108, 109}
+	rt := newRotationTest(t, weights, 100)
+	bundle, err := SignPlan(rt.planned, rt.signers)
+	if err != nil {
+		t.Fatalf("SignPlan() error = %v", err)
+	}
+	c, err := Collect(rt.planned, []*Bundle{bundle})
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	r := &rotator{cfg: RotateConfig{Collected: c}}
+	set := rt.chain.accepted()
+
+	seen := make(map[string]bool)
+	for range 20 {
+		agg, err := r.aggregateForSubmit(rt.planned[0].Removal, set)
+		if err != nil {
+			t.Fatalf("aggregateForSubmit() error = %v", err)
+		}
+		if _, err := rt.chain.verify(agg.Message.Bytes()); err != nil {
+			t.Fatalf("verify() error = %v", err)
+		}
+		seen[string(agg.Message.Bytes())] = true
+	}
+	if len(seen) < 2 {
+		t.Fatalf("20 submits produced %d distinct messages, want at least 2", len(seen))
 	}
 }

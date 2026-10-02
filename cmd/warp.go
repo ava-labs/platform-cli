@@ -30,6 +30,7 @@ import (
 	"github.com/spf13/cobra"
 
 	platformapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
+	"github.com/ava-labs/avalanchego/vms/proposervm"
 )
 
 const (
@@ -448,7 +449,8 @@ var warpAggregateCmd = &cobra.Command{
 	Long: `Aggregate the "warp sign" blobs into a signed Warp message.
 
 The command reads the canonical validator set of --subnet-id from the P-Chain
-at its proposed height, the height the P-Chain uses to verify new transactions.
+at the current epoch height, the height the P-Chain uses to verify new
+transactions.
 It places each signer at its canonical index and refuses to output a message
 unless the signers hold at least 67% of the subnet weight.
 
@@ -485,14 +487,14 @@ Submit the output with "l1 set-validator-weight --message" or
 		if err != nil {
 			return err
 		}
-		height, vdrs, err := proposedValidatorSet(ctx, platformvm.NewClient(uri), subnetID)
+		height, vdrs, err := canonicalWarpSet(ctx, uri, subnetID)
 		if err != nil {
 			return err
 		}
 
 		fmt.Print(describeWarpMessage(decoded, time.Now()))
 		fmt.Println()
-		fmt.Printf("Canonical set: %d validators, total weight %d, P-Chain proposed height about %d\n",
+		fmt.Printf("Canonical set: %d validators, total weight %d, P-Chain height %d\n",
 			len(vdrs.Validators),
 			vdrs.TotalWeight,
 			height,
@@ -542,23 +544,61 @@ func pChainURI() (string, error) {
 	return uri, nil
 }
 
-// proposedValidatorSet returns the canonical validator set of subnetID at the
-// P-Chain proposed height. The P-Chain verifies the Warp messages of a new
-// transaction against this height. The returned height is for display: the
-// set is read with the "proposed" height parameter, because public API nodes
-// reject numeric heights.
-func proposedValidatorSet(
+// errNumericHeightRejected is the error text of a node that rejects numeric
+// heights in platform.getValidatorsAt, as public API nodes do.
+const errNumericHeightRejected = "Unsupported height parameter"
+
+// warpValidatorSet returns the validators of subnetID at the height the
+// P-Chain verifies the Warp messages of a new transaction against. Since
+// Granite (ACP-181), this is the P-Chain height of the current epoch, not the
+// proposed height. The epoch height stays fixed for the epoch duration (5
+// minutes on Mainnet and Fuji), so it lags each validator set change. A
+// signature aggregated against another set has the wrong signer bits, and the
+// P-Chain rejects it with "signature is invalid".
+//
+// Before Granite, or when the node rejects numeric heights, it falls back to
+// the proposed height and prints a warning.
+func warpValidatorSet(
 	ctx context.Context,
-	client *platformvm.Client,
+	uri string,
 	subnetID ids.ID,
-) (uint64, validators.WarpSet, error) {
+) (uint64, map[ids.NodeID]*validators.GetValidatorOutput, error) {
+	client := platformvm.NewClient(uri)
+	epoch, err := proposervm.NewJSONRPCClient(uri, "P").GetCurrentEpoch(ctx)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to get P-Chain epoch: %w", err)
+	}
+	if epoch.PChainHeight != 0 {
+		vdrSet, err := client.GetValidatorsAt(ctx, subnetID, platformapi.Height(epoch.PChainHeight))
+		if err == nil {
+			return epoch.PChainHeight, vdrSet, nil
+		}
+		if !strings.Contains(err.Error(), errNumericHeightRejected) {
+			return 0, nil, fmt.Errorf("failed to get validator set at epoch height %d: %w", epoch.PChainHeight, err)
+		}
+		fmt.Fprintf(os.Stderr, "warning: %s rejects numeric heights; using the proposed height, which can differ from the epoch height the P-Chain verifies against. Use --rpc with your own node.\n", uri)
+	}
+
 	height, err := client.GetProposedHeight(ctx)
 	if err != nil {
-		return 0, validators.WarpSet{}, fmt.Errorf("failed to get P-Chain proposed height: %w", err)
+		return 0, nil, fmt.Errorf("failed to get P-Chain proposed height: %w", err)
 	}
 	vdrSet, err := client.GetValidatorsAt(ctx, subnetID, platformapi.ProposedHeight)
 	if err != nil {
-		return 0, validators.WarpSet{}, fmt.Errorf("failed to get validator set: %w", err)
+		return 0, nil, fmt.Errorf("failed to get validator set: %w", err)
+	}
+	return height, vdrSet, nil
+}
+
+// canonicalWarpSet returns the canonical form of [warpValidatorSet].
+func canonicalWarpSet(
+	ctx context.Context,
+	uri string,
+	subnetID ids.ID,
+) (uint64, validators.WarpSet, error) {
+	height, vdrSet, err := warpValidatorSet(ctx, uri, subnetID)
+	if err != nil {
+		return 0, validators.WarpSet{}, err
 	}
 	vdrs, err := validators.FlattenValidatorSet(vdrSet)
 	if err != nil {

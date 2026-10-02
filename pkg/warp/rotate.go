@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"time"
 
@@ -24,8 +25,10 @@ var (
 
 // Chain is the P-Chain access that [Rotate] needs.
 type Chain interface {
-	// ValidatorSet returns the validators of subnetID at the P-Chain proposed
-	// height, the height the P-Chain verifies new Warp messages against.
+	// ValidatorSet returns the validators of subnetID at the height the
+	// P-Chain verifies new Warp messages against. Since Granite (ACP-181),
+	// this is the current epoch height, which lags each validator set change
+	// by up to an epoch.
 	ValidatorSet(ctx context.Context, subnetID ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error)
 	// L1Validator returns the L1 validator with validationID from the last
 	// accepted state. found is false if the validator does not exist.
@@ -97,10 +100,15 @@ const (
 
 // Rotate removes and re-adds each target in order, one target at a time:
 //
-//  1. aggregate and submit the removal, then wait until the target leaves
-//     the validator set
-//  2. aggregate and submit the re-add, then wait until the target is back
+//  1. aggregate and submit the removal, then wait until the P-Chain state
+//     has no original validation
+//  2. aggregate and submit the re-add, then wait until the P-Chain state has
+//     the re-added validation
 //  3. check that the re-added validator has the planned owners
+//
+// It does not wait for the validator set at the epoch height to change.
+// Each aggregation uses the set that the P-Chain verifies against, so it is
+// valid while that set still lags.
 //
 // Before a target's removal, Rotate checks that the removal and the re-add
 // can both reach quorum with the collected signatures, that a proof of
@@ -228,12 +236,9 @@ func (r *rotator) rotateTarget(ctx context.Context, i int, t PlannedTarget) (Tar
 			return res, fmt.Errorf("failed to submit removal: %w", err)
 		}
 		r.logf("[%d] %s: removal accepted: %s", i, t.NodeID, res.RemovalTxID)
-		err = r.waitFor(ctx, "the removal to reach the validator set", func(ctx context.Context) (bool, error) {
+		err = r.waitFor(ctx, "the removal to reach the P-Chain state", func(ctx context.Context) (bool, error) {
 			s, err := r.state(ctx, t)
-			if err != nil || s != stateRemoved {
-				return false, err
-			}
-			return r.inSet(ctx, t, false)
+			return s == stateRemoved, err
 		})
 		if err != nil {
 			return res, err
@@ -257,8 +262,9 @@ func (r *rotator) rotateTarget(ctx context.Context, i int, t PlannedTarget) (Tar
 		return res, fmt.Errorf("failed to submit re-add: %w", err)
 	}
 	r.logf("[%d] %s: re-add accepted: %s", i, t.NodeID, res.ReaddTxID)
-	err = r.waitFor(ctx, "the re-add to reach the validator set", func(ctx context.Context) (bool, error) {
-		return r.inSet(ctx, t, true)
+	err = r.waitFor(ctx, "the re-add to reach the P-Chain state", func(ctx context.Context) (bool, error) {
+		s, err := r.state(ctx, t)
+		return s == stateRotated, err
 	})
 	if err != nil {
 		return res, err
@@ -277,16 +283,16 @@ func (r *rotator) rotateTarget(ctx context.Context, i int, t PlannedTarget) (Tar
 	return res, nil
 }
 
-// submitRemoval aggregates the removal against the current set and submits
-// it. Each retry aggregates again, so a retry after a proposed height lag
-// uses the set that the P-Chain verifies against.
+// submitRemoval aggregates the removal against the set that the P-Chain
+// verifies against and submits it. Each retry aggregates again, so a retry
+// after an epoch change uses the new set.
 func (r *rotator) submitRemoval(ctx context.Context, t PlannedTarget) (ids.ID, error) {
 	// The submit retry covers this read, so it is not retried on its own.
 	vdrSet, err := r.cfg.Chain.ValidatorSet(ctx, r.cfg.SubnetID)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to read validator set: %w", err)
 	}
-	agg, err := r.aggregate(t.Removal, vdrSet)
+	agg, err := r.aggregateForSubmit(t.Removal, vdrSet)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("removal: %w", err)
 	}
@@ -299,7 +305,7 @@ func (r *rotator) submitReadd(ctx context.Context, t PlannedTarget, pop [bls.Sig
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to read validator set: %w", err)
 	}
-	agg, err := r.aggregate(t.Readd, vdrSet)
+	agg, err := r.aggregateForSubmit(t.Readd, vdrSet)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("re-add: %w", err)
 	}
@@ -348,21 +354,6 @@ func (r *rotator) state(ctx context.Context, t PlannedTarget) (targetState, erro
 	return stateRemoved, nil
 }
 
-// inSet reports whether the target's presence in the validator set at the
-// proposed height equals want. A present target must have its planned
-// weight.
-func (r *rotator) inSet(ctx context.Context, t PlannedTarget, want bool) (bool, error) {
-	vdrSet, err := r.validatorSet(ctx)
-	if err != nil {
-		return false, err
-	}
-	vdr, ok := vdrSet[t.NodeID]
-	if !want {
-		return !ok, nil
-	}
-	return ok && vdr.Weight == t.Weight, nil
-}
-
 func (r *rotator) checkExpiry(t PlannedTarget) error {
 	deadline := r.cfg.Now().Add(r.cfg.ExpiryMargin)
 	expiry := time.Unix(int64(t.ReaddPayload.Expiry), 0)
@@ -370,6 +361,29 @@ func (r *rotator) checkExpiry(t PlannedTarget) error {
 		return fmt.Errorf("%w: expiry %s, need after %s", errExpiryTooSoon, expiry.UTC().Format(time.RFC3339), deadline.UTC().Format(time.RFC3339))
 	}
 	return nil
+}
+
+// aggregateForSubmit aggregates d like aggregate, but leaves out one random
+// signer if the rest still reach quorum. A node caches the drop reason of a
+// rejected transaction by ID and returns it without a new check. The BLS
+// aggregate and the wallet's UTXO choice are deterministic, so a retry with
+// every signer is the same transaction and gets the old error. A different
+// signer set is a new transaction ID. The P-Chain rejects a memo, so a memo
+// cannot vary the ID.
+func (r *rotator) aggregateForSubmit(d *Decoded, vdrSet map[ids.NodeID]*validators.GetValidatorOutput) (*Aggregation, error) {
+	vdrs, err := validators.FlattenValidatorSet(vdrSet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build canonical validator set: %w", err)
+	}
+	sigs := SelectSigners(vdrs, r.cfg.Collected.Signatures[d.Message.ID()])
+	if len(sigs) > 1 {
+		skip := rand.IntN(len(sigs))
+		agg, err := Aggregate(d.Message, vdrs, slices.Delete(slices.Clone(sigs), skip, skip+1))
+		if err == nil {
+			return agg, nil
+		}
+	}
+	return Aggregate(d.Message, vdrs, sigs)
 }
 
 func (r *rotator) aggregate(d *Decoded, vdrSet map[ids.NodeID]*validators.GetValidatorOutput) (*Aggregation, error) {

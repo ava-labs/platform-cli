@@ -15,13 +15,13 @@ var transientErrors = []string{
 	"Too Many Requests",
 	// The Cloudflare rate limit page body.
 	"error code: 1015",
-	// The P-Chain verified the Warp message at a proposed height that does
-	// not include the last change yet. This clears within
-	// RecentlyAcceptedWindowTTL (30s).
+	// The P-Chain verified the Warp message against a set other than the one
+	// it was aggregated against, as when the epoch changes between the read
+	// and the submit. The retry aggregates again.
 	"failed verifying warp messages",
 }
 
-// isTransient reports whether err is a rate limit or a proposed height lag,
+// isTransient reports whether err is a rate limit or an epoch change,
 // which clear on their own. Every other error is a logic error.
 func isTransient(err error) bool {
 	msg := err.Error()

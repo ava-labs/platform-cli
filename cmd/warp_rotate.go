@@ -25,8 +25,6 @@ import (
 	"github.com/ava-labs/platform-cli/pkg/wallet"
 	"github.com/ava-labs/platform-cli/pkg/warp"
 	"github.com/spf13/cobra"
-
-	platformapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 )
 
 const (
@@ -35,7 +33,7 @@ const (
 	defaultPollInterval     = 2 * time.Second
 	defaultReaddExpiryLimit = 30 * time.Minute
 
-	// A rate limit or a proposed height lag clears within about 30s. These
+	// A rate limit or an epoch change clears within about 30s. These
 	// values retry for about 60s, then stop so a rerun resumes.
 	retryAttempts   = 6
 	retryBackoff    = 2 * time.Second
@@ -137,7 +135,7 @@ The re-adds expire at --expiry, so finish the rotation before then.`,
 		}
 
 		client := platformvm.NewClient(uri)
-		height, vdrs, err := proposedValidatorSet(ctx, client, subnetID)
+		height, vdrs, err := canonicalWarpSet(ctx, uri, subnetID)
 		if err != nil {
 			return err
 		}
@@ -236,7 +234,7 @@ func printPlanSummary(p *warp.Plan, planned []warp.PlannedTarget, now time.Time)
 	fmt.Printf("Manager:                 0x%x on %s\n", []byte(p.ManagerAddress), p.ManagerBlockchainID)
 	fmt.Printf("Re-add balance:          %d nAVAX each\n", p.Balance)
 	fmt.Printf("Re-add expiry:           %s (in %s)\n", formatUnix(p.Expiry), time.Unix(int64(p.Expiry), 0).Sub(now).Round(time.Minute))
-	fmt.Printf("Canonical set:           %d validators, total weight %d, P-Chain proposed height about %d\n",
+	fmt.Printf("Canonical set:           %d validators, total weight %d, P-Chain height %d\n",
 		len(p.Snapshot.Validators),
 		p.Snapshot.TotalWeight,
 		p.SnapshotHeight,
@@ -270,20 +268,26 @@ var warpRotateCmd = &cobra.Command{
 at a time:
 
   1. aggregate and submit the removal (SetL1ValidatorWeightTx)
-  2. wait until the target leaves the validator set
-  3. aggregate and submit the re-add (RegisterL1ValidatorTx)
-  4. wait until the target is back, then check its new owners
+  2. aggregate and submit the re-add (RegisterL1ValidatorTx)
+  3. check the new owners
 
-Each aggregation uses the bundle signatures of the validators in the live set
-and must reach 67% of the weight. Before a removal, the command checks that
-the re-add also reaches 67% without the target, that a bundle has the target's
-proof of possession, and that the re-add does not expire within
---expiry-margin. It never removes a second validator while one is out of the
-set. A rerun skips rotated targets and re-adds a removed one.
+Each aggregation uses the bundle signatures of the validators in the set at
+the current epoch height, the set the P-Chain verifies against, and must reach
+67% of the weight. A node that rejects numeric heights (public API nodes)
+falls back to the proposed height; use --rpc with your own node.
 
-Rate limits (HTTP 429, Cloudflare 1015) and a proposed height lag ("failed
-verifying warp messages") are retried for about 60s. A transaction is never
-issued again if the P-Chain already accepted it. Other errors stop at once.
+Before a removal, the command checks that the re-add also reaches 67% without
+the target, that a bundle has the target's proof of possession, and that the
+re-add does not expire within --expiry-margin. It never removes a second
+validator while one is out of the set. A rerun skips rotated targets and
+re-adds a removed one.
+
+Rate limits (HTTP 429, Cloudflare 1015) and an epoch change during submit
+("failed verifying warp messages") are retried for about 60s. A transaction
+is never issued again if the P-Chain already accepted it. Each submit leaves
+out one random signer when quorum holds without it, so each attempt is a new
+transaction ID and a node that cached an earlier rejection checks it again.
+Other errors stop at once.
 
 The --key-name, --ledger, or --private-key wallet pays the fees and the
 re-add balances. It asks for a confirm before each target unless --yes.`,
@@ -361,6 +365,7 @@ re-add balances. It asks for a confirm before each target unless --yes.`,
 		}
 		results, err := warp.Rotate(ctx, warp.RotateConfig{
 			Chain: &pChain{
+				uri:    uri,
 				client: platformvm.NewClient(uri),
 				wallet: w,
 			},
@@ -403,12 +408,14 @@ re-add balances. It asks for a confirm before each target unless --yes.`,
 
 // pChain is the live P-Chain for [warp.Rotate].
 type pChain struct {
+	uri    string
 	client *platformvm.Client
 	wallet *wallet.Wallet
 }
 
 func (c *pChain) ValidatorSet(ctx context.Context, subnetID ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error) {
-	return c.client.GetValidatorsAt(ctx, subnetID, platformapi.ProposedHeight)
+	_, vdrSet, err := warpValidatorSet(ctx, c.uri, subnetID)
+	return vdrSet, err
 }
 
 func (c *pChain) L1Validator(ctx context.Context, validationID ids.ID) (warp.L1Validator, bool, error) {
