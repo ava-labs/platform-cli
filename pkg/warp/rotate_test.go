@@ -603,3 +603,36 @@ func TestRotateDoesNotRetryLogicError(t *testing.T) {
 		t.Errorf("RegisterL1Validator calls = %d, want 1", got)
 	}
 }
+
+// TestAggregateForSubmitVariesMessage checks that submits of the same message
+// against the same set are not all the same bytes, so a node that cached a
+// rejected transaction checks a retry again, and that each one is valid.
+func TestAggregateForSubmitVariesMessage(t *testing.T) {
+	weights := []uint64{100, 101, 102, 103, 104, 105, 106, 107, 108, 109}
+	rt := newRotationTest(t, weights, 100)
+	bundle, err := SignPlan(rt.planned, rt.signers)
+	if err != nil {
+		t.Fatalf("SignPlan() error = %v", err)
+	}
+	c, err := Collect(rt.planned, []*Bundle{bundle})
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	r := &rotator{cfg: RotateConfig{Collected: c}}
+	set := rt.chain.accepted()
+
+	seen := make(map[string]bool)
+	for range 20 {
+		agg, err := r.aggregateForSubmit(rt.planned[0].Removal, set)
+		if err != nil {
+			t.Fatalf("aggregateForSubmit() error = %v", err)
+		}
+		if _, err := rt.chain.verify(agg.Message.Bytes()); err != nil {
+			t.Fatalf("verify() error = %v", err)
+		}
+		seen[string(agg.Message.Bytes())] = true
+	}
+	if len(seen) < 2 {
+		t.Fatalf("20 submits produced %d distinct messages, want at least 2", len(seen))
+	}
+}

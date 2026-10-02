@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"time"
 
@@ -291,7 +292,7 @@ func (r *rotator) submitRemoval(ctx context.Context, t PlannedTarget) (ids.ID, e
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to read validator set: %w", err)
 	}
-	agg, err := r.aggregate(t.Removal, vdrSet)
+	agg, err := r.aggregateForSubmit(t.Removal, vdrSet)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("removal: %w", err)
 	}
@@ -304,7 +305,7 @@ func (r *rotator) submitReadd(ctx context.Context, t PlannedTarget, pop [bls.Sig
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to read validator set: %w", err)
 	}
-	agg, err := r.aggregate(t.Readd, vdrSet)
+	agg, err := r.aggregateForSubmit(t.Readd, vdrSet)
 	if err != nil {
 		return ids.Empty, fmt.Errorf("re-add: %w", err)
 	}
@@ -360,6 +361,29 @@ func (r *rotator) checkExpiry(t PlannedTarget) error {
 		return fmt.Errorf("%w: expiry %s, need after %s", errExpiryTooSoon, expiry.UTC().Format(time.RFC3339), deadline.UTC().Format(time.RFC3339))
 	}
 	return nil
+}
+
+// aggregateForSubmit aggregates d like aggregate, but leaves out one random
+// signer if the rest still reach quorum. A node caches the drop reason of a
+// rejected transaction by ID and returns it without a new check. The BLS
+// aggregate and the wallet's UTXO choice are deterministic, so a retry with
+// every signer is the same transaction and gets the old error. A different
+// signer set is a new transaction ID. The P-Chain rejects a memo, so a memo
+// cannot vary the ID.
+func (r *rotator) aggregateForSubmit(d *Decoded, vdrSet map[ids.NodeID]*validators.GetValidatorOutput) (*Aggregation, error) {
+	vdrs, err := validators.FlattenValidatorSet(vdrSet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build canonical validator set: %w", err)
+	}
+	sigs := SelectSigners(vdrs, r.cfg.Collected.Signatures[d.Message.ID()])
+	if len(sigs) > 1 {
+		skip := rand.IntN(len(sigs))
+		agg, err := Aggregate(d.Message, vdrs, slices.Delete(slices.Clone(sigs), skip, skip+1))
+		if err == nil {
+			return agg, nil
+		}
+	}
+	return Aggregate(d.Message, vdrs, sigs)
 }
 
 func (r *rotator) aggregate(d *Decoded, vdrSet map[ids.NodeID]*validators.GetValidatorOutput) (*Aggregation, error) {

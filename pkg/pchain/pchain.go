@@ -693,8 +693,8 @@ func issueRemoveSubnetValidatorTx(
 // =============================================================================
 
 // RegisterL1Validator registers a new L1 validator (IssueRegisterL1ValidatorTx).
-func RegisterL1Validator(ctx context.Context, w *wallet.Wallet, balance uint64, pop [bls.SignatureLen]byte, message []byte, opts ...common.Option) (ids.ID, error) {
-	tx, err := w.PWallet().IssueRegisterL1ValidatorTx(balance, pop, message, append([]common.Option{common.WithContext(ctx)}, opts...)...)
+func RegisterL1Validator(ctx context.Context, w *wallet.Wallet, balance uint64, pop [bls.SignatureLen]byte, message []byte) (ids.ID, error) {
+	tx, err := w.PWallet().IssueRegisterL1ValidatorTx(balance, pop, message, common.WithContext(ctx))
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue RegisterL1ValidatorTx: %w", err)
 	}
@@ -702,8 +702,8 @@ func RegisterL1Validator(ctx context.Context, w *wallet.Wallet, balance uint64, 
 }
 
 // SetL1ValidatorWeight sets the weight of an L1 validator (IssueSetL1ValidatorWeightTx).
-func SetL1ValidatorWeight(ctx context.Context, w *wallet.Wallet, message []byte, opts ...common.Option) (ids.ID, error) {
-	tx, err := w.PWallet().IssueSetL1ValidatorWeightTx(message, append([]common.Option{common.WithContext(ctx)}, opts...)...)
+func SetL1ValidatorWeight(ctx context.Context, w *wallet.Wallet, message []byte) (ids.ID, error) {
+	tx, err := w.PWallet().IssueSetL1ValidatorWeightTx(message, common.WithContext(ctx))
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue SetL1ValidatorWeightTx: %w", err)
 	}

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,7 +19,6 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
-	walletcommon "github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
@@ -34,9 +32,6 @@ const (
 	defaultWaitTimeout      = 5 * time.Minute
 	defaultPollInterval     = 2 * time.Second
 	defaultReaddExpiryLimit = 30 * time.Minute
-
-	// memoLen is the length of the random memo of each submitted transaction.
-	memoLen = 8
 
 	// A rate limit or an epoch change clears within about 30s. These
 	// values retry for about 60s, then stop so a rerun resumes.
@@ -289,8 +284,9 @@ re-adds a removed one.
 
 Rate limits (HTTP 429, Cloudflare 1015) and an epoch change during submit
 ("failed verifying warp messages") are retried for about 60s. A transaction
-is never issued again if the P-Chain already accepted it. Each submit has a
-random memo, so a node that cached an earlier rejection checks it again.
+is never issued again if the P-Chain already accepted it. Each submit leaves
+out one random signer when quorum holds without it, so each attempt is a new
+transaction ID and a node that cached an earlier rejection checks it again.
 Other errors stop at once.
 
 The --key-name, --ledger, or --private-key wallet pays the fees and the
@@ -451,32 +447,11 @@ func pChainOwner(o *secp256k1fx.OutputOwners) message.PChainOwner {
 }
 
 func (c *pChain) SetL1ValidatorWeight(ctx context.Context, msg []byte) (ids.ID, error) {
-	memo, err := uniqueMemo()
-	if err != nil {
-		return ids.Empty, err
-	}
-	return pchain.SetL1ValidatorWeight(ctx, c.wallet, msg, walletcommon.WithMemo(memo))
+	return pchain.SetL1ValidatorWeight(ctx, c.wallet, msg)
 }
 
 func (c *pChain) RegisterL1Validator(ctx context.Context, balance uint64, pop [bls.SignatureLen]byte, msg []byte) (ids.ID, error) {
-	memo, err := uniqueMemo()
-	if err != nil {
-		return ids.Empty, err
-	}
-	return pchain.RegisterL1Validator(ctx, c.wallet, balance, pop, msg, walletcommon.WithMemo(memo))
-}
-
-// uniqueMemo returns a random memo, so each submit is a new transaction ID.
-// A node caches the drop reason of a rejected transaction by ID and returns
-// it without a new check. A retry of the same Warp message after an epoch
-// change builds the same bytes and gets the old error, unless the ID
-// changes.
-func uniqueMemo() ([]byte, error) {
-	memo := make([]byte, memoLen)
-	if _, err := rand.Read(memo); err != nil {
-		return nil, fmt.Errorf("failed to generate memo: %w", err)
-	}
-	return memo, nil
+	return pchain.RegisterL1Validator(ctx, c.wallet, balance, pop, msg)
 }
 
 // loadPlan reads and decodes a plan file.
