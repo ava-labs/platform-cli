@@ -24,8 +24,10 @@ var (
 
 // Chain is the P-Chain access that [Rotate] needs.
 type Chain interface {
-	// ValidatorSet returns the validators of subnetID at the P-Chain proposed
-	// height, the height the P-Chain verifies new Warp messages against.
+	// ValidatorSet returns the validators of subnetID at the height the
+	// P-Chain verifies new Warp messages against. Since Granite (ACP-181),
+	// this is the current epoch height, which lags each validator set change
+	// by up to an epoch.
 	ValidatorSet(ctx context.Context, subnetID ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error)
 	// L1Validator returns the L1 validator with validationID from the last
 	// accepted state. found is false if the validator does not exist.
@@ -97,10 +99,15 @@ const (
 
 // Rotate removes and re-adds each target in order, one target at a time:
 //
-//  1. aggregate and submit the removal, then wait until the target leaves
-//     the validator set
-//  2. aggregate and submit the re-add, then wait until the target is back
+//  1. aggregate and submit the removal, then wait until the P-Chain state
+//     has no original validation
+//  2. aggregate and submit the re-add, then wait until the P-Chain state has
+//     the re-added validation
 //  3. check that the re-added validator has the planned owners
+//
+// It does not wait for the validator set at the epoch height to change.
+// Each aggregation uses the set that the P-Chain verifies against, so it is
+// valid while that set still lags.
 //
 // Before a target's removal, Rotate checks that the removal and the re-add
 // can both reach quorum with the collected signatures, that a proof of
@@ -228,12 +235,9 @@ func (r *rotator) rotateTarget(ctx context.Context, i int, t PlannedTarget) (Tar
 			return res, fmt.Errorf("failed to submit removal: %w", err)
 		}
 		r.logf("[%d] %s: removal accepted: %s", i, t.NodeID, res.RemovalTxID)
-		err = r.waitFor(ctx, "the removal to reach the validator set", func(ctx context.Context) (bool, error) {
+		err = r.waitFor(ctx, "the removal to reach the P-Chain state", func(ctx context.Context) (bool, error) {
 			s, err := r.state(ctx, t)
-			if err != nil || s != stateRemoved {
-				return false, err
-			}
-			return r.inSet(ctx, t, false)
+			return s == stateRemoved, err
 		})
 		if err != nil {
 			return res, err
@@ -257,8 +261,9 @@ func (r *rotator) rotateTarget(ctx context.Context, i int, t PlannedTarget) (Tar
 		return res, fmt.Errorf("failed to submit re-add: %w", err)
 	}
 	r.logf("[%d] %s: re-add accepted: %s", i, t.NodeID, res.ReaddTxID)
-	err = r.waitFor(ctx, "the re-add to reach the validator set", func(ctx context.Context) (bool, error) {
-		return r.inSet(ctx, t, true)
+	err = r.waitFor(ctx, "the re-add to reach the P-Chain state", func(ctx context.Context) (bool, error) {
+		s, err := r.state(ctx, t)
+		return s == stateRotated, err
 	})
 	if err != nil {
 		return res, err
@@ -277,9 +282,9 @@ func (r *rotator) rotateTarget(ctx context.Context, i int, t PlannedTarget) (Tar
 	return res, nil
 }
 
-// submitRemoval aggregates the removal against the current set and submits
-// it. Each retry aggregates again, so a retry after a proposed height lag
-// uses the set that the P-Chain verifies against.
+// submitRemoval aggregates the removal against the set that the P-Chain
+// verifies against and submits it. Each retry aggregates again, so a retry
+// after an epoch change uses the new set.
 func (r *rotator) submitRemoval(ctx context.Context, t PlannedTarget) (ids.ID, error) {
 	// The submit retry covers this read, so it is not retried on its own.
 	vdrSet, err := r.cfg.Chain.ValidatorSet(ctx, r.cfg.SubnetID)
@@ -346,21 +351,6 @@ func (r *rotator) state(ctx context.Context, t PlannedTarget) (targetState, erro
 		return stateActive, nil
 	}
 	return stateRemoved, nil
-}
-
-// inSet reports whether the target's presence in the validator set at the
-// proposed height equals want. A present target must have its planned
-// weight.
-func (r *rotator) inSet(ctx context.Context, t PlannedTarget, want bool) (bool, error) {
-	vdrSet, err := r.validatorSet(ctx)
-	if err != nil {
-		return false, err
-	}
-	vdr, ok := vdrSet[t.NodeID]
-	if !want {
-		return !ok, nil
-	}
-	return ok && vdr.Weight == t.Weight, nil
 }
 
 func (r *rotator) checkExpiry(t PlannedTarget) error {
