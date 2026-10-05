@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
@@ -567,19 +568,23 @@ func issueCreateSubnetTx(
 }
 
 // TransferSubnetOwnership transfers subnet ownership (IssueTransferSubnetOwnershipTx).
-func TransferSubnetOwnership(ctx context.Context, w *wallet.Wallet, subnetID ids.ID, newOwner ids.ShortID) (ids.ID, error) {
-	return issueTransferSubnetOwnershipTx(w.PWallet(), subnetID, newOwner, common.WithContext(ctx))
+// The new owner is one or more addresses with a signature threshold; a single
+// address with threshold 1 is a plain ownership transfer, more addresses with
+// a threshold form a multisig owner (e.g. 2-of-3).
+func TransferSubnetOwnership(ctx context.Context, w *wallet.Wallet, subnetID ids.ID, newOwners []ids.ShortID, threshold uint32) (ids.ID, error) {
+	return issueTransferSubnetOwnershipTx(w.PWallet(), subnetID, newOwners, threshold, common.WithContext(ctx))
 }
 
 func issueTransferSubnetOwnershipTx(
 	issuer transferSubnetOwnershipTxIssuer,
 	subnetID ids.ID,
-	newOwner ids.ShortID,
+	newOwners []ids.ShortID,
+	threshold uint32,
 	options ...common.Option,
 ) (ids.ID, error) {
-	owner := &secp256k1fx.OutputOwners{
-		Threshold: 1,
-		Addrs:     []ids.ShortID{newOwner},
+	owner, err := NewOwner(newOwners, threshold)
+	if err != nil {
+		return ids.Empty, fmt.Errorf("invalid new owner: %w", err)
 	}
 
 	tx, err := issuer.IssueTransferSubnetOwnershipTx(subnetID, owner, options...)
@@ -587,6 +592,28 @@ func issueTransferSubnetOwnershipTx(
 		return ids.Empty, fmt.Errorf("failed to issue TransferSubnetOwnershipTx: %w", err)
 	}
 	return tx.ID(), nil
+}
+
+// NewOwner builds a validated OutputOwners from owner addresses and a
+// signature threshold. Addresses are sorted as required by the P-Chain;
+// duplicates are rejected.
+func NewOwner(addrs []ids.ShortID, threshold uint32) (*secp256k1fx.OutputOwners, error) {
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("at least one owner address is required")
+	}
+	if threshold == 0 || threshold > uint32(len(addrs)) {
+		return nil, fmt.Errorf("threshold must be between 1 and %d (number of owner addresses), got %d", len(addrs), threshold)
+	}
+	sorted := make([]ids.ShortID, len(addrs))
+	copy(sorted, addrs)
+	utils.Sort(sorted)
+	if !utils.IsSortedAndUnique(sorted) {
+		return nil, fmt.Errorf("duplicate owner addresses are not allowed")
+	}
+	return &secp256k1fx.OutputOwners{
+		Threshold: threshold,
+		Addrs:     sorted,
+	}, nil
 }
 
 // ConvertSubnetToL1 converts a subnet to L1 (IssueConvertSubnetToL1Tx).
