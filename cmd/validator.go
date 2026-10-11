@@ -345,36 +345,55 @@ var validatorSetAutoConfigCmd = &cobra.Command{
 			}
 		}
 
-		if !cmd.Flags().Changed("period") {
-			return fmt.Errorf("--period is required")
-		}
-		period, err := parseAutoRenewConfigPeriod(valSetAutoPeriod)
-		if err != nil {
-			return err
+		periodChanged := cmd.Flags().Changed("period")
+		autoCompoundChanged := cmd.Flags().Changed("auto-compound")
+		if !periodChanged && !autoCompoundChanged {
+			return fmt.Errorf("nothing to change: pass --period, --auto-compound, or both")
 		}
 
-		if !cmd.Flags().Changed("auto-compound") {
-			return fmt.Errorf("--auto-compound is required")
+		var period time.Duration
+		if periodChanged {
+			period, err = parseAutoRenewConfigPeriod(valSetAutoPeriod)
+			if err != nil {
+				return err
+			}
 		}
-		autoCompoundShares, err := fractionToShares("auto-compound", valSetAutoCompound)
-		if err != nil {
-			return fmt.Errorf("invalid auto-compound: %w", err)
+
+		var autoCompoundShares uint32
+		if autoCompoundChanged {
+			autoCompoundShares, err = fractionToShares("auto-compound", valSetAutoCompound)
+			if err != nil {
+				return fmt.Errorf("invalid auto-compound: %w", err)
+			}
 		}
 
 		netConfig, err := getNetworkConfig(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get network config: %w", err)
 		}
+
+		// This transaction rewrites both fields, so anything the caller did not
+		// pass has to be carried over from the current on-chain configuration
+		// rather than left at its zero value.
+		currentConfig, err := pchain.GetAutoRenewedValidatorConfig(ctx, netConfig.RPCURL, nodeID, autoRenewedTxID)
+		if err != nil {
+			return err
+		}
+		validatorAuthority := currentConfig.Authority
+		if !periodChanged {
+			period = currentConfig.NextPeriod
+			fmt.Printf("Keeping the current next-cycle period: %s\n", formatAutoRenewPeriod(period))
+		}
+		if !autoCompoundChanged {
+			autoCompoundShares = currentConfig.AutoCompoundRewardShares
+			fmt.Printf("Keeping the current auto-compound: %.2f%%\n", sharesToPercent(autoCompoundShares))
+		}
+
 		if period > 0 && period < netConfig.HeliconMinStakeDuration {
 			return fmt.Errorf("period too short for %s: minimum is %s", netConfig.Name, netConfig.HeliconMinStakeDuration)
 		}
 		if period > netConfig.MaxStakeDuration {
 			return fmt.Errorf("period too long for %s: maximum is %s", netConfig.Name, netConfig.MaxStakeDuration)
-		}
-
-		validatorAuthority, err := pchain.GetAutoRenewedValidatorAuthority(ctx, netConfig.RPCURL, nodeID, autoRenewedTxID)
-		if err != nil {
-			return err
 		}
 
 		// The config owner authorized at add-time is resolved by the builder from
@@ -386,12 +405,8 @@ var validatorSetAutoConfigCmd = &cobra.Command{
 		defer cleanup()
 
 		fmt.Printf("Setting auto-renewed validator config for %s...\n", autoRenewedTxID)
-		if period == 0 {
-			fmt.Println("  Period: 0s (exit after current cycle)")
-		} else {
-			fmt.Printf("  Period: %s\n", period)
-		}
-		fmt.Printf("  Auto-Compound Rewards: %.2f%%\n", valSetAutoCompound*100)
+		fmt.Printf("  Period: %s\n", formatAutoRenewPeriod(period))
+		fmt.Printf("  Auto-Compound Rewards: %.2f%%\n", sharesToPercent(autoCompoundShares))
 		fmt.Println("Submitting transaction...")
 
 		txID, err := pchain.SetAutoRenewedValidatorConfig(ctx, w, pchain.SetAutoRenewedValidatorConfigTxConfig{
@@ -469,6 +484,15 @@ func parseAutoRenewConfigPeriod(periodStr string) (time.Duration, error) {
 	return period, nil
 }
 
+// formatAutoRenewPeriod renders a next-cycle duration for display, spelling out
+// what a zero period means.
+func formatAutoRenewPeriod(period time.Duration) string {
+	if period == 0 {
+		return "0s (exit after current cycle)"
+	}
+	return period.String()
+}
+
 // getValidatorPoP returns a BLS proof of possession for validator registration.
 // Manual mode (default): use --bls-public-key and --bls-pop.
 // Fallback mode: fetch from --node-endpoint.
@@ -544,8 +568,8 @@ func init() {
 	// Set auto-renewed validator config flags
 	validatorSetAutoConfigCmd.Flags().StringVar(&valSetAutoTxID, "tx-id", "", "Original AddAutoRenewedValidatorTx ID (required)")
 	validatorSetAutoConfigCmd.Flags().StringVar(&valSetAutoNodeID, "node-id", "", "Validator node ID to narrow the authority lookup (optional, recommended)")
-	validatorSetAutoConfigCmd.Flags().StringVar(&valSetAutoPeriod, "period", "", "Next auto-renewal cycle duration, or 0 to exit after the current cycle (required)")
-	validatorSetAutoConfigCmd.Flags().Float64Var(&valSetAutoCompound, "auto-compound", 0, "Fraction of rewards to auto-compound (0.3 = 30%, 1 = 100%) (required)")
+	validatorSetAutoConfigCmd.Flags().StringVar(&valSetAutoPeriod, "period", "", "Next auto-renewal cycle duration, or 0 to exit after the current cycle (default: keep current)")
+	validatorSetAutoConfigCmd.Flags().Float64Var(&valSetAutoCompound, "auto-compound", 0, "Fraction of rewards to auto-compound (0.3 = 30%, 1 = 100%) (default: keep current)")
 
 	// Delegate flags
 	validatorDelegateCmd.Flags().StringVar(&valNodeID, "node-id", "", "Node ID to delegate to")
