@@ -1,6 +1,7 @@
 module github.com/ava-labs/platform-cli
 
 go 1.25.13
+
 toolchain go1.26.10
 
 require (
