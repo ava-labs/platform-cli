@@ -5,11 +5,12 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   build:
+    permissions:
+      contents: read
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
     strategy:
       matrix:
@@ -34,6 +35,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -71,6 +74,8 @@ jobs:
           path: ${{ env.TARBALL }}
 
   release:
+    permissions:
+      contents: write
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
@@ -78,6 +83,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Download all artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -110,9 +116,11 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
-        with:
-          body: |
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_BODY: |
             ## Install
 
             ```sh
@@ -124,5 +132,22 @@ jobs:
             ## Changelog
 
             ${{ steps.changelog.outputs.body }}
-          files: dist/*
-          generate_release_notes: false
+          RELEASE_FILES: dist/*
+        run: |
+          set -eo pipefail
+          files=()
+          while IFS= read -r pattern; do
+            [ -n "$pattern" ] || continue
+            for f in $pattern; do
+              [ -e "$f" ] || { echo "::error::No file matches ${pattern}"; exit 1; }
+              files+=("$f")
+            done
+          done <<< "${RELEASE_FILES}"
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release edit "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --notes "${RELEASE_BODY}"
+            if [ ${#files[@]} -gt 0 ]; then
+              gh release upload "${RELEASE_TAG}" "${files[@]}" --clobber --repo "${GITHUB_REPOSITORY}"
+            fi
+          else
+            gh release create "${RELEASE_TAG}" "${files[@]}" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}" --notes "${RELEASE_BODY}"
+          fi

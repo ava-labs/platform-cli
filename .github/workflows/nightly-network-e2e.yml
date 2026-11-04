@@ -9,13 +9,19 @@ concurrency:
   group: nightly-network-e2e
   cancel-in-progress: false
 
+permissions: {}
+
 jobs:
   network-e2e-fuji:
+    permissions:
+      contents: read
     name: Network E2E (Fuji)
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
