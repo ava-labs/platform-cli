@@ -46,6 +46,18 @@ platform-cli keys delete --name <name> [--force]
 platform-cli keys default [--name <name>]
 ```
 
+`keys generate` and `keys import` print the P-Chain address for mainnet and for the Fuji testnet. `keys list --show-addresses` shows the same two columns.
+
+```text
+Key generated successfully!
+  Name:               mykey
+  P-Chain (mainnet):  P-avax18jma8ppw3nhx5r4ap8clazz0dps7rv5ukulre5
+  P-Chain (testnet):  P-fuji18jma8ppw3nhx5r4ap8clazz0dps7rv5u6wmu4t
+  EVM:                0x8db97C7cEcE249c2b98bDC0226Cc4C2A57BF52FC
+  Encrypted:          true
+  Default:            yes
+```
+
 ### Wallet
 
 ```bash

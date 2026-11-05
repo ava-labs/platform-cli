@@ -287,3 +287,24 @@ func FormatPChainAddress(addr ids.ShortID, networkID uint32) string {
 	}
 	return formatted
 }
+
+// FormatPChainAddresses formats a P-Chain address for both public networks.
+// It returns the mainnet form ("P-avax1...") and the Fuji testnet form
+// ("P-fuji1...").
+func FormatPChainAddresses(addr ids.ShortID) (mainnet string, testnet string) {
+	return FormatPChainAddress(addr, constants.MainnetID), FormatPChainAddress(addr, constants.FujiID)
+}
+
+// ParsePChainAddressID parses a P-Chain address into its short ID. It accepts
+// the bech32 form ("P-avax1...", "P-fuji1...") and the raw CB58 short ID form
+// that the keystore index stores.
+func ParsePChainAddressID(addr string) (ids.ShortID, error) {
+	if id, err := ids.ShortFromString(addr); err == nil {
+		return id, nil
+	}
+	id, err := address.ParseToID(addr)
+	if err != nil {
+		return ids.ShortEmpty, fmt.Errorf("failed to parse P-Chain address %q: %w", addr, err)
+	}
+	return id, nil
+}

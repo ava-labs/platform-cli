@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"crypto/subtle"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
 	"text/tabwriter"
 
+	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/platform-cli/pkg/keystore"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
 	"github.com/spf13/cobra"
@@ -131,19 +133,43 @@ Examples:
 			return err
 		}
 
-		entry, _ := ks.GetKey(keyName)
-		fmt.Printf("Key imported successfully!\n")
-		fmt.Printf("  Name:          %s\n", keyName)
-		fmt.Printf("  P-Chain:       %s\n", entry.PChainAddress)
-		fmt.Printf("  EVM:           %s\n", entry.EVMAddress)
-		fmt.Printf("  Encrypted:     %v\n", entry.Encrypted)
-
-		if ks.GetDefault() == keyName {
-			fmt.Printf("  Default:       yes\n")
+		key, err := wallet.ToPrivateKey(keyBytes)
+		if err != nil {
+			return fmt.Errorf("failed to derive addresses: %w", err)
 		}
+		pAddr, evmAddr := wallet.DeriveAddressesFromKey(key)
+
+		entry, _ := ks.GetKey(keyName)
+		printKeySummary(os.Stdout, "Key imported successfully!", keyName, pAddr, evmAddr, entry.Encrypted, ks.GetDefault() == keyName)
 
 		return nil
 	},
+}
+
+// printKeySummary writes the result of keys generate or keys import. It prints
+// the P-Chain address with the "P-" prefix for mainnet and for the Fuji testnet.
+func printKeySummary(out io.Writer, title, name string, pAddr ids.ShortID, evmAddr string, encrypted, isDefault bool) {
+	mainnet, testnet := wallet.FormatPChainAddresses(pAddr)
+	fmt.Fprintln(out, title)
+	fmt.Fprintf(out, "  Name:               %s\n", name)
+	fmt.Fprintf(out, "  P-Chain (mainnet):  %s\n", mainnet)
+	fmt.Fprintf(out, "  P-Chain (testnet):  %s\n", testnet)
+	fmt.Fprintf(out, "  EVM:                %s\n", evmAddr)
+	fmt.Fprintf(out, "  Encrypted:          %v\n", encrypted)
+	if isDefault {
+		fmt.Fprintf(out, "  Default:            yes\n")
+	}
+}
+
+// formatStoredPChainAddresses converts the P-Chain address in a keystore entry
+// to its mainnet and Fuji testnet forms. If the stored value does not parse, it
+// returns the stored value unchanged for both.
+func formatStoredPChainAddresses(stored string) (mainnet string, testnet string) {
+	id, err := wallet.ParsePChainAddressID(stored)
+	if err != nil {
+		return stored, stored
+	}
+	return wallet.FormatPChainAddresses(id)
 }
 
 var keysGenerateCmd = &cobra.Command{
@@ -204,18 +230,14 @@ Examples:
 		// Clear key bytes when done (important: derive addresses before clearing)
 		defer clearBytes(keyBytes)
 
-		entry, _ := ks.GetKey(keyName)
-		pAddr, evmAddr := wallet.DeriveAddresses(keyBytes)
-
-		fmt.Printf("Key generated successfully!\n")
-		fmt.Printf("  Name:          %s\n", keyName)
-		fmt.Printf("  P-Chain:       %s\n", pAddr)
-		fmt.Printf("  EVM:           %s\n", evmAddr)
-		fmt.Printf("  Encrypted:     %v\n", entry.Encrypted)
-
-		if ks.GetDefault() == keyName {
-			fmt.Printf("  Default:       yes\n")
+		key, err := wallet.ToPrivateKey(keyBytes)
+		if err != nil {
+			return fmt.Errorf("failed to derive addresses: %w", err)
 		}
+		pAddr, evmAddr := wallet.DeriveAddressesFromKey(key)
+
+		entry, _ := ks.GetKey(keyName)
+		printKeySummary(os.Stdout, "Key generated successfully!", keyName, pAddr, evmAddr, entry.Encrypted, ks.GetDefault() == keyName)
 
 		fmt.Println()
 		fmt.Println("WARNING: Back up your key! Use 'platform-cli keys export' to view the private key.")
@@ -229,7 +251,7 @@ var keysListCmd = &cobra.Command{
 	Short: "List all stored keys",
 	Long: `List all keys stored in the keystore.
 
-Use --show-addresses to display P-Chain and EVM addresses.
+Use --show-addresses to display P-Chain (mainnet and testnet) and EVM addresses.
 
 Examples:
   platform-cli keys list
@@ -256,7 +278,7 @@ Examples:
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
 		if showAddrs {
-			fmt.Fprintln(w, "NAME\tENCRYPTED\tDEFAULT\tP-CHAIN\tEVM\tCREATED")
+			fmt.Fprintln(w, "NAME\tENCRYPTED\tDEFAULT\tP-CHAIN (MAINNET)\tP-CHAIN (TESTNET)\tEVM\tCREATED")
 			for _, e := range entries {
 				isDefault := ""
 				if e.Name == defaultKey {
@@ -266,8 +288,9 @@ Examples:
 				if e.Encrypted {
 					encrypted = "yes"
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-					e.Name, encrypted, isDefault, e.PChainAddress, e.EVMAddress, e.CreatedAt.Format("2006-01-02"))
+				mainnet, testnet := formatStoredPChainAddresses(e.PChainAddress)
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+					e.Name, encrypted, isDefault, mainnet, testnet, e.EVMAddress, e.CreatedAt.Format("2006-01-02"))
 			}
 		} else {
 			fmt.Fprintln(w, "NAME\tENCRYPTED\tDEFAULT\tCREATED")
