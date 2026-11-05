@@ -74,6 +74,8 @@ func ToPrivateKey(keyBytes []byte) (*secp256k1.PrivateKey, error) {
 }
 
 // DeriveAddresses derives both P-Chain and EVM addresses from a private key.
+// The P-Chain address is the raw CB58 short ID, without chain prefix or HRP.
+// Use FormatPChainAddress or FormatPChainAddresses to display it to users.
 func DeriveAddresses(keyBytes []byte) (pAddr string, evmAddr string) {
 	key, err := ToPrivateKey(keyBytes)
 	if err != nil {

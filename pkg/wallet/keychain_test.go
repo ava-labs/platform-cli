@@ -193,6 +193,11 @@ func TestDeriveAddresses(t *testing.T) {
 		t.Errorf("DeriveAddresses() EVM address length = %d, want 42", len(evmAddr))
 	}
 
+	// DeriveAddresses returns the raw short ID, not the bech32 form.
+	if pAddr != ewoqShortID {
+		t.Errorf("DeriveAddresses() P-Chain = %s, want %s", pAddr, ewoqShortID)
+	}
+
 	// Verify known ewoq addresses
 	expectedEVM := "0x8db97C7cEcE249c2b98bDC0226Cc4C2A57BF52FC"
 	if !strings.EqualFold(evmAddr, expectedEVM) {
