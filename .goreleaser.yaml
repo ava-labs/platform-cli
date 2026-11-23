@@ -17,6 +17,11 @@ builds:
     goarch:
       - amd64
       - arm64
+    ignore:
+      # avalanchego does not support darwin/amd64: its firewood FFI ships no
+      # x86_64-apple-darwin library.
+      - goos: darwin
+        goarch: amd64
     ldflags:
       - -s -w -X github.com/ava-labs/platform-cli/cmd.version={{.Version}}
     overrides:
