@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
+	"github.com/ava-labs/avalanchego/vms/platformvm/platform"
 	ethcommon "github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
@@ -198,7 +198,7 @@ remaining balance. The command refuses to issue an empty owner unless you set
 		}
 
 		// Gather validator info from IPs or generate mock
-		var validators []*txs.ConvertSubnetToL1Validator
+		var validators []*platform.ConvertSubnetToL1Validator
 		if subnetMockVal {
 			// For mock, use the first weight if provided, otherwise 0 (default)
 			var mockWeight uint64
@@ -212,7 +212,7 @@ remaining balance. The command refuses to issue an empty owner unless you set
 			if err != nil {
 				return fmt.Errorf("failed to generate mock validator: %w", err)
 			}
-			validators = []*txs.ConvertSubnetToL1Validator{mockVal}
+			validators = []*platform.ConvertSubnetToL1Validator{mockVal}
 			fmt.Printf("Using mock validator (NodeID: %x)\n", mockVal.NodeID)
 		} else if hasManualValidators {
 			validators, err = buildManualL1Validators(

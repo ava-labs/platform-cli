@@ -60,8 +60,8 @@ func ImportToCChain(ctx context.Context, w *wallet.FullWallet) (ids.ID, error) {
 	cWallet := w.CWallet()
 	ethAddr := w.EthAddress()
 
-	// Issue the import transaction. The wallet's own acceptance wait uses
-	// avax.getAtomicTxStatus, which Helicon C-Chain endpoints do not serve.
+	// Issue the import transaction and wait with awaitCChainAtomicTx rather
+	// than the wallet's own acceptance wait (see awaitCChainAtomicTx).
 	importTx, err := cWallet.IssueImportTx(constants.PlatformChainID, ethAddr, common.WithContext(ctx), common.WithAssumeDecided())
 	if err != nil {
 		return ids.Empty, fmt.Errorf("failed to issue C-Chain import tx: %w", err)

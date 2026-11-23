@@ -45,13 +45,13 @@ func ParsePrivateKey(keyStr string) ([]byte, error) {
 	} else if strings.HasPrefix(keyStr, "PrivateKey-") {
 		// Avalanche CB58 format (PrivateKey-...)
 		keyStr = strings.TrimPrefix(keyStr, "PrivateKey-")
-		keyBytes, err = cb58.Decode(keyStr)
+		keyBytes, err = cb58.Decode(keyStr, secp256k1.PrivateKeyLen)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode CB58 private key: %w", err)
 		}
 	} else {
 		// Try CB58 without prefix
-		keyBytes, err = cb58.Decode(keyStr)
+		keyBytes, err = cb58.Decode(keyStr, secp256k1.PrivateKeyLen)
 		if err != nil {
 			// Try hex without prefix
 			keyBytes, err = hex.DecodeString(keyStr)
