@@ -30,10 +30,11 @@ type getAtomicTxReply struct {
 
 // awaitCChainAtomicTx polls avax.getAtomicTx until txID is accepted on the C-Chain.
 //
-// The avalanchego C-Chain wallet waits with avax.getAtomicTxStatus. The SAE
-// C-Chain deprecates that method and public API endpoints do not serve it, so
-// the wallet returns an error after the tx is already issued. We issue with
-// common.WithAssumeDecided() and wait here instead.
+// The avalanchego C-Chain wallet's own wait (cchain.Client.AwaitTxAccepted)
+// treats any successful avax.getAtomicTx reply as accepted, without checking
+// blockHeight, and retries on every error until ctx is done. We issue with
+// common.WithAssumeDecided() and wait here instead: success requires a block
+// height, and non-transient errors fail fast.
 func awaitCChainAtomicTx(ctx context.Context, rpcURL string, txID ids.ID) error {
 	requester := rpc.NewEndpointRequester(rpcURL + "/ext/bc/C/avax")
 	return awaitAtomicTx(ctx, requester, txID, cChainAtomicPollFrequency)

@@ -23,8 +23,8 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
+	"github.com/ava-labs/avalanchego/vms/platformvm/platform"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
-	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 	nodeutil "github.com/ava-labs/platform-cli/pkg/node"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
@@ -34,7 +34,7 @@ const defaultValidatorWeight uint64 = 100
 
 // gatherL1Validators queries validator nodes and builds conversion validators.
 // If weights is non-nil, it must have the same length as validatorAddrs.
-func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance float64, weights []uint64) ([]*txs.ConvertSubnetToL1Validator, error) {
+func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance float64, weights []uint64) ([]*platform.ConvertSubnetToL1Validator, error) {
 	if len(validatorAddrs) == 0 {
 		return nil, fmt.Errorf("no validator addresses provided")
 	}
@@ -48,7 +48,7 @@ func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance fl
 		return nil, fmt.Errorf("invalid validator balance: %w", err)
 	}
 
-	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(validatorAddrs))
+	validators := make([]*platform.ConvertSubnetToL1Validator, 0, len(validatorAddrs))
 	for i, addr := range validatorAddrs {
 		uri, err := normalizeNodeURI(addr)
 		if err != nil {
@@ -69,7 +69,7 @@ func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance fl
 			weight = weights[i]
 		}
 
-		validators = append(validators, &txs.ConvertSubnetToL1Validator{
+		validators = append(validators, &platform.ConvertSubnetToL1Validator{
 			NodeID:  nodeID.Bytes(),
 			Weight:  weight,
 			Balance: balanceNAVAX,
@@ -83,7 +83,7 @@ func gatherL1Validators(ctx context.Context, validatorAddrs []string, balance fl
 // buildManualL1Validators builds conversion validators from manually provided data.
 // All inputs are comma-separated lists and must be aligned by index.
 // If weights is non-nil, it must have the same length as the other lists.
-func buildManualL1Validators(nodeIDs, blsPubKeys, blsPoPs string, balance float64, weights []uint64) ([]*txs.ConvertSubnetToL1Validator, error) {
+func buildManualL1Validators(nodeIDs, blsPubKeys, blsPoPs string, balance float64, weights []uint64) ([]*platform.ConvertSubnetToL1Validator, error) {
 	if strings.TrimSpace(nodeIDs) == "" || strings.TrimSpace(blsPubKeys) == "" || strings.TrimSpace(blsPoPs) == "" {
 		return nil, fmt.Errorf("manual validator mode requires --validator-node-ids, --validator-bls-public-keys, and --validator-bls-pops")
 	}
@@ -109,7 +109,7 @@ func buildManualL1Validators(nodeIDs, blsPubKeys, blsPoPs string, balance float6
 		return nil, fmt.Errorf("invalid validator balance: %w", err)
 	}
 
-	validators := make([]*txs.ConvertSubnetToL1Validator, 0, len(idsList))
+	validators := make([]*platform.ConvertSubnetToL1Validator, 0, len(idsList))
 	for i := range idsList {
 		nodeID, err := ids.NodeIDFromString(idsList[i])
 		if err != nil {
@@ -125,7 +125,7 @@ func buildManualL1Validators(nodeIDs, blsPubKeys, blsPoPs string, balance float6
 			weight = weights[i]
 		}
 
-		validators = append(validators, &txs.ConvertSubnetToL1Validator{
+		validators = append(validators, &platform.ConvertSubnetToL1Validator{
 			NodeID:  nodeID.Bytes(),
 			Weight:  weight,
 			Balance: balanceNAVAX,
@@ -137,7 +137,7 @@ func buildManualL1Validators(nodeIDs, blsPubKeys, blsPoPs string, balance float6
 }
 
 // sortAndValidateL1Validators sorts validators by NodeID bytes and rejects duplicates.
-func sortAndValidateL1Validators(validators []*txs.ConvertSubnetToL1Validator) error {
+func sortAndValidateL1Validators(validators []*platform.ConvertSubnetToL1Validator) error {
 	sort.Slice(validators, func(i, j int) bool {
 		return bytes.Compare(validators[i].NodeID, validators[j].NodeID) < 0
 	})
@@ -232,7 +232,7 @@ func parsePChainAddress(addr, hrp string) (ids.ShortID, error) {
 // any P-Chain key can disable the validator and spend its remaining balance.
 // Unless allowEmpty is set, an empty owner returns errEmptyValidatorOwner.
 func setL1ValidatorOwners(
-	validators []*txs.ConvertSubnetToL1Validator,
+	validators []*platform.ConvertSubnetToL1Validator,
 	remainingBalanceOwners []ids.ShortID,
 	deactivationOwners []ids.ShortID,
 	defaultOwner ids.ShortID,
@@ -262,7 +262,7 @@ func setL1ValidatorOwners(
 // align with validators in input order, so the owners must be set before the
 // sort.
 func finalizeL1Validators(
-	validators []*txs.ConvertSubnetToL1Validator,
+	validators []*platform.ConvertSubnetToL1Validator,
 	remainingBalanceOwners []ids.ShortID,
 	deactivationOwners []ids.ShortID,
 	defaultOwner ids.ShortID,
@@ -364,7 +364,7 @@ func normalizeNodeURI(addr string) (string, error) {
 
 // generateMockValidator creates a mock validator with valid BLS credentials for testing.
 // If weight is 0, defaultValidatorWeight (100) is used as the default.
-func generateMockValidator(balance float64, weight uint64) (*txs.ConvertSubnetToL1Validator, error) {
+func generateMockValidator(balance float64, weight uint64) (*platform.ConvertSubnetToL1Validator, error) {
 	// Validate balance to prevent overflow
 	balanceNAVAX, err := avaxToNAVAX(balance)
 	if err != nil {
@@ -392,7 +392,7 @@ func generateMockValidator(balance float64, weight uint64) (*txs.ConvertSubnetTo
 		return nil, fmt.Errorf("failed to generate proof of possession: %w", err)
 	}
 
-	return &txs.ConvertSubnetToL1Validator{
+	return &platform.ConvertSubnetToL1Validator{
 		NodeID:  nodeID,
 		Weight:  weight,
 		Balance: balanceNAVAX,

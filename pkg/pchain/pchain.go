@@ -12,8 +12,8 @@ import (
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
+	"github.com/ava-labs/avalanchego/vms/platformvm/platform"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
-	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 	"github.com/ava-labs/platform-cli/pkg/wallet"
@@ -30,67 +30,67 @@ import (
 
 // baseTxIssuer issues a P-Chain BaseTx.
 type baseTxIssuer interface {
-	IssueBaseTx(outputs []*avax.TransferableOutput, options ...common.Option) (*txs.Tx, error)
+	IssueBaseTx(outputs []*avax.TransferableOutput, options ...common.Option) (*platform.Tx, error)
 }
 
 // exportTxIssuer issues a P-Chain ExportTx.
 type exportTxIssuer interface {
-	IssueExportTx(chainID ids.ID, outputs []*avax.TransferableOutput, options ...common.Option) (*txs.Tx, error)
+	IssueExportTx(chainID ids.ID, outputs []*avax.TransferableOutput, options ...common.Option) (*platform.Tx, error)
 }
 
 // importTxIssuer issues a P-Chain ImportTx.
 type importTxIssuer interface {
-	IssueImportTx(chainID ids.ID, to *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error)
+	IssueImportTx(chainID ids.ID, to *secp256k1fx.OutputOwners, options ...common.Option) (*platform.Tx, error)
 }
 
 // permissionlessValidatorTxIssuer issues an AddPermissionlessValidatorTx.
 type permissionlessValidatorTxIssuer interface {
-	IssueAddPermissionlessValidatorTx(vdr *txs.SubnetValidator, signer signer.Signer, assetID ids.ID, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, shares uint32, options ...common.Option) (*txs.Tx, error)
+	IssueAddPermissionlessValidatorTx(vdr *platform.SubnetValidator, signer signer.Signer, assetID ids.ID, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, shares uint32, options ...common.Option) (*platform.Tx, error)
 }
 
 // permissionlessDelegatorTxIssuer issues an AddPermissionlessDelegatorTx.
 type permissionlessDelegatorTxIssuer interface {
-	IssueAddPermissionlessDelegatorTx(vdr *txs.SubnetValidator, assetID ids.ID, rewardsOwner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error)
+	IssueAddPermissionlessDelegatorTx(vdr *platform.SubnetValidator, assetID ids.ID, rewardsOwner *secp256k1fx.OutputOwners, options ...common.Option) (*platform.Tx, error)
 }
 
 // autoRenewedValidatorTxIssuer issues an AddAutoRenewedValidatorTx (ACP-236).
 type autoRenewedValidatorTxIssuer interface {
-	IssueAddAutoRenewedValidatorTx(validatorNodeID ids.NodeID, weight uint64, signer signer.Signer, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, validatorAuthority *secp256k1fx.OutputOwners, delegationShares uint32, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*txs.Tx, error)
+	IssueAddAutoRenewedValidatorTx(validatorNodeID ids.NodeID, weight uint64, signer signer.Signer, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, validatorAuthority *secp256k1fx.OutputOwners, delegationShares uint32, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*platform.Tx, error)
 }
 
 // setAutoRenewedValidatorConfigTxIssuer issues a SetAutoRenewedValidatorConfigTx (ACP-236).
 type setAutoRenewedValidatorConfigTxIssuer interface {
-	IssueSetAutoRenewedValidatorConfigTx(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*txs.Tx, error)
+	IssueSetAutoRenewedValidatorConfigTx(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*platform.Tx, error)
 }
 
 // createSubnetTxIssuer issues a CreateSubnetTx.
 type createSubnetTxIssuer interface {
-	IssueCreateSubnetTx(owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error)
+	IssueCreateSubnetTx(owner *secp256k1fx.OutputOwners, options ...common.Option) (*platform.Tx, error)
 }
 
 // transferSubnetOwnershipTxIssuer issues a TransferSubnetOwnershipTx.
 type transferSubnetOwnershipTxIssuer interface {
-	IssueTransferSubnetOwnershipTx(subnetID ids.ID, owner *secp256k1fx.OutputOwners, options ...common.Option) (*txs.Tx, error)
+	IssueTransferSubnetOwnershipTx(subnetID ids.ID, owner *secp256k1fx.OutputOwners, options ...common.Option) (*platform.Tx, error)
 }
 
 // convertSubnetToL1TxIssuer issues a ConvertSubnetToL1Tx.
 type convertSubnetToL1TxIssuer interface {
-	IssueConvertSubnetToL1Tx(subnetID ids.ID, chainID ids.ID, address []byte, validators []*txs.ConvertSubnetToL1Validator, options ...common.Option) (*txs.Tx, error)
+	IssueConvertSubnetToL1Tx(subnetID ids.ID, chainID ids.ID, address []byte, validators []*platform.ConvertSubnetToL1Validator, options ...common.Option) (*platform.Tx, error)
 }
 
 // addSubnetValidatorTxIssuer issues an AddSubnetValidatorTx.
 type addSubnetValidatorTxIssuer interface {
-	IssueAddSubnetValidatorTx(vdr *txs.SubnetValidator, options ...common.Option) (*txs.Tx, error)
+	IssueAddSubnetValidatorTx(vdr *platform.SubnetValidator, options ...common.Option) (*platform.Tx, error)
 }
 
 // removeSubnetValidatorTxIssuer issues a RemoveSubnetValidatorTx.
 type removeSubnetValidatorTxIssuer interface {
-	IssueRemoveSubnetValidatorTx(nodeID ids.NodeID, subnetID ids.ID, options ...common.Option) (*txs.Tx, error)
+	IssueRemoveSubnetValidatorTx(nodeID ids.NodeID, subnetID ids.ID, options ...common.Option) (*platform.Tx, error)
 }
 
 // createChainTxIssuer issues a CreateChainTx.
 type createChainTxIssuer interface {
-	IssueCreateChainTx(subnetID ids.ID, genesis []byte, vmID ids.ID, fxIDs []ids.ID, chainName string, options ...common.Option) (*txs.Tx, error)
+	IssueCreateChainTx(subnetID ids.ID, genesis []byte, vmID ids.ID, fxIDs []ids.ID, chainName string, options ...common.Option) (*platform.Tx, error)
 }
 
 // =============================================================================
@@ -205,7 +205,7 @@ func AddValidator(ctx context.Context, w *wallet.Wallet, cfg AddValidatorConfig)
 	}
 
 	tx, err := w.PWallet().IssueAddValidatorTx(
-		&txs.Validator{
+		&platform.Validator{
 			NodeID: cfg.NodeID,
 			Start:  uint64(cfg.Start.Unix()),
 			End:    uint64(cfg.End.Unix()),
@@ -256,8 +256,8 @@ func issueAddPermissionlessValidatorTx(
 	}
 
 	tx, err := issuer.IssueAddPermissionlessValidatorTx(
-		&txs.SubnetValidator{
-			Validator: txs.Validator{
+		&platform.SubnetValidator{
+			Validator: platform.Validator{
 				NodeID: cfg.NodeID,
 				Start:  uint64(cfg.Start.Unix()),
 				End:    uint64(cfg.End.Unix()),
@@ -473,7 +473,7 @@ func AddDelegator(ctx context.Context, w *wallet.Wallet, cfg AddDelegatorConfig)
 	}
 
 	tx, err := w.PWallet().IssueAddDelegatorTx(
-		&txs.Validator{
+		&platform.Validator{
 			NodeID: cfg.NodeID,
 			Start:  uint64(cfg.Start.Unix()),
 			End:    uint64(cfg.End.Unix()),
@@ -521,8 +521,8 @@ func issueAddPermissionlessDelegatorTx(
 	}
 
 	tx, err := issuer.IssueAddPermissionlessDelegatorTx(
-		&txs.SubnetValidator{
-			Validator: txs.Validator{
+		&platform.SubnetValidator{
+			Validator: platform.Validator{
 				NodeID: cfg.NodeID,
 				Start:  uint64(cfg.Start.Unix()),
 				End:    uint64(cfg.End.Unix()),
@@ -590,7 +590,7 @@ func issueTransferSubnetOwnershipTx(
 }
 
 // ConvertSubnetToL1 converts a subnet to L1 (IssueConvertSubnetToL1Tx).
-func ConvertSubnetToL1(ctx context.Context, w *wallet.Wallet, subnetID, chainID ids.ID, managerAddr []byte, validators []*txs.ConvertSubnetToL1Validator) (ids.ID, error) {
+func ConvertSubnetToL1(ctx context.Context, w *wallet.Wallet, subnetID, chainID ids.ID, managerAddr []byte, validators []*platform.ConvertSubnetToL1Validator) (ids.ID, error) {
 	return issueConvertSubnetToL1Tx(w.PWallet(), subnetID, chainID, managerAddr, validators, common.WithContext(ctx))
 }
 
@@ -599,7 +599,7 @@ func issueConvertSubnetToL1Tx(
 	subnetID ids.ID,
 	chainID ids.ID,
 	managerAddr []byte,
-	validators []*txs.ConvertSubnetToL1Validator,
+	validators []*platform.ConvertSubnetToL1Validator,
 	options ...common.Option,
 ) (ids.ID, error) {
 	tx, err := issuer.IssueConvertSubnetToL1Tx(subnetID, chainID, managerAddr, validators, options...)
@@ -633,8 +633,8 @@ func issueAddSubnetValidatorTx(
 	options ...common.Option,
 ) (ids.ID, error) {
 	tx, err := issuer.IssueAddSubnetValidatorTx(
-		&txs.SubnetValidator{
-			Validator: txs.Validator{
+		&platform.SubnetValidator{
+			Validator: platform.Validator{
 				NodeID: cfg.NodeID,
 				Start:  uint64(cfg.Start.Unix()),
 				End:    uint64(cfg.End.Unix()),

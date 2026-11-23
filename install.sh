@@ -49,6 +49,12 @@ detect_os() {
 
 detect_arch() {
     arch="$(uname -m)"
+    # Under Rosetta 2, uname -m reports x86_64 on Apple Silicon; use the
+    # native arm64 build instead.
+    if [ "$(uname -s)" = "Darwin" ] && [ "$arch" = "x86_64" ] &&
+        [ "$(sysctl -in sysctl.proc_translated 2>/dev/null)" = "1" ]; then
+        arch="arm64"
+    fi
     case "$arch" in
         x86_64|amd64)  echo "amd64" ;;
         aarch64|arm64) echo "arm64" ;;
@@ -142,7 +148,12 @@ main() {
 
     # Download tarball
     echo "Downloading ${download_url}..."
-    download "$download_url" "${tmp}/${tarball}"
+    if ! download "$download_url" "${tmp}/${tarball}"; then
+        echo "Error: failed to download ${tarball}." >&2
+        echo "Check that ${VERSION} exists and publishes a ${os}/${arch} build" >&2
+        echo "(darwin/amd64 is not supported): ${GITHUB}/${REPO}/releases" >&2
+        exit 1
+    fi
 
     # Download and verify checksums if available
     if download "$checksums_url" "${tmp}/${checksums}" 2>/dev/null; then

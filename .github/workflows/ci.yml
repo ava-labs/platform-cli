@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.26.10"
+          go-version-file: go.mod
 
       - name: Verify go.mod is tidy
         run: |
@@ -37,17 +37,17 @@ jobs:
 
       - name: Run staticcheck
         env:
-          GOTOOLCHAIN: go1.26.10
+          GOTOOLCHAIN: local
         run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
 
       - name: Run staticcheck (tagged e2e)
         env:
-          GOTOOLCHAIN: go1.26.10
+          GOTOOLCHAIN: local
         run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 -tags=clie2e,networke2e ./e2e/...
 
       - name: Run govulncheck
         env:
-          GOTOOLCHAIN: go1.26.10
+          GOTOOLCHAIN: local
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.2.0 ./...
 
       - name: Run tests
@@ -55,6 +55,13 @@ jobs:
 
       - name: Run CLI e2e smoke tests
         run: go test -tags=clie2e -v ./e2e/... -run "Help|Params|MissingArgs|RemovedOldNames|UnknownSubcommand"
+
+      # Go 1.27+ enables encoding/json v2 by default. Run the smoke tests with
+      # it so JSON decoding regressions surface without a newer toolchain.
+      - name: Run CLI e2e smoke tests (encoding/json v2)
+        env:
+          GOEXPERIMENT: jsonv2
+        run: go test -tags=clie2e ./e2e/... -run "Help|Params|MissingArgs|RemovedOldNames|UnknownSubcommand"
 
       - name: Compile integration tests
         run: go test -tags=integration -run '^$' ./pkg/pchain/...

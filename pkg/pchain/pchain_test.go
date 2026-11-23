@@ -9,8 +9,8 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
+	"github.com/ava-labs/avalanchego/vms/platformvm/platform"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
-	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 )
@@ -24,14 +24,14 @@ type testContextKey string
 // stubBaseTxIssuer implements baseTxIssuer, recording the arguments it was
 // called with and returning the configured tx/err.
 type stubBaseTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
 	gotOutputs []*avax.TransferableOutput
 	gotOpts    []common.Option
 }
 
-func (s *stubBaseTxIssuer) IssueBaseTx(outputs []*avax.TransferableOutput, options ...common.Option) (*txs.Tx, error) {
+func (s *stubBaseTxIssuer) IssueBaseTx(outputs []*avax.TransferableOutput, options ...common.Option) (*platform.Tx, error) {
 	s.gotOutputs = outputs
 	s.gotOpts = options
 	return s.tx, s.err
@@ -39,14 +39,14 @@ func (s *stubBaseTxIssuer) IssueBaseTx(outputs []*avax.TransferableOutput, optio
 
 // stubExportTxIssuer implements exportTxIssuer.
 type stubExportTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
 	gotChainID ids.ID
 	gotOutputs []*avax.TransferableOutput
 }
 
-func (s *stubExportTxIssuer) IssueExportTx(chainID ids.ID, outputs []*avax.TransferableOutput, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubExportTxIssuer) IssueExportTx(chainID ids.ID, outputs []*avax.TransferableOutput, _ ...common.Option) (*platform.Tx, error) {
 	s.gotChainID = chainID
 	s.gotOutputs = outputs
 	return s.tx, s.err
@@ -54,14 +54,14 @@ func (s *stubExportTxIssuer) IssueExportTx(chainID ids.ID, outputs []*avax.Trans
 
 // stubImportTxIssuer implements importTxIssuer.
 type stubImportTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
 	gotChainID ids.ID
 	gotOwners  *secp256k1fx.OutputOwners
 }
 
-func (s *stubImportTxIssuer) IssueImportTx(chainID ids.ID, to *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubImportTxIssuer) IssueImportTx(chainID ids.ID, to *secp256k1fx.OutputOwners, _ ...common.Option) (*platform.Tx, error) {
 	s.gotChainID = chainID
 	s.gotOwners = to
 	return s.tx, s.err
@@ -69,10 +69,10 @@ func (s *stubImportTxIssuer) IssueImportTx(chainID ids.ID, to *secp256k1fx.Outpu
 
 // stubValidatorTxIssuer implements permissionlessValidatorTxIssuer.
 type stubValidatorTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
-	gotVdr                    *txs.SubnetValidator
+	gotVdr                    *platform.SubnetValidator
 	gotSigner                 signer.Signer
 	gotAssetID                ids.ID
 	gotValidationRewardsOwner *secp256k1fx.OutputOwners
@@ -80,7 +80,7 @@ type stubValidatorTxIssuer struct {
 	gotShares                 uint32
 }
 
-func (s *stubValidatorTxIssuer) IssueAddPermissionlessValidatorTx(vdr *txs.SubnetValidator, sig signer.Signer, assetID ids.ID, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, shares uint32, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubValidatorTxIssuer) IssueAddPermissionlessValidatorTx(vdr *platform.SubnetValidator, sig signer.Signer, assetID ids.ID, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, shares uint32, _ ...common.Option) (*platform.Tx, error) {
 	s.gotVdr = vdr
 	s.gotSigner = sig
 	s.gotAssetID = assetID
@@ -92,15 +92,15 @@ func (s *stubValidatorTxIssuer) IssueAddPermissionlessValidatorTx(vdr *txs.Subne
 
 // stubDelegatorTxIssuer implements permissionlessDelegatorTxIssuer.
 type stubDelegatorTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
-	gotVdr          *txs.SubnetValidator
+	gotVdr          *platform.SubnetValidator
 	gotAssetID      ids.ID
 	gotRewardsOwner *secp256k1fx.OutputOwners
 }
 
-func (s *stubDelegatorTxIssuer) IssueAddPermissionlessDelegatorTx(vdr *txs.SubnetValidator, assetID ids.ID, rewardsOwner *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubDelegatorTxIssuer) IssueAddPermissionlessDelegatorTx(vdr *platform.SubnetValidator, assetID ids.ID, rewardsOwner *secp256k1fx.OutputOwners, _ ...common.Option) (*platform.Tx, error) {
 	s.gotVdr = vdr
 	s.gotAssetID = assetID
 	s.gotRewardsOwner = rewardsOwner
@@ -109,27 +109,27 @@ func (s *stubDelegatorTxIssuer) IssueAddPermissionlessDelegatorTx(vdr *txs.Subne
 
 // stubCreateSubnetTxIssuer implements createSubnetTxIssuer.
 type stubCreateSubnetTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
 	gotOwner *secp256k1fx.OutputOwners
 }
 
-func (s *stubCreateSubnetTxIssuer) IssueCreateSubnetTx(owner *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubCreateSubnetTxIssuer) IssueCreateSubnetTx(owner *secp256k1fx.OutputOwners, _ ...common.Option) (*platform.Tx, error) {
 	s.gotOwner = owner
 	return s.tx, s.err
 }
 
 // stubTransferSubnetOwnershipTxIssuer implements transferSubnetOwnershipTxIssuer.
 type stubTransferSubnetOwnershipTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
 	gotSubnetID ids.ID
 	gotOwner    *secp256k1fx.OutputOwners
 }
 
-func (s *stubTransferSubnetOwnershipTxIssuer) IssueTransferSubnetOwnershipTx(subnetID ids.ID, owner *secp256k1fx.OutputOwners, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubTransferSubnetOwnershipTxIssuer) IssueTransferSubnetOwnershipTx(subnetID ids.ID, owner *secp256k1fx.OutputOwners, _ ...common.Option) (*platform.Tx, error) {
 	s.gotSubnetID = subnetID
 	s.gotOwner = owner
 	return s.tx, s.err
@@ -137,16 +137,16 @@ func (s *stubTransferSubnetOwnershipTxIssuer) IssueTransferSubnetOwnershipTx(sub
 
 // stubConvertSubnetToL1TxIssuer implements convertSubnetToL1TxIssuer.
 type stubConvertSubnetToL1TxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
 	gotSubnetID    ids.ID
 	gotChainID     ids.ID
 	gotManagerAddr []byte
-	gotValidators  []*txs.ConvertSubnetToL1Validator
+	gotValidators  []*platform.ConvertSubnetToL1Validator
 }
 
-func (s *stubConvertSubnetToL1TxIssuer) IssueConvertSubnetToL1Tx(subnetID ids.ID, chainID ids.ID, address []byte, validators []*txs.ConvertSubnetToL1Validator, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubConvertSubnetToL1TxIssuer) IssueConvertSubnetToL1Tx(subnetID ids.ID, chainID ids.ID, address []byte, validators []*platform.ConvertSubnetToL1Validator, _ ...common.Option) (*platform.Tx, error) {
 	s.gotSubnetID = subnetID
 	s.gotChainID = chainID
 	s.gotManagerAddr = address
@@ -156,27 +156,27 @@ func (s *stubConvertSubnetToL1TxIssuer) IssueConvertSubnetToL1Tx(subnetID ids.ID
 
 // stubAddSubnetValidatorTxIssuer implements addSubnetValidatorTxIssuer.
 type stubAddSubnetValidatorTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
-	gotVdr *txs.SubnetValidator
+	gotVdr *platform.SubnetValidator
 }
 
-func (s *stubAddSubnetValidatorTxIssuer) IssueAddSubnetValidatorTx(vdr *txs.SubnetValidator, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubAddSubnetValidatorTxIssuer) IssueAddSubnetValidatorTx(vdr *platform.SubnetValidator, _ ...common.Option) (*platform.Tx, error) {
 	s.gotVdr = vdr
 	return s.tx, s.err
 }
 
 // stubRemoveSubnetValidatorTxIssuer implements removeSubnetValidatorTxIssuer.
 type stubRemoveSubnetValidatorTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
 	gotNodeID   ids.NodeID
 	gotSubnetID ids.ID
 }
 
-func (s *stubRemoveSubnetValidatorTxIssuer) IssueRemoveSubnetValidatorTx(nodeID ids.NodeID, subnetID ids.ID, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubRemoveSubnetValidatorTxIssuer) IssueRemoveSubnetValidatorTx(nodeID ids.NodeID, subnetID ids.ID, _ ...common.Option) (*platform.Tx, error) {
 	s.gotNodeID = nodeID
 	s.gotSubnetID = subnetID
 	return s.tx, s.err
@@ -184,13 +184,13 @@ func (s *stubRemoveSubnetValidatorTxIssuer) IssueRemoveSubnetValidatorTx(nodeID 
 
 // stubCreateChainTxIssuer implements createChainTxIssuer.
 type stubCreateChainTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
 	gotCfg CreateChainConfig
 }
 
-func (s *stubCreateChainTxIssuer) IssueCreateChainTx(subnetID ids.ID, genesis []byte, vmID ids.ID, fxIDs []ids.ID, chainName string, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubCreateChainTxIssuer) IssueCreateChainTx(subnetID ids.ID, genesis []byte, vmID ids.ID, fxIDs []ids.ID, chainName string, _ ...common.Option) (*platform.Tx, error) {
 	s.gotCfg = CreateChainConfig{
 		SubnetID:  subnetID,
 		Genesis:   genesis,
@@ -211,7 +211,7 @@ func TestIssueSendTx(t *testing.T) {
 	amount := uint64(42_000)
 	txID := ids.GenerateTestID()
 
-	issuer := &stubBaseTxIssuer{tx: &txs.Tx{TxID: txID}}
+	issuer := &stubBaseTxIssuer{tx: &platform.Tx{TxID: txID}}
 	gotTxID, err := issueSendTx(issuer, assetID, dest, amount)
 	if err != nil {
 		t.Fatalf("issueSendTx() returned error: %v", err)
@@ -244,7 +244,7 @@ func TestIssueSendTx(t *testing.T) {
 
 func TestIssueSendTxPassesOptions(t *testing.T) {
 	ctx := context.WithValue(context.Background(), testContextKey("key"), "value")
-	issuer := &stubBaseTxIssuer{tx: &txs.Tx{TxID: ids.GenerateTestID()}}
+	issuer := &stubBaseTxIssuer{tx: &platform.Tx{TxID: ids.GenerateTestID()}}
 	_, err := issueSendTx(
 		issuer,
 		ids.GenerateTestID(),
@@ -285,7 +285,7 @@ func TestIssueExportTx(t *testing.T) {
 	amount := uint64(7)
 	txID := ids.GenerateTestID()
 
-	issuer := &stubExportTxIssuer{tx: &txs.Tx{TxID: txID}}
+	issuer := &stubExportTxIssuer{tx: &platform.Tx{TxID: txID}}
 	gotTxID, err := issueExportTx(
 		issuer,
 		destChainID,
@@ -323,7 +323,7 @@ func TestIssueImportTx(t *testing.T) {
 	owner := ids.GenerateTestShortID()
 	txID := ids.GenerateTestID()
 
-	issuer := &stubImportTxIssuer{tx: &txs.Tx{TxID: txID}}
+	issuer := &stubImportTxIssuer{tx: &platform.Tx{TxID: txID}}
 	gotTxID, err := issueImportTx(
 		issuer,
 		sourceChainID,
@@ -364,7 +364,7 @@ func TestIssueAddPermissionlessValidatorTx(t *testing.T) {
 	}
 	txID := ids.GenerateTestID()
 
-	issuer := &stubValidatorTxIssuer{tx: &txs.Tx{TxID: txID}}
+	issuer := &stubValidatorTxIssuer{tx: &platform.Tx{TxID: txID}}
 	gotTxID, err := issueAddPermissionlessValidatorTx(
 		issuer,
 		assetID,
@@ -429,7 +429,7 @@ func TestIssueAddPermissionlessDelegatorTx(t *testing.T) {
 	}
 	txID := ids.GenerateTestID()
 
-	issuer := &stubDelegatorTxIssuer{tx: &txs.Tx{TxID: txID}}
+	issuer := &stubDelegatorTxIssuer{tx: &platform.Tx{TxID: txID}}
 	gotTxID, err := issueAddPermissionlessDelegatorTx(
 		issuer,
 		assetID,
@@ -466,7 +466,7 @@ func TestIssueCreateSubnetTx(t *testing.T) {
 	owner := ids.GenerateTestShortID()
 	txID := ids.GenerateTestID()
 
-	issuer := &stubCreateSubnetTxIssuer{tx: &txs.Tx{TxID: txID}}
+	issuer := &stubCreateSubnetTxIssuer{tx: &platform.Tx{TxID: txID}}
 	gotTxID, err := issueCreateSubnetTx(
 		issuer,
 		owner,
@@ -487,7 +487,7 @@ func TestIssueTransferSubnetOwnershipTx(t *testing.T) {
 	newOwner := ids.GenerateTestShortID()
 	txID := ids.GenerateTestID()
 
-	issuer := &stubTransferSubnetOwnershipTxIssuer{tx: &txs.Tx{TxID: txID}}
+	issuer := &stubTransferSubnetOwnershipTxIssuer{tx: &platform.Tx{TxID: txID}}
 	gotTxID, err := issueTransferSubnetOwnershipTx(
 		issuer,
 		subnetID,
@@ -511,10 +511,10 @@ func TestIssueConvertSubnetToL1Tx(t *testing.T) {
 	subnetID := ids.GenerateTestID()
 	chainID := ids.GenerateTestID()
 	managerAddr := []byte{0x01, 0x02}
-	validators := []*txs.ConvertSubnetToL1Validator{{NodeID: []byte{0xAA}, Weight: 1}}
+	validators := []*platform.ConvertSubnetToL1Validator{{NodeID: []byte{0xAA}, Weight: 1}}
 	txID := ids.GenerateTestID()
 
-	issuer := &stubConvertSubnetToL1TxIssuer{tx: &txs.Tx{TxID: txID}}
+	issuer := &stubConvertSubnetToL1TxIssuer{tx: &platform.Tx{TxID: txID}}
 	gotTxID, err := issueConvertSubnetToL1Tx(
 		issuer,
 		subnetID,
@@ -554,7 +554,7 @@ func TestIssueAddSubnetValidatorTx(t *testing.T) {
 	}
 	txID := ids.GenerateTestID()
 
-	issuer := &stubAddSubnetValidatorTxIssuer{tx: &txs.Tx{TxID: txID}}
+	issuer := &stubAddSubnetValidatorTxIssuer{tx: &platform.Tx{TxID: txID}}
 	gotTxID, err := issueAddSubnetValidatorTx(
 		issuer,
 		cfg,
@@ -589,7 +589,7 @@ func TestIssueRemoveSubnetValidatorTx(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
 	txID := ids.GenerateTestID()
 
-	issuer := &stubRemoveSubnetValidatorTxIssuer{tx: &txs.Tx{TxID: txID}}
+	issuer := &stubRemoveSubnetValidatorTxIssuer{tx: &platform.Tx{TxID: txID}}
 	gotTxID, err := issueRemoveSubnetValidatorTx(
 		issuer,
 		RemoveSubnetValidatorConfig{
@@ -639,7 +639,7 @@ func TestIssueCreateChainTx(t *testing.T) {
 	}
 	txID := ids.GenerateTestID()
 
-	issuer := &stubCreateChainTxIssuer{tx: &txs.Tx{TxID: txID}}
+	issuer := &stubCreateChainTxIssuer{tx: &platform.Tx{TxID: txID}}
 	gotTxID, err := issueCreateChainTx(
 		issuer,
 		cfg,

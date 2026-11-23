@@ -25,8 +25,8 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
 	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
+	"github.com/ava-labs/avalanchego/vms/platformvm/platform"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
-	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/platform-cli/pkg/crosschain"
 	"github.com/ava-labs/platform-cli/pkg/network"
 	"github.com/ava-labs/platform-cli/pkg/pchain"
@@ -173,7 +173,7 @@ func getTestFullWallet(t *testing.T) (*wallet.FullWallet, network.Config) {
 
 // generateMockValidator creates a mock validator with valid BLS credentials.
 // The validator won't be a real node, but has cryptographically valid PoP.
-func generateMockValidator(t *testing.T, balance uint64) *txs.ConvertSubnetToL1Validator {
+func generateMockValidator(t *testing.T, balance uint64) *platform.ConvertSubnetToL1Validator {
 	t.Helper()
 
 	// Generate random NodeID (20 bytes)
@@ -193,7 +193,7 @@ func generateMockValidator(t *testing.T, balance uint64) *txs.ConvertSubnetToL1V
 		t.Fatalf("failed to generate proof of possession: %v", err)
 	}
 
-	return &txs.ConvertSubnetToL1Validator{
+	return &platform.ConvertSubnetToL1Validator{
 		NodeID:  nodeID,
 		Weight:  units.Schmeckle, // 1 weight unit
 		Balance: balance,
@@ -783,7 +783,7 @@ func TestL1Lifecycle(t *testing.T) {
 	// Generate mock validator with valid BLS credentials
 	// Balance: 1 AVAX for the validator
 	mockValidator := generateMockValidator(t, 1*units.Avax)
-	validators := []*txs.ConvertSubnetToL1Validator{mockValidator}
+	validators := []*platform.ConvertSubnetToL1Validator{mockValidator}
 
 	t.Logf("  Mock validator NodeID: %x", mockValidator.NodeID)
 

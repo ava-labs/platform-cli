@@ -15,26 +15,26 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	blslocalsigner "github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
+	"github.com/ava-labs/avalanchego/vms/platformvm/platform"
 	"github.com/ava-labs/avalanchego/vms/platformvm/reward"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
-	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 )
 
 // devnetAutoRenewedValidatorTxIssuer adapts a func to autoRenewedValidatorTxIssuer
 // so each test can build, verify and serialize a real ACP-236 tx inline.
-type devnetAutoRenewedValidatorTxIssuer func(validatorNodeID ids.NodeID, weight uint64, sig signer.Signer, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, validatorAuthority *secp256k1fx.OutputOwners, delegationShares uint32, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*txs.Tx, error)
+type devnetAutoRenewedValidatorTxIssuer func(validatorNodeID ids.NodeID, weight uint64, sig signer.Signer, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, validatorAuthority *secp256k1fx.OutputOwners, delegationShares uint32, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*platform.Tx, error)
 
-func (f devnetAutoRenewedValidatorTxIssuer) IssueAddAutoRenewedValidatorTx(validatorNodeID ids.NodeID, weight uint64, sig signer.Signer, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, validatorAuthority *secp256k1fx.OutputOwners, delegationShares uint32, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*txs.Tx, error) {
+func (f devnetAutoRenewedValidatorTxIssuer) IssueAddAutoRenewedValidatorTx(validatorNodeID ids.NodeID, weight uint64, sig signer.Signer, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, validatorAuthority *secp256k1fx.OutputOwners, delegationShares uint32, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*platform.Tx, error) {
 	return f(validatorNodeID, weight, sig, validationRewardsOwner, delegationRewardsOwner, validatorAuthority, delegationShares, autoCompoundRewardShares, period, options...)
 }
 
 // devnetSetAutoRenewedValidatorConfigTxIssuer adapts a func to
 // setAutoRenewedValidatorConfigTxIssuer.
-type devnetSetAutoRenewedValidatorConfigTxIssuer func(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*txs.Tx, error)
+type devnetSetAutoRenewedValidatorConfigTxIssuer func(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*platform.Tx, error)
 
-func (f devnetSetAutoRenewedValidatorConfigTxIssuer) IssueSetAutoRenewedValidatorConfigTx(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*txs.Tx, error) {
+func (f devnetSetAutoRenewedValidatorConfigTxIssuer) IssueSetAutoRenewedValidatorConfigTx(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*platform.Tx, error) {
 	return f(txID, autoCompoundRewardShares, period, options...)
 }
 
@@ -59,7 +59,7 @@ func TestDevnetCompatAddAutoRenewedValidatorTx(t *testing.T) {
 	}
 	callCtx := context.WithValue(context.Background(), testContextKey("devnetcompat"), "add")
 
-	var issuedTx *txs.Tx
+	var issuedTx *platform.Tx
 	issuer := devnetAutoRenewedValidatorTxIssuer(func(
 		validatorNodeID ids.NodeID,
 		weight uint64,
@@ -71,7 +71,7 @@ func TestDevnetCompatAddAutoRenewedValidatorTx(t *testing.T) {
 		autoCompoundRewardShares uint32,
 		period time.Duration,
 		options ...common.Option,
-	) (*txs.Tx, error) {
+	) (*platform.Tx, error) {
 		if common.NewOptions(options).Context().Value(testContextKey("devnetcompat")) != "add" {
 			t.Fatal("context option was not passed to add-auto-renewed issuer")
 		}
@@ -103,7 +103,7 @@ func TestDevnetCompatAddAutoRenewedValidatorTx(t *testing.T) {
 			t.Fatalf("issuer period = %s, want %s", period, cfg.Period)
 		}
 
-		autoTx := &txs.AddAutoRenewedValidatorTx{
+		autoTx := &platform.AddAutoRenewedValidatorTx{
 			BaseTx:                   devnetCompatBaseTx(ctx),
 			ValidatorNodeID:          validatorNodeID[:],
 			Signer:                   gotSigner,
@@ -124,12 +124,12 @@ func TestDevnetCompatAddAutoRenewedValidatorTx(t *testing.T) {
 		}
 
 		issuedTx = initializeDevnetCompatTx(t, autoTx)
-		parsed, err := txs.Parse(txs.Codec, issuedTx.Bytes())
+		parsed, err := platform.Parse(platform.Codec, issuedTx.Bytes())
 		if err != nil {
 			t.Fatalf("failed to parse serialized AddAutoRenewedValidatorTx: %v", err)
 		}
-		if _, ok := parsed.Unsigned.(*txs.AddAutoRenewedValidatorTx); !ok {
-			t.Fatalf("parsed unsigned tx type = %T, want *txs.AddAutoRenewedValidatorTx", parsed.Unsigned)
+		if _, ok := parsed.Unsigned.(*platform.AddAutoRenewedValidatorTx); !ok {
+			t.Fatalf("parsed unsigned tx type = %T, want *platform.AddAutoRenewedValidatorTx", parsed.Unsigned)
 		}
 		return issuedTx, nil
 	})
@@ -154,8 +154,8 @@ func TestDevnetCompatSetAutoRenewedValidatorConfigTx(t *testing.T) {
 	}
 	callCtx := context.WithValue(context.Background(), testContextKey("devnetcompat"), "set")
 
-	var issuedTx *txs.Tx
-	issuer := devnetSetAutoRenewedValidatorConfigTxIssuer(func(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*txs.Tx, error) {
+	var issuedTx *platform.Tx
+	issuer := devnetSetAutoRenewedValidatorConfigTxIssuer(func(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*platform.Tx, error) {
 		if common.NewOptions(options).Context().Value(testContextKey("devnetcompat")) != "set" {
 			t.Fatal("context option was not passed to set-auto-config issuer")
 		}
@@ -169,7 +169,7 @@ func TestDevnetCompatSetAutoRenewedValidatorConfigTx(t *testing.T) {
 			t.Fatalf("issuer period = %s, want %s", period, cfg.Period)
 		}
 
-		setTx := &txs.SetAutoRenewedValidatorConfigTx{
+		setTx := &platform.SetAutoRenewedValidatorConfigTx{
 			BaseTx:                   devnetCompatBaseTx(ctx),
 			TxID:                     txID,
 			Auth:                     auth,
@@ -182,12 +182,12 @@ func TestDevnetCompatSetAutoRenewedValidatorConfigTx(t *testing.T) {
 		}
 
 		issuedTx = initializeDevnetCompatTx(t, setTx)
-		parsed, err := txs.Parse(txs.Codec, issuedTx.Bytes())
+		parsed, err := platform.Parse(platform.Codec, issuedTx.Bytes())
 		if err != nil {
 			t.Fatalf("failed to parse serialized SetAutoRenewedValidatorConfigTx: %v", err)
 		}
-		if _, ok := parsed.Unsigned.(*txs.SetAutoRenewedValidatorConfigTx); !ok {
-			t.Fatalf("parsed unsigned tx type = %T, want *txs.SetAutoRenewedValidatorConfigTx", parsed.Unsigned)
+		if _, ok := parsed.Unsigned.(*platform.SetAutoRenewedValidatorConfigTx); !ok {
+			t.Fatalf("parsed unsigned tx type = %T, want *platform.SetAutoRenewedValidatorConfigTx", parsed.Unsigned)
 		}
 		return issuedTx, nil
 	})
@@ -209,11 +209,11 @@ func TestDevnetCompatSetAutoRenewedValidatorConfigTxExitCycle(t *testing.T) {
 		Period:                   0,
 	}
 
-	issuer := devnetSetAutoRenewedValidatorConfigTxIssuer(func(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, _ ...common.Option) (*txs.Tx, error) {
+	issuer := devnetSetAutoRenewedValidatorConfigTxIssuer(func(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, _ ...common.Option) (*platform.Tx, error) {
 		if period != 0 {
 			t.Fatalf("exit-cycle period = %s, want 0", period)
 		}
-		setTx := &txs.SetAutoRenewedValidatorConfigTx{
+		setTx := &platform.SetAutoRenewedValidatorConfigTx{
 			BaseTx:                   devnetCompatBaseTx(ctx),
 			TxID:                     txID,
 			Auth:                     &secp256k1fx.Input{SigIndices: []uint32{0}},
@@ -235,13 +235,13 @@ func TestDevnetCompatSetAutoRenewedValidatorConfigTxExitCycle(t *testing.T) {
 func TestDevnetCompatACP236ErrorWrapping(t *testing.T) {
 	expectedErr := errors.New("devnet compat failure")
 
-	addIssuer := devnetAutoRenewedValidatorTxIssuer(func(ids.NodeID, uint64, signer.Signer, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, uint32, uint32, time.Duration, ...common.Option) (*txs.Tx, error) {
+	addIssuer := devnetAutoRenewedValidatorTxIssuer(func(ids.NodeID, uint64, signer.Signer, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, *secp256k1fx.OutputOwners, uint32, uint32, time.Duration, ...common.Option) (*platform.Tx, error) {
 		return nil, expectedErr
 	})
 	_, err := issueAddAutoRenewedValidatorTx(addIssuer, AddAutoRenewedValidatorConfig{Period: time.Second})
 	assertWrapped(t, err, expectedErr, "failed to issue AddAutoRenewedValidatorTx")
 
-	setIssuer := devnetSetAutoRenewedValidatorConfigTxIssuer(func(ids.ID, uint32, time.Duration, ...common.Option) (*txs.Tx, error) {
+	setIssuer := devnetSetAutoRenewedValidatorConfigTxIssuer(func(ids.ID, uint32, time.Duration, ...common.Option) (*platform.Tx, error) {
 		return nil, expectedErr
 	})
 	_, err = issueSetAutoRenewedValidatorConfigTx(setIssuer, SetAutoRenewedValidatorConfigTxConfig{TxID: ids.GenerateTestID(), Period: time.Second})
@@ -251,7 +251,7 @@ func TestDevnetCompatACP236ErrorWrapping(t *testing.T) {
 func TestDevnetCompatACP236DevnetSyntacticRejections(t *testing.T) {
 	ctx := devnetCompatContext()
 
-	tooManySharesTx := &txs.AddAutoRenewedValidatorTx{
+	tooManySharesTx := &platform.AddAutoRenewedValidatorTx{
 		BaseTx:                   devnetCompatBaseTx(ctx),
 		ValidatorNodeID:          ids.GenerateTestNodeID().Bytes(),
 		Signer:                   newDevnetCompatPoP(t),
@@ -282,8 +282,8 @@ func newDevnetCompatPoP(t *testing.T) *signer.ProofOfPossession {
 	return pop
 }
 
-func devnetCompatBaseTx(ctx *snow.Context) txs.BaseTx {
-	return txs.BaseTx{BaseTx: avax.BaseTx{
+func devnetCompatBaseTx(ctx *snow.Context) platform.BaseTx {
+	return platform.BaseTx{BaseTx: avax.BaseTx{
 		NetworkID:    ctx.NetworkID,
 		BlockchainID: ctx.ChainID,
 	}}
@@ -321,11 +321,11 @@ func ownerHasOnly(owner *secp256k1fx.OutputOwners, addr ids.ShortID) bool {
 		owner.Addrs[0] == addr
 }
 
-func initializeDevnetCompatTx(t *testing.T, utx txs.UnsignedTx) *txs.Tx {
+func initializeDevnetCompatTx(t *testing.T, utx platform.UnsignedTx) *platform.Tx {
 	t.Helper()
 
-	tx := &txs.Tx{Unsigned: utx}
-	if err := tx.Initialize(txs.Codec); err != nil {
+	tx := &platform.Tx{Unsigned: utx}
+	if err := tx.Initialize(platform.Codec); err != nil {
 		t.Fatalf("failed to initialize tx: %v", err)
 	}
 	return tx

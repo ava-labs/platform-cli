@@ -13,8 +13,8 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
+	"github.com/ava-labs/avalanchego/vms/platformvm/platform"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
-	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 )
@@ -27,7 +27,7 @@ var errAssertable = errors.New("assertable failure")
 
 // stubAutoRenewedValidatorTxIssuer implements autoRenewedValidatorTxIssuer.
 type stubAutoRenewedValidatorTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
 	called                    bool
@@ -43,7 +43,7 @@ type stubAutoRenewedValidatorTxIssuer struct {
 	gotOpts                   []common.Option
 }
 
-func (s *stubAutoRenewedValidatorTxIssuer) IssueAddAutoRenewedValidatorTx(validatorNodeID ids.NodeID, weight uint64, sig signer.Signer, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, validatorAuthority *secp256k1fx.OutputOwners, delegationShares uint32, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*txs.Tx, error) {
+func (s *stubAutoRenewedValidatorTxIssuer) IssueAddAutoRenewedValidatorTx(validatorNodeID ids.NodeID, weight uint64, sig signer.Signer, validationRewardsOwner *secp256k1fx.OutputOwners, delegationRewardsOwner *secp256k1fx.OutputOwners, validatorAuthority *secp256k1fx.OutputOwners, delegationShares uint32, autoCompoundRewardShares uint32, period time.Duration, options ...common.Option) (*platform.Tx, error) {
 	s.called = true
 	s.gotNodeID = validatorNodeID
 	s.gotWeight = weight
@@ -60,7 +60,7 @@ func (s *stubAutoRenewedValidatorTxIssuer) IssueAddAutoRenewedValidatorTx(valida
 
 // stubSetAutoRenewedValidatorConfigTxIssuer implements setAutoRenewedValidatorConfigTxIssuer.
 type stubSetAutoRenewedValidatorConfigTxIssuer struct {
-	tx  *txs.Tx
+	tx  *platform.Tx
 	err error
 
 	called                bool
@@ -69,7 +69,7 @@ type stubSetAutoRenewedValidatorConfigTxIssuer struct {
 	gotPeriod             time.Duration
 }
 
-func (s *stubSetAutoRenewedValidatorConfigTxIssuer) IssueSetAutoRenewedValidatorConfigTx(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, _ ...common.Option) (*txs.Tx, error) {
+func (s *stubSetAutoRenewedValidatorConfigTxIssuer) IssueSetAutoRenewedValidatorConfigTx(txID ids.ID, autoCompoundRewardShares uint32, period time.Duration, _ ...common.Option) (*platform.Tx, error) {
 	s.called = true
 	s.gotTxID = txID
 	s.gotAutoCompoundShares = autoCompoundRewardShares
@@ -98,7 +98,7 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 	}
 	txID := ids.GenerateTestID()
 
-	stub := &stubAutoRenewedValidatorTxIssuer{tx: &txs.Tx{TxID: txID}}
+	stub := &stubAutoRenewedValidatorTxIssuer{tx: &platform.Tx{TxID: txID}}
 	ctxKey := testContextKey("auto")
 	gotTxID, err := issueAddAutoRenewedValidatorTx(stub, cfg, common.WithContext(context.WithValue(context.Background(), ctxKey, "v")))
 	if err != nil {
@@ -138,7 +138,7 @@ func TestIssueAddAutoRenewedValidatorTx(t *testing.T) {
 }
 
 func TestIssueAddAutoRenewedValidatorTxRejectsInvalidPeriod(t *testing.T) {
-	stub := &stubAutoRenewedValidatorTxIssuer{tx: &txs.Tx{TxID: ids.GenerateTestID()}}
+	stub := &stubAutoRenewedValidatorTxIssuer{tx: &platform.Tx{TxID: ids.GenerateTestID()}}
 	_, err := issueAddAutoRenewedValidatorTx(stub, AddAutoRenewedValidatorConfig{Period: 1500 * time.Millisecond})
 	if err == nil || !strings.Contains(err.Error(), "period must be a whole number of seconds") {
 		t.Fatalf("error = %v, want whole-seconds error", err)
@@ -174,7 +174,7 @@ func TestIssueSetAutoRenewedValidatorConfigTx(t *testing.T) {
 		Period:                   7 * 24 * time.Hour,
 	}
 
-	stub := &stubSetAutoRenewedValidatorConfigTxIssuer{tx: &txs.Tx{TxID: issuedTxID}}
+	stub := &stubSetAutoRenewedValidatorConfigTxIssuer{tx: &platform.Tx{TxID: issuedTxID}}
 	gotTxID, err := issueSetAutoRenewedValidatorConfigTx(stub, cfg)
 	if err != nil {
 		t.Fatalf("issueSetAutoRenewedValidatorConfigTx() returned error: %v", err)
@@ -194,7 +194,7 @@ func TestIssueSetAutoRenewedValidatorConfigTx(t *testing.T) {
 }
 
 func TestIssueSetAutoRenewedValidatorConfigTxAllowsZeroPeriod(t *testing.T) {
-	stub := &stubSetAutoRenewedValidatorConfigTxIssuer{tx: &txs.Tx{TxID: ids.GenerateTestID()}}
+	stub := &stubSetAutoRenewedValidatorConfigTxIssuer{tx: &platform.Tx{TxID: ids.GenerateTestID()}}
 	cfg := SetAutoRenewedValidatorConfigTxConfig{
 		TxID:   ids.GenerateTestID(),
 		Period: 0,
@@ -211,7 +211,7 @@ func TestIssueSetAutoRenewedValidatorConfigTxAllowsZeroPeriod(t *testing.T) {
 }
 
 func TestIssueSetAutoRenewedValidatorConfigTxRejectsNegativePeriod(t *testing.T) {
-	stub := &stubSetAutoRenewedValidatorConfigTxIssuer{tx: &txs.Tx{TxID: ids.GenerateTestID()}}
+	stub := &stubSetAutoRenewedValidatorConfigTxIssuer{tx: &platform.Tx{TxID: ids.GenerateTestID()}}
 	_, err := issueSetAutoRenewedValidatorConfigTx(stub, SetAutoRenewedValidatorConfigTxConfig{
 		TxID:   ids.GenerateTestID(),
 		Period: -time.Second,

@@ -14,8 +14,8 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
+	"github.com/ava-labs/avalanchego/vms/platformvm/platform"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
-	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 )
 
@@ -428,9 +428,9 @@ func TestGatherL1Validators_InputValidation(t *testing.T) {
 }
 
 func TestSortAndValidateL1Validators_SortsByNodeID(t *testing.T) {
-	v1 := &txs.ConvertSubnetToL1Validator{NodeID: []byte{0x02}, Weight: 1}
-	v2 := &txs.ConvertSubnetToL1Validator{NodeID: []byte{0x01}, Weight: 1}
-	validators := []*txs.ConvertSubnetToL1Validator{v1, v2}
+	v1 := &platform.ConvertSubnetToL1Validator{NodeID: []byte{0x02}, Weight: 1}
+	v2 := &platform.ConvertSubnetToL1Validator{NodeID: []byte{0x01}, Weight: 1}
+	validators := []*platform.ConvertSubnetToL1Validator{v1, v2}
 
 	if err := sortAndValidateL1Validators(validators); err != nil {
 		t.Fatalf("sortAndValidateL1Validators() error = %v", err)
@@ -441,7 +441,7 @@ func TestSortAndValidateL1Validators_SortsByNodeID(t *testing.T) {
 }
 
 func TestSortAndValidateL1Validators_DuplicateNodeID(t *testing.T) {
-	validators := []*txs.ConvertSubnetToL1Validator{
+	validators := []*platform.ConvertSubnetToL1Validator{
 		{NodeID: []byte{0x01}, Weight: 1},
 		{NodeID: []byte{0x01}, Weight: 1},
 	}
@@ -646,7 +646,7 @@ func TestSetL1ValidatorOwners(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			validators := []*txs.ConvertSubnetToL1Validator{
+			validators := []*platform.ConvertSubnetToL1Validator{
 				{NodeID: []byte{0x01}},
 				{NodeID: []byte{0x02}},
 			}
@@ -680,7 +680,7 @@ func TestSetL1ValidatorOwners(t *testing.T) {
 func TestFinalizeL1ValidatorsKeepsOwnersWithValidators(t *testing.T) {
 	addr1 := ids.GenerateTestShortID()
 	addr2 := ids.GenerateTestShortID()
-	validators := []*txs.ConvertSubnetToL1Validator{
+	validators := []*platform.ConvertSubnetToL1Validator{
 		{NodeID: []byte{0x02}},
 		{NodeID: []byte{0x01}},
 	}

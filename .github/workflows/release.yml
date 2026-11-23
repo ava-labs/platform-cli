@@ -27,10 +27,6 @@ jobs:
             goos: darwin
             goarch: arm64
             cc: cc
-          - runner: macos-latest
-            goos: darwin
-            goarch: amd64
-            cc: cc
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -38,7 +34,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.26.10"
+          go-version-file: go.mod
 
       - name: Install cross-compiler
         if: matrix.cross_deps != ''
