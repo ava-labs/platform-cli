@@ -5,7 +5,7 @@ Minimal CLI for Avalanche P-Chain operations.
 ## Installation
 
 Requirements:
-- Go 1.26.10+ (matches avalanchego)
+- Go 1.26.11+
 - A cgo toolchain (C compiler)
 - Linux (amd64, arm64) or macOS (arm64); macOS on Intel (darwin/amd64) is not supported
 

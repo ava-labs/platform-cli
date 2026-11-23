@@ -1,6 +1,6 @@
 module github.com/ava-labs/platform-cli
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/ava-labs/avalanchego v1.15.3
@@ -20,7 +20,7 @@ require (
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect
 	github.com/ava-labs/avalanchego/graft/coreth v1.15.3 // indirect
 	github.com/ava-labs/avalanchego/graft/evm v1.15.3 // indirect
-	github.com/ava-labs/firewood-go/ffi v0.9.0 // indirect
+	github.com/ava-labs/firewood-go/ffi v0.9.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.5 // indirect
